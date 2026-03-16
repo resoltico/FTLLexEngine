@@ -438,6 +438,7 @@ class FluentLocalization:
             expected=expected,
             actual=actual,
             timestamp=time.monotonic(),
+            wall_time_unix=time.time(),
         )
         raise IntegrityCheckFailedError(message, context=context)
 
@@ -781,6 +782,7 @@ class FluentLocalization:
             expected="<no errors>",
             actual="<1 error>",
             timestamp=time.monotonic(),
+            wall_time_unix=time.time(),
         )
 
         msg = f"Strict mode: '{message_id}' failed: {error}"
@@ -913,6 +915,7 @@ class FluentLocalization:
                         expected=old_ctx.expected if old_ctx else "<no errors>",
                         actual=old_ctx.actual if old_ctx else f"<{err_count} error(s)>",
                         timestamp=old_ctx.timestamp if old_ctx else time.monotonic(),
+                        wall_time_unix=old_ctx.wall_time_unix if old_ctx else time.time(),
                     )
                     raise FormattingIntegrityError(
                         str(exc),

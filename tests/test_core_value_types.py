@@ -236,3 +236,61 @@ class TestPrivateHelpers:
         result = _infer_visible_precision(Decimal("1.23"), "no-numbers")
         # Fallback uses Decimal exponent: -2 fraction digits for Decimal("1.23")
         assert result == 2
+
+
+# ===========================================================================
+# FluentNumber.decimal_value property
+# ===========================================================================
+
+
+class TestFluentNumberDecimalValue:
+    """FluentNumber.decimal_value returns exact Decimal regardless of value type."""
+
+    def test_int_value_coerced_to_decimal(self) -> None:
+        """Integer value is coerced to exact Decimal."""
+        fn = FluentNumber(value=42, formatted="42", precision=0)
+        result = fn.decimal_value
+        assert isinstance(result, Decimal)
+        assert result == Decimal(42)
+
+    def test_decimal_value_returned_as_is(self) -> None:
+        """Decimal value is returned without copying."""
+        d = Decimal("1234.50")
+        fn = FluentNumber(value=d, formatted="1,234.50", precision=2)
+        result = fn.decimal_value
+        assert result is d  # exact same object (Decimal is immutable)
+        assert result == Decimal("1234.50")
+
+    def test_zero_int_value(self) -> None:
+        """Zero integer yields Decimal('0')."""
+        fn = FluentNumber(value=0, formatted="0", precision=0)
+        assert fn.decimal_value == Decimal(0)
+
+    def test_large_int_exact_conversion(self) -> None:
+        """Large integers convert exactly (no float precision loss)."""
+        large = 10 ** 18
+        fn = FluentNumber(value=large, formatted=str(large), precision=0)
+        assert fn.decimal_value == Decimal(large)
+
+    def test_negative_int_value(self) -> None:
+        """Negative integer converts correctly."""
+        fn = FluentNumber(value=-7, formatted="-7", precision=0)
+        assert fn.decimal_value == Decimal(-7)
+
+    def test_trailing_zeros_preserved_for_decimal(self) -> None:
+        """Trailing zeros in Decimal are preserved (financial significance)."""
+        d = Decimal("1.50")
+        fn = FluentNumber(value=d, formatted="1.50", precision=2)
+        result = fn.decimal_value
+        # Decimal('1.50') and Decimal('1.5') compare equal but have different scales.
+        # The property returns the original object, so scale is preserved.
+        assert result == Decimal("1.50")
+        assert str(result) == "1.50"
+
+    def test_decimal_value_type_is_always_decimal(self) -> None:
+        """Property always returns Decimal regardless of input type."""
+        int_fn = FluentNumber(value=5, formatted="5", precision=0)
+        dec_fn = FluentNumber(value=Decimal(5), formatted="5", precision=0)
+        assert isinstance(int_fn.decimal_value, Decimal)
+        assert isinstance(dec_fn.decimal_value, Decimal)
+        assert int_fn.decimal_value == dec_fn.decimal_value

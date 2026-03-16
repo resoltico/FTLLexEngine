@@ -150,6 +150,37 @@ class FluentNumber:
             )
             raise ValueError(msg)
 
+    @property
+    def decimal_value(self) -> Decimal:
+        """Exact Decimal representation of the underlying numeric value.
+
+        Coerces int to Decimal for uniform downstream handling. Decimal
+        values are returned as-is without copying (they are immutable).
+        float is structurally excluded from FluentNumber.value, so this
+        property always yields an exact decimal number.
+
+        Financial applications should use this property instead of
+        accessing .value directly, as it guarantees a uniform Decimal
+        type regardless of whether value is int or Decimal.
+
+        Returns:
+            Exact Decimal equivalent of value. For int inputs, the
+            conversion is exact (all integers are representable as
+            Decimal). For Decimal inputs, the original object is
+            returned unchanged.
+
+        Example:
+            >>> fn = FluentNumber(value=42, formatted="42", precision=0)
+            >>> fn.decimal_value
+            Decimal('42')
+            >>> fn2 = FluentNumber(value=Decimal("1234.50"), formatted="1,234.50", precision=2)
+            >>> fn2.decimal_value
+            Decimal('1234.50')
+        """
+        if isinstance(self.value, Decimal):
+            return self.value
+        return Decimal(self.value)
+
     def __str__(self) -> str:
         """Return formatted string for output."""
         return self.formatted

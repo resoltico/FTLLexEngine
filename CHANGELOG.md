@@ -2,7 +2,7 @@
 afad: "3.3"
 version: "0.154.0"
 domain: CHANGELOG
-updated: "2026-03-14"
+updated: "2026-03-15"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,51 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.155.0] - 2026-03-16
+
+### Added
+
+- **`LocalizationBootConfig` — canonical strict-mode boot API** (`ftllexengine.localization`):
+  - new frozen dataclass that composes `PathResourceLoader`, `FluentLocalization`,
+    `require_clean()`, and `validate_message_schemas()` into a single audited boot sequence;
+    designed for regulated systems where every resource must load cleanly and all declared
+    message schemas must match exactly before the application accepts traffic
+  - `boot()` → `FluentLocalization`: executes the full boot sequence and raises
+    `IntegrityCheckFailedError` on any load failure or schema mismatch
+  - `boot_with_summary()` → `(FluentLocalization, LoadSummary, tuple[MessageVariableValidationResult, ...])`:
+    identical to `boot()` but returns structured evidence for audit trails and boot-time logging
+  - `from_path()` static factory: convenience constructor for disk-based resources; accepts
+    `str | Path` as the base_path template
+  - exactly one of `loader` (custom `ResourceLoader`) or `base_path` (path template with
+    `{locale}` placeholder) must be provided; `__post_init__` enforces this at construction time
+  - exported from `ftllexengine.localization`
+
+- **`FluentNumber.decimal_value` property** (`ftllexengine.core.value_types`):
+  - returns the numeric value as an exact `Decimal` regardless of whether the underlying
+    `value` is `int` or `Decimal`; integers are coerced via `Decimal(value)` with no
+    precision loss; `Decimal` values are returned as-is (same object identity)
+
+- **`get_currency_decimal_digits()` is now Babel-free** (`ftllexengine.introspection.iso`):
+  - rewrote to use `ISO_4217_VALID_CODES` (new frozenset) and `ISO_4217_DECIMAL_DIGITS`
+    from `ftllexengine.constants`; no Babel required at call time or import time
+  - extended `ISO_4217_DECIMAL_DIGITS` with 13 X-special codes (XAG, XAU, XBA, XBB, XBC,
+    XBD, XDR, XPD, XPT, XSU, XTS, XUA, XXX — all 0 decimal digits) that were previously
+    absent; callers no longer receive the incorrect default of 2 for these codes
+  - added raw-length guard before `.upper()`: single-char casefold expansions (e.g., `'ß'`
+    expands to `'SS'`) no longer produce false positives
+  - available in parser-only installs (`pip install ftllexengine`) — no `[babel]` extra needed
+  - `ISO_4217_VALID_CODES` covers **active** ISO 4217 currencies only; retired and demonetized
+    codes (e.g. `TMM` — Turkmenistani Manat 1993–2009) return `None`; `get_currency()` may
+    still return data for these codes via Babel/CLDR historical records — the two functions
+    have different scopes by design (docstring clarified)
+
+- **Dual-clock timestamps on audit and integrity structures**:
+  - `WriteLogEntry` (in `ftllexengine.runtime.cache`) gains `wall_time_unix: float` alongside
+    the existing `timestamp` (monotonic); enables cross-system correlation of cache audit logs
+  - `IntegrityContext` (in `ftllexengine.integrity`) gains `wall_time_unix: float | None = None`;
+    all construction sites in `cache.py`, `bundle.py`, `orchestrator.py`, and
+    `resolution_context.py` now pass `wall_time_unix=time.time()`
 
 ## [0.154.0] - 2026-03-15
 

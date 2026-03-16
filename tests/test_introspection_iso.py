@@ -1721,3 +1721,57 @@ class TestGetCurrencyDecimalDigits:
         result = get_currency_decimal_digits("LVL")
         # Accept both None (withdrawn from Babel's CLDR) and 2 (if still in data).
         assert result in (None, 2), f"LVL should be None or 2, got {result!r}"
+
+    def test_precious_metal_x_codes_return_zero(self) -> None:
+        """ISO 4217 precious-metal X-codes return 0 decimal digits."""
+        for code in ("XAG", "XAU", "XPD", "XPT"):
+            assert get_currency_decimal_digits(code) == 0, (
+                f"{code} (precious metal) should have 0 decimal digits"
+            )
+
+    def test_special_x_codes_return_zero(self) -> None:
+        """ISO 4217 special X-codes (bond units, SDR, testing, no-currency) return 0."""
+        for code in ("XBA", "XBB", "XBC", "XBD", "XDR", "XSU", "XTS", "XUA", "XXX"):
+            assert get_currency_decimal_digits(code) == 0, (
+                f"{code} should have 0 decimal digits"
+            )
+
+    def test_xcd_eastern_caribbean_is_two_decimal(self) -> None:
+        """XCD (Eastern Caribbean Dollar) uses default 2 decimal digits."""
+        assert get_currency_decimal_digits("XCD") == 2
+
+    def test_babel_free_no_babel_install_required(self) -> None:
+        """get_currency_decimal_digits works without Babel installed.
+
+        Validates the Babel-free contract: result must not depend on any
+        Babel import path. We verify by confirming standard codes work and
+        that the returned value is a plain int (not a Babel-derived object).
+        """
+        result = get_currency_decimal_digits("USD")
+        assert result == 2
+        assert type(result) is int
+
+    def test_known_invalid_codes_return_none(self) -> None:
+        """Non-ISO codes return None without fallback to default."""
+        for code in ("XYZ", "FOO", "ZZZ", "AAA", "TST"):
+            assert get_currency_decimal_digits(code) is None, (
+                f"Unknown code {code!r} should return None"
+            )
+
+    def test_casefold_expansion_guard(self) -> None:
+        """Single-char inputs that expand via .upper() return None (no casefold confusion).
+
+        Verifies the raw-length guard prevents the 'ß' -> 'SS' casefold expansion
+        from matching 'SS' or any other 2-char result of uppercasing a 1-char input.
+        """
+        assert get_currency_decimal_digits("ß") is None
+        assert get_currency_decimal_digits("a") is None
+
+    def test_fund_codes_return_correct_precision(self) -> None:
+        """ISO 4217 fund codes are valid and return correct precision."""
+        # BOV (Bolivian Mvdol), MXV (Mexican Unidad), USN (US Next Day): 2 decimal
+        for code in ("BOV", "MXV", "USN"):
+            result = get_currency_decimal_digits(code)
+            assert result == 2, f"{code} (fund code) should have 2 decimal digits"
+        # UYI (Uruguay Peso en Unidades Indexadas): 0 decimal
+        assert get_currency_decimal_digits("UYI") == 0

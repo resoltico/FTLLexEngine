@@ -698,6 +698,7 @@ class FluentBundle:
                 expected="<no syntax errors>",
                 actual=f"<{len(junk_tuple)} syntax error(s)>",
                 timestamp=time.monotonic(),
+                wall_time_unix=time.time(),
             )
 
             error_msg = (
@@ -914,6 +915,7 @@ class FluentBundle:
             expected="<no errors>",
             actual=f"<{len(errors)} error(s)>",
             timestamp=time.monotonic(),
+            wall_time_unix=time.time(),
         )
 
         msg = (

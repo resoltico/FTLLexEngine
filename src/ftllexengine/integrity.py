@@ -62,7 +62,12 @@ class IntegrityContext:
         key: Cache key or identifier involved (optional)
         expected: Expected value/hash (optional)
         actual: Actual value/hash found (optional)
-        timestamp: Time of error detection (time.monotonic())
+        timestamp: Monotonic timestamp of error detection (time.monotonic()).
+            Use for ordering within a single process.
+        wall_time_unix: Unix wall-clock timestamp of error detection
+            (time.time()). Use for cross-system incident correlation and
+            persisting audit trails as standalone evidence. None when not
+            captured (older code paths or explicitly omitted).
     """
 
     component: str
@@ -71,6 +76,7 @@ class IntegrityContext:
     expected: str | None = None
     actual: str | None = None
     timestamp: float | None = None
+    wall_time_unix: float | None = None
 
 
 class DataIntegrityError(Exception):

@@ -1221,10 +1221,12 @@ def get_currency_decimal_digits(code: str) -> int | None:
 | `code` | `str` | ISO 4217 currency code (e.g., `"USD"`, `"KWD"`). Case-insensitive. |
 
 ### Constraints
-- Return: ISO 4217 decimal digit count (`0` for JPY, `2` for USD/EUR, `3` for KWD, `4` for CLF), or `None` for unknown codes.
-- Raises: `BabelImportError` if Babel not installed.
-- State: No mutable state; delegates to `get_currency()` (LRU-cached).
+- Return: ISO 4217 decimal digit count (`0` for JPY/XAU/XAG, `2` for USD/EUR, `3` for KWD, `4` for CLF), or `None` for unknown or invalid codes.
+- Raises: Nothing. Babel is not required.
+- State: Pure; consults static tables in `ftllexengine.constants` only.
 - Thread: Safe.
+- Babel: Not required. Available in parser-only installs (`pip install ftllexengine`).
+- Casefold: `len(code) != 3` returns `None` before `.upper()`; single-char expansions (e.g., `'ß'`) are rejected.
 - Import: `from ftllexengine.introspection import get_currency_decimal_digits`
 - Also available: `from ftllexengine import get_currency_decimal_digits`
 

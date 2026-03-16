@@ -36,8 +36,8 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.154.0"
-description = "Fluent (FTL) implementation with locale-aware parsing for numbers, dates, and currency"
+version = "0.155.0"
+description = "Fluent (FTL) i18n infrastructure library: bidirectional parsing, locale-aware numbers/dates/currency, strict-mode boot validation, and Decimal precision"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
@@ -68,6 +68,10 @@ keywords = [
     "plurals",
     "formatting",
     "thread-safe",
+    # Infrastructure
+    "strict-mode",
+    "boot-validation",
+    "audit",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

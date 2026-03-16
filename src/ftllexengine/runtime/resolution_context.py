@@ -171,6 +171,7 @@ class ResolutionContext:
                 component="resolution_context",
                 operation="pop",
                 timestamp=time.monotonic(),
+                wall_time_unix=time.time(),
             )
             msg = "Resolution stack underflow: pop() called on empty stack"
             raise DataIntegrityError(msg, ctx)
@@ -185,6 +186,7 @@ class ResolutionContext:
                 operation="pop",
                 key=key,
                 timestamp=time.monotonic(),
+                wall_time_unix=time.time(),
             )
             msg = (
                 f"Resolution stack corrupted: key '{key}' present in stack "

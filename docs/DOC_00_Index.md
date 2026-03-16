@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.155.0"
 domain: INDEX
-updated: "2026-03-13"
+updated: "2026-03-15"
 route:
-  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, cache-audit, boot-validation, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, RWLock, fiscal, iso, currency]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I import RWLock?", "how do I get the cache audit log?", "how to import ISO introspection?"]
+  keywords: [api reference, documentation, exports, imports, fluentbundle, fluentlocalization, cache-audit, boot-validation, LocalizationBootConfig, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, decimal_value, RWLock, fiscal, iso, currency, get_currency_decimal_digits]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I import RWLock?", "how do I get the cache audit log?", "how to import ISO introspection?", "how do I boot FluentLocalization with strict validation?", "what is LocalizationBootConfig?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -172,7 +172,7 @@ from ftllexengine.runtime import (
 ### Localization (`from ftllexengine.localization import ...`)
 ```python
 from ftllexengine.localization import (
-    CacheAuditLogEntry, FluentLocalization, LocalizationCacheStats,
+    CacheAuditLogEntry, FluentLocalization, LocalizationBootConfig, LocalizationCacheStats,
     PathResourceLoader, ResourceLoader,
     LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo,
     MessageId, LocaleCode, ResourceId, FTLSource,
@@ -227,9 +227,10 @@ ftllexengine/
   enums.py                 # CommentType, VariableContext, ReferenceKind, LoadStatus
   integrity.py             # DataIntegrityError hierarchy, IntegrityContext
   localization/
-    __init__.py            # FluentLocalization, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
+    __init__.py            # FluentLocalization, LocalizationBootConfig, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
     types.py               # PEP 695 type aliases: MessageId, LocaleCode, ResourceId, FTLSource
     loading.py             # ResourceLoader protocol, PathResourceLoader, LoadSummary, ResourceLoadResult, FallbackInfo
+    boot.py                # LocalizationBootConfig (strict-mode boot API)
     orchestrator.py        # FluentLocalization class, LocalizationCacheStats
   introspection/
     __init__.py            # Introspection API exports (message + ISO)

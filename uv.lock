@@ -321,7 +321,7 @@ wheels = [
 
 [[package]]
 name = "ftllexengine"
-version = "0.154.0"
+version = "0.155.0"
 source = { editable = "." }
 
 [package.optional-dependencies]

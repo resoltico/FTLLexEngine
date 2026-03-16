@@ -550,6 +550,14 @@ def _pattern_number_value_preservation(fdp: atheris.FuzzedDataProvider) -> None:
             f"number_format({value!r}, {locale!r})"
         )
         raise NumbersFuzzError(msg)
+    # decimal_value must return a Decimal equal to value (new property)
+    dv = result.decimal_value
+    if not isinstance(dv, Decimal):
+        msg = f"FluentNumber.decimal_value is {type(dv).__name__}, expected Decimal"
+        raise NumbersFuzzError(msg)
+    if dv != value:
+        msg = f"FluentNumber.decimal_value {dv!r} != original value {value!r}"
+        raise NumbersFuzzError(msg)
 
 
 def _pattern_number_min_gt_max(fdp: atheris.FuzzedDataProvider) -> None:

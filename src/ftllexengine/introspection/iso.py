@@ -25,6 +25,7 @@ from typing import TypeIs
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
     ISO_4217_DEFAULT_DECIMALS,
+    ISO_4217_VALID_CODES,
     MAX_CURRENCY_CACHE_SIZE,
     MAX_LOCALE_CACHE_SIZE,
     MAX_TERRITORY_CACHE_SIZE,
@@ -362,24 +363,32 @@ def get_currency(
 def get_currency_decimal_digits(code: str) -> int | None:
     """Return ISO 4217 standard decimal precision for a currency code.
 
-    Convenience function for callers that only need the number of decimal places
-    and do not need the full CurrencyInfo (name, symbol). Equivalent to
-    ``get_currency(code).decimal_digits`` but without a locale parameter.
+    Babel-free: queries the embedded ISO 4217 tables directly without any
+    locale lookup. No Babel installation required. Safe to call in
+    parser-only installs (``pip install ftllexengine`` without ``[babel]``).
 
-    Decimal precision is locale-independent: KWD always has 3 decimal places,
-    JPY always has 0, USD/EUR always have 2, regardless of display locale.
+    Decimal precision is a currency-level ISO 4217 property, not a locale
+    property: KWD always has 3 decimal places, JPY always has 0, USD/EUR
+    always have 2, regardless of display locale.
+
+    Validation is against ``ISO_4217_VALID_CODES``, the embedded authoritative
+    code set. Only codes present in that set yield a precision value. Codes
+    not listed return None regardless of Babel availability.
 
     Args:
         code: ISO 4217 currency code (e.g., 'USD', 'EUR'). Case-insensitive.
 
     Returns:
         Number of decimal digits (0 for JPY, 2 for USD/EUR, 3 for KWD), or
-        None if the code is not a known ISO 4217 currency code.
+        None if the code is not a currently active ISO 4217 currency code.
+        Historical or retired codes (e.g. TMM, TRL) return None — they are
+        absent from ``ISO_4217_VALID_CODES``, which covers only active
+        standards. Babel's ``get_currency()`` may still return data for these
+        historical codes via CLDR; the two functions have different scopes by
+        design.
 
-    Raises:
-        BabelImportError: If Babel not installed.
-
-    Thread-safe. Results are derived from the cached get_currency() result.
+    Thread-safe. No Babel dependency. O(1) constant-time lookup against
+    process-immutable tables.
 
     Examples:
         >>> get_currency_decimal_digits("KWD")
@@ -391,8 +400,14 @@ def get_currency_decimal_digits(code: str) -> int | None:
         >>> get_currency_decimal_digits("XYZ") is None
         True
     """
-    info = get_currency(code)
-    return info.decimal_digits if info is not None else None
+    # ISO 4217 codes are exactly 3 characters before uppercasing.
+    # Mirrors the raw-length guard in get_currency() to prevent casefold expansion.
+    if len(code) != 3:
+        return None
+    code_upper = code.upper()
+    if code_upper not in ISO_4217_VALID_CODES:
+        return None
+    return ISO_4217_DECIMAL_DIGITS.get(code_upper, ISO_4217_DEFAULT_DECIMALS)
 
 
 @lru_cache(maxsize=MAX_LOCALE_CACHE_SIZE)

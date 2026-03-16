@@ -1,13 +1,15 @@
 """Multi-locale localization package for FluentLocalization.
 
 Provides the full localization stack: type aliases, resource loading
-infrastructure, and the multi-locale orchestrator.
+infrastructure, the multi-locale orchestrator, and the boot configuration
+API for strict, audited localization initialization.
 
 Submodules:
-    types      - PEP 695 type aliases (MessageId, LocaleCode, ResourceId, FTLSource)
-    loading    - ResourceLoader protocol, PathResourceLoader, FallbackInfo,
-                 ResourceLoadResult, LoadSummary
+    types        - PEP 695 type aliases (MessageId, LocaleCode, ResourceId, FTLSource)
+    loading      - ResourceLoader protocol, PathResourceLoader, FallbackInfo,
+                   ResourceLoadResult, LoadSummary
     orchestrator - FluentLocalization (multi-locale orchestration)
+    boot         - LocalizationBootConfig (one-call boot-validated assembly)
 
 Python 3.13+. Zero external dependencies.
 """
@@ -15,6 +17,7 @@ Python 3.13+. Zero external dependencies.
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 
 from ftllexengine.enums import LoadStatus
+from ftllexengine.localization.boot import LocalizationBootConfig
 from ftllexengine.localization.loading import (
     FallbackInfo,
     LoadSummary,
@@ -30,6 +33,8 @@ __all__ = [
     # Main orchestrator
     "FluentLocalization",
     "LocalizationCacheStats",
+    # Boot configuration (one-call strict assembly)
+    "LocalizationBootConfig",
     # Loader protocol and implementations
     "ResourceLoader",
     "PathResourceLoader",

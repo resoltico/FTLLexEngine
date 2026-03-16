@@ -38,7 +38,7 @@ Unique coverage (not covered by other fuzzers):
 - LoadSummary aggregation (success, not_found, error, junk)
 - loader-backed source_path and path-validation error plumbing
 
-Patterns (22):
+Patterns (23):
 - single_locale_add_resource: 1 locale, add_resource, format
 - multi_locale_fallback: 2 locales, message only in fallback locale
 - chain_of_3_fallback: 3-locale chain, message in various positions
@@ -61,6 +61,7 @@ Patterns (22):
 - loader_junk_summary: eager load records Junk entries in LoadSummary
 - loader_path_error: invalid resource_id is captured as loader error in summary
 - require_clean_api: boot validation raises or returns based on LoadSummary cleanliness
+- boot_config_api: LocalizationBootConfig strict-mode boot sequence and invariants
 
 Metrics:
 - Pattern coverage with weighted round-robin schedule
@@ -148,6 +149,7 @@ class LocalizationMetrics:
     loader_junk_checks: int = 0
     loader_error_checks: int = 0
     boot_validation_checks: int = 0
+    boot_config_checks: int = 0
 
 
 class LocalizationFuzzError(Exception):
@@ -186,6 +188,7 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("loader_junk_summary", 4),
     ("loader_path_error", 4),
     ("require_clean_api", 5),
+    ("boot_config_api", 6),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -294,6 +297,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["loader_junk_checks"] = _domain.loader_junk_checks
     stats["loader_error_checks"] = _domain.loader_error_checks
     stats["boot_validation_checks"] = _domain.boot_validation_checks
+    stats["boot_config_checks"] = _domain.boot_config_checks
     total = _domain.messages_found + _domain.messages_missing
     if total > 0:
         stats["fallback_hit_ratio"] = round(_domain.fallback_triggered / total, 3)
@@ -331,6 +335,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.localization import (
         CacheAuditLogEntry,
         FluentLocalization,
+        LocalizationBootConfig,
         LocalizationCacheStats,
     )
     from ftllexengine.localization.loading import FallbackInfo, PathResourceLoader
@@ -1864,6 +1869,154 @@ def _pattern_require_clean_api(
     handler(fdp)
 
 
+def _check_boot_config_validation(fdp: atheris.FuzzedDataProvider) -> None:
+    """__post_init__ rejects empty locales/resource_ids and missing loader/base_path."""
+    choice = fdp.ConsumeIntInRange(0, 2)
+    try:
+        if choice == 0:
+            LocalizationBootConfig(
+                locales=(),
+                resource_ids=("ui.ftl",),
+                loader=_EmptyLoader(),
+            )
+            msg = "Empty locales did not raise ValueError"
+            raise LocalizationFuzzError(msg)
+        if choice == 1:
+            LocalizationBootConfig(
+                locales=("en",),
+                resource_ids=(),
+                loader=_EmptyLoader(),
+            )
+            msg = "Empty resource_ids did not raise ValueError"
+            raise LocalizationFuzzError(msg)
+        LocalizationBootConfig(
+            locales=("en",),
+            resource_ids=("ui.ftl",),
+        )
+        msg = "Missing loader/base_path did not raise ValueError"
+        raise LocalizationFuzzError(msg)
+    except ValueError:
+        pass  # expected
+
+
+def _check_boot_config_boot_success(fdp: atheris.FuzzedDataProvider) -> None:
+    """boot() returns FluentLocalization for a valid in-memory FTL resource."""
+    locale = fdp.PickValueInList(["en", "de", "lv"])
+    ftl = f"greeting = Hello {{ $name }}\nmsg{fdp.ConsumeIntInRange(0, 9)} = Value\n"
+    loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
+    try:
+        cfg = LocalizationBootConfig(
+            locales=(locale,),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+        )
+        l10n = cfg.boot()
+        if not isinstance(l10n, FluentLocalization):
+            msg = f"boot() returned {type(l10n).__name__}, expected FluentLocalization"
+            raise LocalizationFuzzError(msg)
+    except IntegrityCheckFailedError:
+        pass  # strict syntax errors in generated FTL are acceptable
+    except _ALLOWED_EXCEPTIONS:
+        pass
+
+
+def _check_boot_config_boot_with_summary(fdp: atheris.FuzzedDataProvider) -> None:
+    """boot_with_summary() returns a 3-tuple with correct types and clean LoadSummary."""
+    locale = fdp.PickValueInList(["en", "de"])
+    ftl = "msg = Value\n"
+    loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
+    try:
+        cfg = LocalizationBootConfig(
+            locales=(locale,),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+        )
+        result = cfg.boot_with_summary()
+        if not isinstance(result, tuple) or len(result) != 3:
+            msg = f"boot_with_summary() returned wrong structure: {result!r}"
+            raise LocalizationFuzzError(msg)
+        l10n, summary, schema_results = result
+        if not isinstance(l10n, FluentLocalization):
+            msg = f"boot_with_summary()[0] is {type(l10n).__name__}, not FluentLocalization"
+            raise LocalizationFuzzError(msg)
+        if not isinstance(schema_results, tuple):
+            msg = f"boot_with_summary()[2] is {type(schema_results).__name__}, not tuple"
+            raise LocalizationFuzzError(msg)
+        if summary.errors != 0:
+            msg = f"LoadSummary.errors={summary.errors} for clean resource"
+            raise LocalizationFuzzError(msg)
+        if summary.total_attempted < 1:
+            msg = f"LoadSummary.total_attempted={summary.total_attempted}, expected >= 1"
+            raise LocalizationFuzzError(msg)
+    except IntegrityCheckFailedError:
+        pass
+    except _ALLOWED_EXCEPTIONS:
+        pass
+
+
+def _check_boot_config_boot_failure(fdp: atheris.FuzzedDataProvider) -> None:
+    """boot() raises IntegrityCheckFailedError when a resource cannot be loaded."""
+    locale = fdp.PickValueInList(["en", "de"])
+    loader = _EmptyLoader()  # no resources registered -> FileNotFoundError
+    try:
+        cfg = LocalizationBootConfig(
+            locales=(locale,),
+            resource_ids=("missing.ftl",),
+            loader=loader,
+        )
+        cfg.boot()
+        msg = "boot() did not raise IntegrityCheckFailedError for missing resource"
+        raise LocalizationFuzzError(msg)
+    except IntegrityCheckFailedError:
+        pass  # expected
+    except _ALLOWED_EXCEPTIONS:
+        pass
+
+
+def _pattern_boot_config_api(
+    fdp: atheris.FuzzedDataProvider,
+) -> None:
+    """LocalizationBootConfig strict-mode boot sequence and invariants."""
+    _domain.boot_config_checks += 1
+    handlers = (
+        _check_boot_config_validation,
+        _check_boot_config_boot_success,
+        _check_boot_config_boot_with_summary,
+        _check_boot_config_boot_failure,
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    handler(fdp)
+
+
+class _EmptyLoader:
+    """ResourceLoader with no resources — always raises FileNotFoundError."""
+
+    def load(self, locale: str, resource_id: str) -> str:
+        msg = f"No resource for ({locale!r}, {resource_id!r})"
+        raise FileNotFoundError(msg)
+
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        return f"empty://{locale}/{resource_id}"
+
+
+class _SingleResourceLoader:
+    """ResourceLoader backed by a single (locale, resource_id) → FTL mapping."""
+
+    def __init__(self, locale: str, resource_id: str, ftl: str) -> None:
+        self._locale = locale
+        self._resource_id = resource_id
+        self._ftl = ftl
+
+    def load(self, locale: str, resource_id: str) -> str:
+        if locale == self._locale and resource_id == self._resource_id:
+            return self._ftl
+        msg = f"No resource for ({locale!r}, {resource_id!r})"
+        raise FileNotFoundError(msg)
+
+    def describe_path(self, locale: str, resource_id: str) -> str:
+        return f"memory://{locale}/{resource_id}"
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH = {
@@ -1889,6 +2042,7 @@ _PATTERN_DISPATCH = {
     "loader_junk_summary": _pattern_loader_junk_summary,
     "loader_path_error": _pattern_loader_path_error,
     "require_clean_api": _pattern_require_clean_api,
+    "boot_config_api": _pattern_boot_config_api,
 }
 
 
@@ -1941,6 +2095,7 @@ def test_one_input(data: bytes) -> None:
                 "validate_message_variables_api",
                 "validate_message_schemas_api",
                 "require_clean_api",
+                "boot_config_api",
             )
             or (time.perf_counter() - start_time) * 1000 > 1.0
         )

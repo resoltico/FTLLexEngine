@@ -32,6 +32,11 @@ class FluentNumber:
 | `formatted` | `str` | Y | Locale-formatted string for display. |
 | `precision` | `int \| None` | N | Visible fraction digit count (CLDR v operand). Must be >= 0 when set. None if not specified. |
 
+### Properties
+| Property | Type | Description |
+|:---------|:-----|:------------|
+| `decimal_value` | `Decimal` | Returns `value` as exact `Decimal`. `int` is coerced via `Decimal(value)` (no precision loss); `Decimal` is returned as the same object. |
+
 ### Constraints
 - Return: Frozen dataclass instance.
 - Raises: `TypeError` if `value` is `bool` (no numeric localization semantics). `ValueError` if `precision < 0` (CLDR v operand is always non-negative).
@@ -1601,6 +1606,7 @@ class WriteLogEntry:
     timestamp: float
     sequence: int
     checksum_hex: str
+    wall_time_unix: float
 ```
 
 ### Parameters
@@ -1608,9 +1614,10 @@ class WriteLogEntry:
 |:------|:-----|:------------|
 | `operation` | `str` | Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION). |
 | `key_hash` | `str` | BLAKE2b hash of cache key (privacy-preserving). |
-| `timestamp` | `float` | Monotonic timestamp of operation. |
+| `timestamp` | `float` | Monotonic clock timestamp of operation. Preserves ordering; not wall-clock aligned. |
 | `sequence` | `int` | Cache entry sequence number (for PUT operations). |
 | `checksum_hex` | `str` | Hex representation of entry checksum (for tracing). |
+| `wall_time_unix` | `float` | Unix wall-clock timestamp (`time.time()`). Enables cross-system log correlation. |
 
 ### Constraints
 - Immutable: Frozen dataclass with slots.
@@ -1652,5 +1659,65 @@ def clear(self) -> None:
 - State: Removes all cached entries from the LRU store. All counters (hits, misses, unhashable_skips, oversize_skips, error_bloat_skips, corruption_detected, idempotent_writes, write_once_conflicts, combined_weight_skips) and sequence number accumulate across `clear()` calls; they are never reset. Audit log is NOT cleared (historical record).
 - Thread: Safe.
 - Usage: Called automatically by FluentBundle on `add_resource()` or `add_function()`.
+
+---
+
+## `LocalizationBootConfig`
+
+Frozen dataclass providing a canonical strict-mode boot API for `FluentLocalization`.
+
+Composes `PathResourceLoader` (or a custom `ResourceLoader`), `FluentLocalization`,
+`require_clean()`, and `validate_message_schemas()` into a single audited sequence.
+Designed for regulated systems where every resource must load cleanly and all declared
+message schemas must match exactly before the application accepts traffic.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class LocalizationBootConfig:
+    locales: tuple[str, ...]
+    resource_ids: tuple[str, ...]
+    loader: ResourceLoader | None = None
+    base_path: str | None = None
+    message_schemas: Mapping[MessageId, frozenset[str] | set[str]] | None = None
+    strict: bool = True
+    use_isolating: bool = True
+    cache: CacheConfig | None = None
+    on_fallback: Callable[[FallbackInfo], None] | None = None
+```
+
+### Parameters
+| Field | Type | Req | Description |
+|:------|:-----|:----|:------------|
+| `locales` | `tuple[str, ...]` | Y | Locale codes in fallback priority order (e.g., `('lv', 'en')`). |
+| `resource_ids` | `tuple[str, ...]` | Y | FTL file identifiers to load (e.g., `('ui.ftl',)`). |
+| `loader` | `ResourceLoader \| None` | — | Custom loader implementing `ResourceLoader`. Mutually exclusive with `base_path`. |
+| `base_path` | `str \| None` | — | Path template with `{locale}` placeholder (e.g., `'locales/{locale}'`). Mutually exclusive with `loader`. |
+| `message_schemas` | `Mapping[...] \| None` | N | Message ID → expected variable frozenset. When set, `boot()` enforces exact variable contracts. |
+| `strict` | `bool` | N | Fail-fast on formatting errors (default: `True`). |
+| `use_isolating` | `bool` | N | Unicode bidi isolation marks (default: `True`). |
+| `cache` | `CacheConfig \| None` | N | Cache configuration, or `None` to disable. |
+| `on_fallback` | `Callable \| None` | N | Callback invoked when a message resolves from a fallback locale. |
+
+### Methods
+
+#### `boot() -> FluentLocalization`
+Execute the full boot sequence:
+1. Create `FluentLocalization` (loads all resources).
+2. Call `require_clean()` — raises `IntegrityCheckFailedError` on any load failure or junk entries.
+3. If `message_schemas` set, call `validate_message_schemas()` — raises `IntegrityCheckFailedError` on mismatch.
+
+#### `boot_with_summary() -> tuple[FluentLocalization, LoadSummary, tuple[MessageVariableValidationResult, ...]]`
+Identical to `boot()` but returns structured evidence for audit trails and boot-time logging.
+
+#### `from_path(locales, resource_ids, base_path, *, ...) -> LocalizationBootConfig`
+Static factory. `base_path` accepts `str` or `pathlib.Path` (converted to POSIX string).
+
+### Constraints
+- Raises (`__post_init__`): `ValueError` if `locales` or `resource_ids` is empty; `ValueError` if neither or both of `loader`/`base_path` are provided.
+- Raises (`boot`/`boot_with_summary`): `IntegrityCheckFailedError` on load failures or schema mismatches; `ValueError` if `base_path` lacks `{locale}`.
+- State: Immutable (frozen dataclass).
+- Thread: Safe. Each `boot()` call creates a new `FluentLocalization` instance.
+- Import: `from ftllexengine.localization import LocalizationBootConfig`
 
 ---

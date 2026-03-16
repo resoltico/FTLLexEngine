@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC
 from decimal import Decimal
@@ -36,7 +37,7 @@ from ftllexengine.diagnostics import (
     FrozenErrorContext,
     FrozenFluentError,
 )
-from ftllexengine.integrity import CacheCorruptionError, WriteConflictError
+from ftllexengine.integrity import CacheCorruptionError, IntegrityContext, WriteConflictError
 from ftllexengine.runtime import FluentBundle
 from ftllexengine.runtime.cache import (
     IntegrityCache,
@@ -1870,3 +1871,100 @@ class TestCacheEntrySizeLimit:
         stats = cache.get_stats()
         assert "combined_weight_skips" in stats
         assert stats["combined_weight_skips"] == 1
+
+
+# ===========================================================================
+# DUAL-CLOCK AUDIT LOG (wall_time_unix)
+# ===========================================================================
+
+
+class TestWriteLogEntryWallTime:
+    """WriteLogEntry carries both monotonic timestamp and wall_time_unix."""
+
+    def test_write_log_entry_has_wall_time_unix_field(self) -> None:
+        """WriteLogEntry.wall_time_unix field exists and is a float."""
+        before = time.time()
+        cache = IntegrityCache(enable_audit=True, strict=False)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="hello", errors=())
+        after = time.time()
+
+        log = cache.get_audit_log()
+        assert len(log) >= 1
+        entry = log[0]
+        assert isinstance(entry.wall_time_unix, float)
+        # Wall time should be bracketed between the before/after calls
+        assert before <= entry.wall_time_unix <= after
+
+    def test_write_log_entry_timestamp_is_monotonic(self) -> None:
+        """WriteLogEntry.timestamp (monotonic) is distinct from wall_time_unix."""
+
+        cache = IntegrityCache(enable_audit=True, strict=False)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="hello", errors=())
+
+        log = cache.get_audit_log()
+        entry = log[0]
+        # Monotonic and wall clock are different clocks — values may differ
+        assert isinstance(entry.timestamp, float)
+        assert isinstance(entry.wall_time_unix, float)
+        # Both should be positive
+        assert entry.timestamp > 0
+        assert entry.wall_time_unix > 0
+
+    def test_audit_log_multiple_entries_wall_time_non_decreasing(self) -> None:
+        """wall_time_unix values across audit entries are non-decreasing."""
+        cache = IntegrityCache(enable_audit=True, strict=False)
+        cache.put("a", None, None, "en", use_isolating=True, formatted="A", errors=())
+        cache.put("b", None, None, "en", use_isolating=True, formatted="B", errors=())
+        cache.put("c", None, None, "en", use_isolating=True, formatted="C", errors=())
+
+        log = cache.get_audit_log()
+        wall_times = [e.wall_time_unix for e in log]
+        for i in range(len(wall_times) - 1):
+            assert wall_times[i] <= wall_times[i + 1], (
+                f"wall_time_unix not non-decreasing at index {i}: "
+                f"{wall_times[i]} > {wall_times[i + 1]}"
+            )
+
+
+class TestIntegrityContextWallTime:
+    """IntegrityContext.wall_time_unix is populated at integrity error sites."""
+
+    def test_integrity_context_wall_time_unix_field_exists(self) -> None:
+        """IntegrityContext accepts wall_time_unix and stores it correctly."""
+        t = time.time()
+        ctx = IntegrityContext(
+            component="test",
+            operation="check",
+            timestamp=time.monotonic(),
+            wall_time_unix=t,
+        )
+        assert ctx.wall_time_unix == t
+
+    def test_integrity_context_wall_time_unix_defaults_to_none(self) -> None:
+        """IntegrityContext.wall_time_unix defaults to None for backwards compat."""
+        ctx = IntegrityContext(component="test", operation="check")
+        assert ctx.wall_time_unix is None
+
+    def test_cache_corruption_error_context_has_wall_time(self) -> None:
+        """CacheCorruptionError raised by strict cache carries wall_time_unix."""
+        cache = IntegrityCache(enable_audit=True, strict=True)
+        cache.put("msg", None, None, "en", use_isolating=True, formatted="ok", errors=())
+
+        # Corrupt the checksum by manipulating the stored entry directly
+        key = next(iter(cache._cache))
+        entry = cache._cache[key]
+
+        # Corrupt the checksum in-place via object.__setattr__ (frozen dataclass).
+        # content_hash is field(init=False), so we cannot pass it to __init__.
+        object.__setattr__(entry, "checksum", b"\x00" * 16)  # deliberately invalid
+        cache._cache[key] = entry
+
+        before = time.time()
+        with pytest.raises(CacheCorruptionError) as exc_info:
+            cache.get("msg", None, None, "en", use_isolating=True)
+        after = time.time()
+
+        ctx = exc_info.value.context
+        assert ctx is not None
+        assert ctx.wall_time_unix is not None
+        assert before <= ctx.wall_time_unix <= after

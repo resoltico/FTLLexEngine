@@ -507,8 +507,27 @@ def _pattern_invalid_input_stress(fdp: atheris.FuzzedDataProvider) -> None:
 def _pattern_decimal_digits_convenience(fdp: atheris.FuzzedDataProvider) -> None:
     """Fuzz get_currency_decimal_digits with cross-consistency oracle.
 
-    Invariant: get_currency_decimal_digits(code) must agree with
-    get_currency(code).decimal_digits on every code where both return a value.
+    get_currency_decimal_digits() is Babel-free: it uses the static
+    ISO_4217_VALID_CODES frozenset (active currencies only) and the
+    ISO_4217_DECIMAL_DIGITS sparse table.
+
+    get_currency() uses Babel/CLDR, which includes all currencies ever
+    recorded — active, retired, and historical (e.g. TMM, TRL).
+
+    The two functions have DIFFERENT data scopes by design:
+    - get_currency_decimal_digits(): active ISO 4217 codes only
+    - get_currency(): all CLDR currencies including historical ones
+
+    The only valid consistency invariant is:
+    - When BOTH return non-None, their decimal_digits values must agree.
+    - When either returns None, no assertion is made — the None reflects
+      the function's own scope boundary, not a bug. Specifically:
+      * get_currency_decimal_digits() None + get_currency() non-None:
+        retired/historical currency (e.g. TMM) — Babel knows it,
+        active table does not. Expected and correct.
+      * get_currency_decimal_digits() non-None + get_currency() None:
+        X-special codes (XAG, XAU, XBA-XBD, etc.) in the static table
+        but absent from Babel/CLDR. Expected and correct.
     """
     code = _gen_currency_code(fdp)
     _domain.decimal_digits_checks += 1
@@ -517,21 +536,6 @@ def _pattern_decimal_digits_convenience(fdp: atheris.FuzzedDataProvider) -> None
         digits = get_currency_decimal_digits(code)
 
         if digits is not None:
-            # Cross-consistency: must agree with get_currency().decimal_digits
-            full_info = get_currency(code)
-            if full_info is None:
-                msg = (
-                    f"get_currency_decimal_digits({code!r}) = {digits} "
-                    f"but get_currency returned None"
-                )
-                raise ISOFuzzError(msg)
-            if full_info.decimal_digits != digits:
-                msg = (
-                    f"Inconsistency for {code!r}: "
-                    f"get_currency_decimal_digits={digits}, "
-                    f"get_currency().decimal_digits={full_info.decimal_digits}"
-                )
-                raise ISOFuzzError(msg)
             # Valid ISO 4217 range (0, 2, 3, or 4 decimal places)
             if digits not in (0, 2, 3, 4):
                 msg = (
@@ -539,15 +543,19 @@ def _pattern_decimal_digits_convenience(fdp: atheris.FuzzedDataProvider) -> None
                     f"outside valid ISO 4217 range (0, 2, 3, 4)"
                 )
                 raise ISOFuzzError(msg)
-        else:
-            # None means unknown currency: get_currency must also return None
+            # Cross-consistency: if Babel also knows this active currency,
+            # both must agree on the decimal precision.
             full_info = get_currency(code)
-            if full_info is not None:
+            if full_info is not None and full_info.decimal_digits != digits:
                 msg = (
-                    f"get_currency_decimal_digits({code!r}) = None "
-                    f"but get_currency returned {full_info!r}"
+                    f"Inconsistency for {code!r}: "
+                    f"get_currency_decimal_digits={digits}, "
+                    f"get_currency().decimal_digits={full_info.decimal_digits}"
                 )
                 raise ISOFuzzError(msg)
+        # If digits is None, make no assertion about get_currency().
+        # The code may be: an invalid code, a retired currency (TMM, TRL),
+        # or simply outside the active ISO 4217 scope. All are valid.
     except _ALLOWED:
         pass
 

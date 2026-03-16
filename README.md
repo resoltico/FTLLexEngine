@@ -1,7 +1,7 @@
 <!--
 RETRIEVAL_HINTS:
-  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, currency, dates, thread-safe, fiscal, iso, territory, decimal-digits]
-  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, thread safety, fiscal calendar, iso introspection, territory currency]
+  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, numbers, dates, currency, thread-safe, fiscal, iso, territory, decimal-digits, infrastructure, boot-validation, strict-mode, LocalizationBootConfig, require_clean, compliance, audit, regulated, bidirectional, FluentBundle, FluentLocalization, FluentNumber]
+  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, number parsing, thread safety, fiscal calendar, iso introspection, territory currency, boot validation, production localization, strict mode, require_clean, LocalizationBootConfig, regulated deployments, audit trail, infrastructure library, bidirectional parsing, locale-aware formatting]
   related: [docs/QUICK_REFERENCE.md, docs/DOC_00_Index.md, docs/PARSING_GUIDE.md, docs/TERMINOLOGY.md]
 -->
 
@@ -18,15 +18,17 @@ RETRIEVAL_HINTS:
 
 # FTLLexEngine
 
-**Declarative localization for Python. Bidirectional parsing, thread-safe formatting, and Decimal precision -- in `.ftl` files, not your code.**
+**Fluent (FTL) i18n infrastructure for Python. Locale-aware numbers, dates, and currency — bidirectional, thread-safe, strict-mode validated, Decimal-precise — in `.ftl` files, not your code.**
 
 ## Why FTLLexEngine?
 
-- **Bidirectional** -- Format data for display *and* parse user input back to Python types
+- **Locale-aware numbers, dates, and currency** -- `NUMBER()`, `DATETIME()`, `CURRENCY()` format values per Unicode CLDR for 200+ locales. One function call, correct output everywhere
+- **Bidirectional** -- Format data for display *and* parse user input back to exact Python types. `"12.450,00 EUR"` → `(Decimal('12450.00'), 'EUR')`
 - **Thread-safe** -- No global state. 100 concurrent requests, zero locale conflicts
 - **Strict by default** -- Errors raise exceptions, not silent `{$amount}` fallbacks. Pass `strict=False` for soft error recovery
+- **Boot validation** -- `LocalizationBootConfig` validates all resources and message schemas before your application accepts traffic. Fail before the first request, not during it
 - **Introspectable** -- Query what variables a message needs before you call it
-- **Declarative grammar** -- Plurals, gender, cases in `.ftl` files. Code stays clean
+- **Declarative grammar** -- Plurals, gender, and cases in `.ftl` files. Code stays clean
 - **Decimal precision** -- `Decimal` throughout. No float math, no rounding surprises
 
 ---
@@ -48,14 +50,14 @@ from ftllexengine import FluentBundle
 
 bundle = FluentBundle("en_US")
 bundle.add_resource("""
-shipment = { $bags ->
-    [one]   1 bag of coffee
-   *[other] { $bags } bags of coffee
+coffee-order = { $bags ->
+    [one]   1 bag of { $origin } coffee
+   *[other] { $bags } bags of { $origin } coffee
 }
 """)
 
-result, _ = bundle.format_pattern("shipment", {"bags": 500})
-# "500 bags of coffee"
+result, errors = bundle.format_pattern("coffee-order", {"bags": 500, "origin": "Ethiopian"})
+# "500 bags of Ethiopian coffee"
 ```
 
 **Parse user input back to Python types:**
@@ -78,6 +80,7 @@ if not errors:
 - [Bidirectional Parsing — Bob Parses Every Input](#bidirectional-parsing--bob-parses-every-input)
 - [Thread-Safe Concurrency — 100 Threads, Zero Race Conditions](#thread-safe-concurrency--100-threads-zero-race-conditions)
 - [Message Introspection — Pre-Flight Checks](#message-introspection--pre-flight-checks)
+- [Production Boot Validation — Systems That Accept Traffic Safely](#production-boot-validation--systems-that-accept-traffic-safely)
 - [Currency and Fiscal Data — Operations Across Borders](#currency-and-fiscal-data--operations-across-borders)
 - [Architecture at a Glance](#architecture-at-a-glance)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
@@ -138,15 +141,15 @@ bundle = FluentBundle("en_US")
 bundle.add_resource("""
 shipment-line = { $bags ->
     [0]     No bags shipped
-    [one]   1 bag of { $origin } beans
-   *[other] { $bags } bags of { $origin } beans
+    [one]   1 bag of { $origin } coffee
+   *[other] { $bags } bags of { $origin } coffee
 }
 
 invoice-total = Total: { CURRENCY($amount, currency: "USD") }
 """)
 
 result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
-# "500 bags of Colombian beans"
+# "500 bags of Colombian coffee"
 
 result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
 # "Total: $187,500.00"
@@ -159,18 +162,18 @@ bundle_de = FluentBundle("de_DE")
 bundle_de.add_resource("""
 shipment-line = { $bags ->
     [0]     Keine Saecke versandt
-    [one]   1 Sack { $origin } Bohnen
-   *[other] { $bags } Saecke { $origin } Bohnen
+    [one]   1 Sack { $origin } Kaffee
+   *[other] { $bags } Saecke { $origin } Kaffee
 }
 
 invoice-total = Gesamt: { CURRENCY($amount, currency: "EUR") }
 """)
 
-result, _ = bundle_de.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianische"})
-# "500 Saecke kolumbianische Bohnen"
+result, _ = bundle_de.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianischer"})
+# "500 Saecke kolumbianischer Kaffee"
 
 result, _ = bundle_de.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
-# "Gesamt: 187.500,00 €"  (CLDR: locale-specific symbol with non-breaking space)
+# "Gesamt: 187.500,00\u00a0€"  (CLDR: non-breaking space before symbol)
 ```
 
 **Japanese (Tokyo buyer):**
@@ -180,14 +183,14 @@ bundle_ja = FluentBundle("ja_JP")
 bundle_ja.add_resource("""
 shipment-line = { $bags ->
     [0]     出荷なし
-   *[other] { $origin }豆 { $bags }袋
+   *[other] { $origin }コーヒー { $bags }袋
 }
 
 invoice-total = 合計：{ CURRENCY($amount, currency: "JPY") }
 """)
 
 result, _ = bundle_ja.format_pattern("shipment-line", {"bags": 500, "origin": "コロンビア"})
-# "コロンビア豆 500袋"
+# "コロンビアコーヒー 500袋"
 
 result, _ = bundle_ja.format_pattern("invoice-total", {"amount": Decimal("28125000")})
 # "合計：￥28,125,000"
@@ -206,7 +209,6 @@ Most libraries only format outbound data. That's a one-way trip.
 Bob's colonists type orders and quantities in their local format. A German engineer enters `"12.450,00 EUR"`. A Colombian agronomist enters `"45.000.000 COP"`. A Japanese technician files a delivery date as `"2026年3月15日"`. FTLLexEngine parses them all to exact Python types.
 
 ```python
-from decimal import Decimal
 from ftllexengine.parsing import (
     parse_currency,
     parse_date,
@@ -228,10 +230,12 @@ if not errors:
 contract_date, errors = parse_date("2026年3月15日", "ja_JP")
 # datetime.date(2026, 3, 15)
 
-# German engineer enters a localized amount that should go back into FTL
-display_total, errors = parse_fluent_number("12.450,00", "de_DE")
+# German engineer enters a localized amount for use in a Fluent message
+fnum, errors = parse_fluent_number("12.450,00", "de_DE")
 if not errors:
-    total_for_ftl = display_total  # FluentNumber(value=Decimal('12450.00'), ...)
+    # FluentNumber(value=Decimal('12450.00'), formatted='12.450,00', precision=2)
+    # Pass fnum directly as a $variable — it carries its formatting metadata
+    pass
 ```
 
 ```mermaid
@@ -273,7 +277,6 @@ FTLLexEngine uses `Decimal` throughout:
 from decimal import Decimal
 from ftllexengine.parsing import parse_currency
 
-# Parse the contract price
 price_result, errors = parse_currency("$4.25", "en_US", default_currency="USD")
 if not errors:
     price_per_lb, currency = price_result  # (Decimal('4.25'), 'USD')
@@ -282,10 +285,10 @@ if not errors:
     lbs_per_bag = Decimal("132")  # Standard 60kg bag
     total_lbs = bags * lbs_per_bag
     contract_value = total_lbs * price_per_lb
-    # Decimal('280500.00') - exact, every time
+    # Decimal('280500.00') -- exact, every time
 ```
 
-### No Silent Failures in Space
+### No Silent Failures
 
 > [!NOTE]
 > A missing variable returns a fallback string like `"Contract: 500 bags at {!CURRENCY}/lb"`. In financial systems or mission-critical operations, displaying this to a user is unacceptable.
@@ -312,8 +315,11 @@ except FormattingIntegrityError as e:
     # e.fallback_value = "Contract: 500 bags at {!CURRENCY}/lb"
     # e.fluent_errors = (FrozenFluentError(...),)
 
-# For soft error recovery, pass strict=False to get (fallback, errors) tuples
+# For soft error recovery, opt in with strict=False
 soft_bundle = FluentBundle("en_US", strict=False)
+soft_result, soft_errors = soft_bundle.format_pattern("missing-message", {})
+# soft_result = "{missing-message}"  (fallback: key wrapped in braces)
+# soft_errors = (FrozenFluentError(...),)
 ```
 
 ---
@@ -352,7 +358,8 @@ with ThreadPoolExecutor(max_workers=100) as executor:
         executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "lb"),
     ]
     confirmations = [f.result() for f in futures]
-    # ["4,25 $ per lb", "US$4,25 per lb", "$4.25 per lb"]  (CLDR locale symbols)
+    # ["4,25\u00a0$ per lb", "US$4,25 per lb", "$4.25 per lb"]
+    # (CLDR locale-specific symbols; de_DE uses non-breaking space before $)
 ```
 
 `FluentBundle` and `FluentLocalization` are thread-safe by design:
@@ -376,7 +383,7 @@ bundle.add_resource("""
 contract = { $buyer } purchases { $bags ->
         [one] 1 bag
        *[other] { $bags } bags
-    } of { $grade } from { $seller } at { CURRENCY($price, currency: "USD") }/lb.
+    } of { $grade } coffee from { $seller } at { CURRENCY($price, currency: "USD") }/lb.
     Shipment: { $port } by { DATETIME($ship_date) }.
 """)
 
@@ -402,6 +409,48 @@ info.requires_variable("price")
 
 ---
 
+## Production Boot Validation — Systems That Accept Traffic Safely
+
+Alice's trading platform and Bob's colony manifest system can't discover a bad `.ftl` file mid-operation. They validate everything at startup.
+
+`LocalizationBootConfig` is the production boot sequence: load all resources, run `require_clean()` to assert every locale loaded without errors, and validate all message schemas before the first request arrives. If anything is wrong, it raises before traffic starts -- not during it.
+
+```python
+from ftllexengine.localization import LocalizationBootConfig
+
+# Load .ftl files from disk, validate schemas, raise before accepting traffic
+cfg = LocalizationBootConfig.from_path(
+    locales=("en_US", "de_DE", "ja_JP"),
+    resource_ids=("invoice.ftl", "shipment.ftl"),
+    base_path="locales/{locale}",
+    message_schemas={
+        "invoice-total": {"amount"},
+        "shipment-line": {"bags", "origin"},
+    },
+)
+
+l10n = cfg.boot()  # raises IntegrityCheckFailedError if any resource fails or schema mismatches
+# l10n is now safe to use for the lifetime of the application
+```
+
+**Boot with structured evidence** for audit logs or startup reporting:
+
+```python
+l10n, summary, schema_results = cfg.boot_with_summary()
+
+print(f"Loaded {summary.total_attempted} resources, {summary.errors} errors")
+# "Loaded 6 resources, 0 errors"
+
+# schema_results: tuple[MessageVariableValidationResult, ...] -- one per message_schemas entry
+```
+
+**Use cases:**
+- Regulated systems that must prove clean boot before accepting requests
+- Container health checks: boot validation as the readiness probe
+- CI pipelines: fail the build if any `.ftl` file has junk or schema drift
+
+---
+
 ## Currency and Fiscal Data — Operations Across Borders
 
 Alice sources beans from Colombia, Ethiopia, and Brazil. She sells to importers in Japan, Germany, and the US. Each country uses different currencies with different decimal places. Each has different fiscal years for compliance reporting.
@@ -413,23 +462,23 @@ Bob faces the same complexity on Mars: colony expenditures reported to three nat
 ```python
 from ftllexengine.introspection.iso import get_territory_currencies, get_currency
 
-# New buyer in Japan - what currency?
+# New buyer in Japan -- what currency?
 currencies = get_territory_currencies("JP")
 # ("JPY",)
 
 # How many decimal places for yen?
 jpy = get_currency("JPY")
 jpy.decimal_digits
-# 0 - no decimal places for yen
+# 0 -- no decimal places for yen
 
 # Compare to Colombian peso
 cop = get_currency("COP")
 cop.decimal_digits
-# 2 - but typically displayed without decimals for large amounts
+# 2
 
 # Multi-currency territories
 panama_currencies = get_territory_currencies("PA")
-# ("PAB", "USD") - Panama uses both Balboa and US Dollar
+# ("PAB", "USD") -- Panama uses both Balboa and US Dollar
 ```
 
 Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New York.
@@ -438,7 +487,7 @@ Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New Y
 
 ```python
 from datetime import date
-from ftllexengine import FiscalCalendar, fiscal_year, fiscal_quarter
+from ftllexengine import FiscalCalendar, fiscal_quarter
 
 # UK importer: fiscal year starts April
 uk_calendar = FiscalCalendar(start_month=4)
@@ -446,19 +495,15 @@ uk_calendar = FiscalCalendar(start_month=4)
 # US operations: calendar year
 us_calendar = FiscalCalendar(start_month=1)
 
-# Japan operations: fiscal year starts April
-jp_calendar = FiscalCalendar(start_month=4)
-
 today = date(2026, 5, 15)
 
 # Same calendar date, different fiscal years
 uk_calendar.fiscal_year(today)  # 2027 (UK FY2027 runs Apr 2026 - Mar 2027)
 us_calendar.fiscal_year(today)  # 2026
-jp_calendar.fiscal_year(today)  # 2027
 
-# Quick lookups without creating calendar objects
-fiscal_quarter(today, start_month=4)  # 1 (Q1 of fiscal year - May is 2nd fiscal month)
-fiscal_quarter(today, start_month=1)  # 2 (Q2 of calendar year)
+# Quick quarter lookup without creating a calendar object
+fiscal_quarter(today, start_month=4)  # 1  (Apr-Jun is Q1)
+fiscal_quarter(today, start_month=1)  # 2  (Apr-Jun is Q2 of calendar year)
 
 # When does UK Q4 end for filing?
 uk_calendar.quarter_end_date(2027, 4)
@@ -474,8 +519,8 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 | Component | What It Does | Requires Babel? |
 |:----------|:-------------|:----------------|
 | **Syntax** — `ftllexengine.syntax` | FTL parser, AST, serializer, visitor pattern | No |
-| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (CURRENCY, DATETIME) | Yes |
-| **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains | Yes |
+| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`) | Yes |
+| **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains; `LocalizationBootConfig` strict-mode production boot | Yes |
 | **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
 | **Fiscal** — `ftllexengine.core.fiscal` | Fiscal calendar arithmetic, quarter calculations | No |
 | **Introspection** — `ftllexengine.introspection` | Message variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
@@ -491,12 +536,14 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 
 | Scenario | Why FTLLexEngine |
 | :--- | :--- |
+| **Regulated / audited deployments** | Boot validation raises before traffic starts. Immutable structured errors for audit trails. |
+| **Locale-aware numbers, dates, currency** | CLDR-backed `NUMBER()`, `DATETIME()`, `CURRENCY()` for 200+ locales. Correct by spec, not by approximation. |
 | **Parsing user input** | Errors as data, not exceptions. Show helpful feedback. |
-| **Financial calculations** | `Decimal` precision. Strict mode available. |
+| **Financial calculations** | `Decimal` precision throughout. Strict mode on every bundle. |
 | **Concurrent systems** | Thread-safe. No global locale state. |
 | **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
 | **Multi-locale apps** | 200+ locales. CLDR-compliant. |
-| **Multi-currency operations** | ISO 4217 data. Territory-to-currency mapping. Decimal places. |
+| **Multi-currency operations** | ISO 4217 data. Territory-to-currency mapping. Correct decimal places. |
 | **Cross-border compliance** | UK/Japan/US fiscal years. Quarter calculations. |
 | **AI integrations** | Introspect messages before formatting. |
 | **Content/code separation** | Translators edit `.ftl` files. Developers ship code. |

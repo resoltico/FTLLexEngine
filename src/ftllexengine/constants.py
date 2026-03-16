@@ -49,6 +49,7 @@ __all__ = [
     # ISO 4217 currency data
     "ISO_4217_DECIMAL_DIGITS",
     "ISO_4217_DEFAULT_DECIMALS",
+    "ISO_4217_VALID_CODES",
 ]
 
 # ============================================================================
@@ -310,7 +311,7 @@ FALLBACK_FUNCTION_ERROR: str = "{{!{name}}}"  # -> {!NUMBER}
 # ============================================================================
 
 # Currencies with non-standard decimal digits (0, 3, or 4).
-# All currencies not listed here default to 2 decimal digits.
+# All currencies not listed here default to 2 decimal digits (ISO_4217_DEFAULT_DECIMALS).
 ISO_4217_DECIMAL_DIGITS: MappingProxyType[str, int] = MappingProxyType({
     # Zero decimal currencies (no minor unit or minor unit not used)
     "BIF": 0,  # Burundian Franc
@@ -328,8 +329,21 @@ ISO_4217_DECIMAL_DIGITS: MappingProxyType[str, int] = MappingProxyType({
     "VND": 0,  # Vietnamese Dong
     "VUV": 0,  # Vanuatu Vatu
     "XAF": 0,  # Central African CFA Franc
+    "XAG": 0,  # Silver (troy ounce, precious metals)
+    "XAU": 0,  # Gold (troy ounce, precious metals)
+    "XBA": 0,  # Bond Markets Unit European Composite Unit (EURCO)
+    "XBB": 0,  # Bond Markets Unit European Monetary Unit (E.M.U.-6)
+    "XBC": 0,  # Bond Markets Unit European Unit of Account 9 (E.U.A.-9)
+    "XBD": 0,  # Bond Markets Unit European Unit of Account 17 (E.U.A.-17)
+    "XDR": 0,  # Special Drawing Rights (IMF)
     "XOF": 0,  # West African CFA Franc
+    "XPD": 0,  # Palladium (troy ounce, precious metals)
     "XPF": 0,  # CFP Franc (Pacific)
+    "XPT": 0,  # Platinum (troy ounce, precious metals)
+    "XSU": 0,  # Sucre (ALBA)
+    "XTS": 0,  # Reserved for testing purposes
+    "XUA": 0,  # ADB Unit of Account (Asian Development Bank)
+    "XXX": 0,  # No currency (ISO 4217 code for transactions with no currency)
     # Three decimal currencies (1/1000 minor unit)
     "BHD": 3,  # Bahraini Dinar
     "IQD": 3,  # Iraqi Dinar
@@ -346,3 +360,76 @@ ISO_4217_DECIMAL_DIGITS: MappingProxyType[str, int] = MappingProxyType({
 # Default decimal digits for currencies not in ISO_4217_DECIMAL_DIGITS.
 # Per ISO 4217, the vast majority of currencies use 2 decimal places.
 ISO_4217_DEFAULT_DECIMALS: int = 2
+
+# Complete set of active ISO 4217 alphabetic currency codes.
+#
+# Used by get_currency_decimal_digits() for Babel-free code validation.
+# Only active codes are included. Withdrawn/retired codes (e.g., BYR, HRK)
+# are excluded. Fund codes (BOV, CHE, CHW, MXV, USN, etc.) and special
+# X-codes are included per ISO 4217 because financial systems encounter them.
+#
+# X-special codes: XAF/XOF/XPF are regional CFA francs; XAG/XAU/XPD/XPT
+# are precious metal troy ounce codes; XBA-XBD are European bond units;
+# XDR is IMF Special Drawing Rights; XSU is the ALBA Sucre; XTS is reserved
+# for testing; XUA is the Asian Development Bank unit; XXX signals no currency.
+#
+# Source: ISO 4217:2015 and subsequent amendments (amendment 170+).
+ISO_4217_VALID_CODES: frozenset[str] = frozenset({
+    # A
+    "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN",
+    # B
+    "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BOV",
+    "BRL", "BSD", "BTN", "BWP", "BYN", "BZD",
+    # C
+    "CAD", "CDF", "CHE", "CHF", "CHW", "CLF", "CLP", "CNY", "COP", "COU",
+    "CRC", "CUC", "CUP", "CVE", "CZK",
+    # D
+    "DJF", "DKK", "DOP", "DZD",
+    # E
+    "EGP", "ERN", "ETB", "EUR",
+    # F
+    "FJD", "FKP",
+    # G
+    "GBP", "GEL", "GHS", "GIP", "GMD", "GNF", "GTQ", "GYD",
+    # H
+    "HKD", "HNL", "HTG", "HUF",
+    # I
+    "IDR", "ILS", "INR", "IQD", "IRR", "ISK",
+    # J
+    "JMD", "JOD", "JPY",
+    # K
+    "KES", "KGS", "KHR", "KMF", "KPW", "KRW", "KWD", "KYD", "KZT",
+    # L
+    "LAK", "LBP", "LKR", "LRD", "LSL", "LYD",
+    # M
+    "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRU", "MUR", "MVR",
+    "MWK", "MXN", "MXV", "MYR", "MZN",
+    # N
+    "NAD", "NGN", "NIO", "NOK", "NPR", "NZD",
+    # O
+    "OMR",
+    # P
+    "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG",
+    # Q
+    "QAR",
+    # R
+    "RON", "RSD", "RUB", "RWF",
+    # S
+    "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SLL", "SOS",
+    "SRD", "SSP", "STN", "SVC", "SYP", "SZL",
+    # T
+    "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS",
+    # U
+    "UAH", "UGX", "USD", "USN", "UYI", "UYU", "UYW", "UZS",
+    # V
+    "VES", "VND", "VUV",
+    # W
+    "WST",
+    # X (special codes per ISO 4217)
+    "XAF", "XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XCD", "XDR", "XOF",
+    "XPD", "XPF", "XPT", "XSU", "XTS", "XUA", "XXX",
+    # Y
+    "YER",
+    # Z
+    "ZAR", "ZMW", "ZWL",
+})

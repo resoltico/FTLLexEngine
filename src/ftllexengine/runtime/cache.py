@@ -442,9 +442,13 @@ class WriteLogEntry:
     Attributes:
         operation: Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION)
         key_hash: Hash of cache key (privacy-preserving)
-        timestamp: Monotonic timestamp of operation
+        timestamp: Monotonic timestamp of operation (time.monotonic()).
+            Use for ordering within a single process.
         sequence: Cache entry sequence number (for PUT operations)
         checksum_hex: Hex representation of entry checksum (for tracing)
+        wall_time_unix: Unix wall-clock timestamp of operation (time.time()).
+            Use for cross-system incident correlation and persisting audit
+            trails as standalone evidence outside the originating process.
     """
 
     operation: str
@@ -452,6 +456,7 @@ class WriteLogEntry:
     timestamp: float
     sequence: int
     checksum_hex: str
+    wall_time_unix: float
 
 
 # Public alias for cache audit-log entries returned by runtime/localization facades.
@@ -641,6 +646,7 @@ class IntegrityCache:
                         expected=entry.checksum.hex(),
                         actual="<recomputed mismatch>",
                         timestamp=time.monotonic(),
+                        wall_time_unix=time.time(),
                     )
                     msg = f"Cache entry corruption detected for '{message_id}'"
                     raise CacheCorruptionError(msg, context=context)
@@ -667,6 +673,7 @@ class IntegrityCache:
                         expected=expected_key_hash.hex(),
                         actual=entry.key_hash.hex(),
                         timestamp=time.monotonic(),
+                        wall_time_unix=time.time(),
                     )
                     msg = f"Cache key confusion detected for '{message_id}'"
                     raise CacheCorruptionError(msg, context=context)
@@ -772,6 +779,7 @@ class IntegrityCache:
                         expected="<new entry>",
                         actual=f"<existing seq={existing.sequence}>",
                         timestamp=time.monotonic(),
+                        wall_time_unix=time.time(),
                     )
                     msg = f"Write-once violation: '{message_id}' already cached"
                     raise WriteConflictError(
@@ -898,6 +906,7 @@ class IntegrityCache:
             timestamp=time.monotonic(),
             sequence=entry.sequence if entry is not None else 0,
             checksum_hex=entry.checksum.hex() if entry is not None else "",
+            wall_time_unix=time.time(),
         )
 
         # deque with maxlen provides automatic O(1) eviction of oldest entries

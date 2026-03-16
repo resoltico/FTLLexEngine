@@ -275,6 +275,17 @@ def _validate_cache_audit_entry(
             f"{last_timestamp} -> {entry.timestamp}"
         )
         raise CacheFuzzError(msg)
+    # wall_time_unix is a Unix timestamp (time.time()); must be a positive float.
+    # It is the wall-clock companion to the monotonic timestamp field.
+    if not isinstance(entry.wall_time_unix, float):
+        msg = (
+            f"WriteLogEntry.wall_time_unix must be float, "
+            f"got {type(entry.wall_time_unix).__name__!r}"
+        )
+        raise CacheFuzzError(msg)
+    if entry.wall_time_unix <= 0:
+        msg = f"WriteLogEntry.wall_time_unix must be positive, got {entry.wall_time_unix}"
+        raise CacheFuzzError(msg)
 
     if entry.operation == "MISS":
         if entry.sequence != 0 or entry.checksum_hex != "":
