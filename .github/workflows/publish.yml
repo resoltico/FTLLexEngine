@@ -98,7 +98,7 @@ jobs:
 
           PACKAGE="${{ steps.detect.outputs.name }}"
 
-          RUNTIME_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
+          RUNTIME_VERSION=$(uv run python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
           TAG_VERSION="${GITHUB_REF#refs/tags/}"
           TAG_VERSION="${TAG_VERSION#v}"
 

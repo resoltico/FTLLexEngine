@@ -68,4 +68,4 @@ jobs:
       - name: Verify package import
         run: |
           PACKAGE="${{ steps.detect.outputs.name }}"
-          python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE} v{${PACKAGE}.__version__}')"
+          uv run python -c "import ${PACKAGE}; print(f'Successfully imported ${PACKAGE} v{${PACKAGE}.__version__}')"
