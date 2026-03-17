@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.155.0"
 domain: fuzzing
-updated: "2026-03-13"
+updated: "2026-03-16"
 route:
-  keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus, workers, metrics]
-  questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?", "how do atheris workers work?", "why are metrics wrong with multiple workers?"]
+  keywords: [fuzzing, atheris, libfuzzer, native, crash, security, corpus, workers, metrics, subinterpreters, concurrent.interpreters]
+  questions: ["how to run atheris?", "how to do native fuzzing?", "how to reproduce crashes?", "how to manage corpus?", "how do atheris workers work?", "why are metrics wrong with multiple workers?", "how to fuzz interpreter pool?", "concurrent.interpreters missing?"]
 ---
 
 # Atheris Guide (Native Fuzzing with libFuzzer)
@@ -48,14 +48,14 @@ Key difference from Hypothesis: Atheris works with **raw bytes**, not Python obj
 
 ## Prerequisites (macOS)
 
-Atheris requires LLVM and a custom Python build. Use the isolated virtualenv:
+Atheris requires LLVM. Install it once:
 
 ```bash
-# The script manages its own environment
-./scripts/fuzz_atheris.sh --help
+brew install llvm
 ```
 
-The script uses `.venv-atheris` to avoid conflicts with the main project environment.
+No other manual setup is needed. The script bootstraps `.venv-atheris` automatically
+on first run.
 
 ### Verification
 
@@ -63,7 +63,38 @@ The script uses `.venv-atheris` to avoid conflicts with the main project environ
 ./scripts/fuzz_atheris.sh --help
 ```
 
-Should list all available fuzzing targets.
+Lists all available fuzzing targets. The first run creates `.venv-atheris` if it does
+not exist.
+
+---
+
+## Environment Architecture
+
+`.venv-atheris` is managed **independently of uv's project system**. This is a hard
+architectural constraint:
+
+| Constraint | Detail |
+|:-----------|:-------|
+| Atheris Python | <= 3.13 (Atheris does not support Python 3.14+) |
+| Project baseline | Python 3.14 (`requires-python = ">=3.14"` in `pyproject.toml`) |
+| Consequence | uv refuses to create a Python 3.13 venv for a project that requires 3.14 |
+
+**Solution**: the script bypasses uv entirely for venv creation. On every run,
+`ensure_atheris_venv` checks `.venv-atheris`:
+
+1. If it exists with Python 3.13 — proceed immediately.
+2. If it is missing or has the wrong Python — locate Python 3.13 via pyenv (or
+   `python3.13`), create the venv directly with `python3.13 -m venv`, then install
+   `atheris`, `psutil`, and `ftllexengine[babel]` via pip with
+   `--ignore-requires-python` to bypass the project's `requires-python >= 3.14`.
+
+**`UV_PROJECT_ENVIRONMENT` must not be set** for `fuzz_atheris.sh`. If it were set to
+`.venv-atheris`, uv would silently recreate that venv with Python 3.14 on each run,
+making Atheris uninstallable.
+
+All fuzzer execution, report parsing, corpus listing, and replay go through
+`$ATHERIS_PYTHON` (`.venv-atheris/bin/python`) directly — no `uv run` in the atheris
+execution path.
 
 ---
 
@@ -101,6 +132,7 @@ Targets are dynamically discovered from `fuzz_atheris/fuzz_*.py` files:
 | `iso` | Introspection | ISO 3166/4217 lookups, type guards, cache |
 | `fiscal` | Arithmetic | Fiscal calendar date operations |
 | `integrity` | Validation | IntegrityCache hash verification |
+| `interpreter_pool` | Concurrency | InterpreterPool lifecycle, acquire/release, ExecutionFailed isolation -- INACTIVE: requires Python 3.14+ (`concurrent.interpreters`, PEP 734); Atheris requires Python <= 3.13 |
 | `lock` | Concurrency | RWLock timeout and contention paths |
 | `roundtrip` | Convergence | Parser-serializer round-trip consistency |
 | `serializer` | AST-construction | Serializer idempotence via programmatic AST |
@@ -311,15 +343,49 @@ All `fuzz_atheris/fuzz_*.py` files must include:
 
 ## Troubleshooting
 
-### ImportError: symbol not found
+### `concurrent.interpreters` missing (interpreter_pool target)
 
-LLVM version mismatch. Ensure Atheris and Python are built with the same LLVM:
+The `interpreter_pool` fuzzer requires `concurrent.interpreters`, which is stdlib only in
+Python 3.14+ (PEP 734). Atheris requires Python <= 3.13. These constraints are mutually
+exclusive — there is no heal path.
+
+The fuzzer is preserved as `_inactive_fuzz_interpreter_pool.py` (excluded from plugin
+discovery via the `_inactive_` prefix). It will become active once Atheris supports Python 3.14.
+
+```
+./scripts/fuzz_atheris.sh interpreter_pool
+# Exits with code 3 and an informational message — no action needed.
+```
+
+### ImportError: symbol not found (LLVM mismatch)
+
+Atheris was compiled against a different LLVM than the one on PATH. The script
+auto-heals this on macOS by reinstalling from source with the Homebrew LLVM. To
+trigger manually:
+
+```bash
+./scripts/fuzz_atheris.sh --setup
+```
+
+If the auto-heal fails, install LLVM and reset the venv:
 
 ```bash
 brew install llvm
-export LLVM_CONFIG=$(brew --prefix llvm)/bin/llvm-config
-pip install atheris
+rm -rf .venv-atheris
+./scripts/fuzz_atheris.sh --setup
 ```
+
+### `.venv-atheris` has the wrong Python (e.g. rebuilt with 3.14)
+
+The script detects this automatically and rebuilds the venv. To force a rebuild:
+
+```bash
+rm -rf .venv-atheris
+./scripts/fuzz_atheris.sh --setup
+```
+
+The setup step creates `.venv-atheris` with Python 3.13, installs `atheris` and
+`psutil`, and installs `ftllexengine[babel]` in editable mode.
 
 ### WARNING: Failed to find function "__sanitizer_..."
 
@@ -430,6 +496,7 @@ fuzz_atheris/
 ├── fuzz_fiscal.py                # Fiscal calendar fuzzer
 ├── fuzz_graph.py                 # Dependency graph
 ├── fuzz_integrity.py             # Semantic validation + strict mode
+├── _inactive_fuzz_interpreter_pool.py  # InterpreterPool lifecycle (inactive: needs Python 3.14+)
 ├── fuzz_introspection.py         # IntrospectionVisitor + ReferenceExtractor
 ├── fuzz_iso.py                   # ISO 3166/4217 introspection
 ├── fuzz_locale_context.py        # LocaleContext direct formatting API

@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.155.0"
 domain: RUNTIME
-updated: "2026-03-13"
+updated: "2026-03-16"
 route:
-  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, fluent_function, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?"]
+  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, fluent_function, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key, InterpreterPool, subinterpreter, concurrent_interpreters, required_messages, clear_module_caches, component_filter]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?", "what is InterpreterPool?", "how do I create a subinterpreter pool?", "how do I call a function in a subinterpreter?", "what is required_messages in LocalizationBootConfig?", "how do I clear specific caches?"]
 ---
 
 # Runtime Reference
@@ -1680,6 +1680,7 @@ class LocalizationBootConfig:
     loader: ResourceLoader | None = None
     base_path: str | None = None
     message_schemas: Mapping[MessageId, frozenset[str] | set[str]] | None = None
+    required_messages: frozenset[str] | None = None
     strict: bool = True
     use_isolating: bool = True
     cache: CacheConfig | None = None
@@ -1694,6 +1695,7 @@ class LocalizationBootConfig:
 | `loader` | `ResourceLoader \| None` | — | Custom loader implementing `ResourceLoader`. Mutually exclusive with `base_path`. |
 | `base_path` | `str \| None` | — | Path template with `{locale}` placeholder (e.g., `'locales/{locale}'`). Mutually exclusive with `loader`. |
 | `message_schemas` | `Mapping[...] \| None` | N | Message ID → expected variable frozenset. When set, `boot()` enforces exact variable contracts. |
+| `required_messages` | `frozenset[str] \| None` | N | Set of message IDs that must exist in at least one locale. Raises `IntegrityCheckFailedError` if any are absent from all locales. |
 | `strict` | `bool` | N | Fail-fast on formatting errors (default: `True`). |
 | `use_isolating` | `bool` | N | Unicode bidi isolation marks (default: `True`). |
 | `cache` | `CacheConfig \| None` | N | Cache configuration, or `None` to disable. |
@@ -1701,23 +1703,138 @@ class LocalizationBootConfig:
 
 ### Methods
 
-#### `boot() -> FluentLocalization`
-Execute the full boot sequence:
+#### `boot() -> tuple[FluentLocalization, LoadSummary, tuple[MessageVariableValidationResult, ...]]`
+PRIMARY boot API. Executes the full boot sequence and returns structured evidence:
 1. Create `FluentLocalization` (loads all resources).
 2. Call `require_clean()` — raises `IntegrityCheckFailedError` on any load failure or junk entries.
-3. If `message_schemas` set, call `validate_message_schemas()` — raises `IntegrityCheckFailedError` on mismatch.
+3. If `required_messages` set, verify each ID is resolvable in at least one locale.
+4. If `message_schemas` set, call `validate_message_schemas()` — raises `IntegrityCheckFailedError` on mismatch.
+Returns `(FluentLocalization, LoadSummary, tuple[MessageVariableValidationResult, ...])` for audit trails.
 
-#### `boot_with_summary() -> tuple[FluentLocalization, LoadSummary, tuple[MessageVariableValidationResult, ...]]`
-Identical to `boot()` but returns structured evidence for audit trails and boot-time logging.
+#### `boot_simple() -> FluentLocalization`
+Simplified form. Executes the identical boot sequence but discards audit evidence. Use when structured evidence is not needed.
 
 #### `from_path(locales, resource_ids, base_path, *, ...) -> LocalizationBootConfig`
 Static factory. `base_path` accepts `str` or `pathlib.Path` (converted to POSIX string).
 
 ### Constraints
 - Raises (`__post_init__`): `ValueError` if `locales` or `resource_ids` is empty; `ValueError` if neither or both of `loader`/`base_path` are provided.
-- Raises (`boot`/`boot_with_summary`): `IntegrityCheckFailedError` on load failures or schema mismatches; `ValueError` if `base_path` lacks `{locale}`.
+- Raises (`boot`/`boot_simple`): `IntegrityCheckFailedError` on load failures, required-message absence, or schema mismatches; `ValueError` if `base_path` lacks `{locale}`.
 - State: Immutable (frozen dataclass).
 - Thread: Safe. Each `boot()` call creates a new `FluentLocalization` instance.
+- Version: `required_messages` field added in v0.155.0; `boot()` returns 3-tuple as of v0.155.0 (was `FluentLocalization`).
 - Import: `from ftllexengine.localization import LocalizationBootConfig`
+
+---
+
+## `InterpreterPool`
+
+Thread-safe bounded pool of reusable `concurrent.interpreters` subinterpreters.
+
+Pre-warms `min_size` interpreters at construction. Additional interpreters are created on
+demand up to `max_size`. When all interpreters are checked out and the pool is at `max_size`,
+`acquire()` blocks until one is returned or `acquire_timeout` expires.
+
+### Signature
+```python
+@dataclass(slots=True, weakref_slot=True)
+class InterpreterPool:
+    min_size: int = 2
+    max_size: int = 8
+    acquire_timeout: float | None = 10.0
+```
+
+### Parameters
+| Field | Type | Req | Description |
+|:------|:-----|:----|:------------|
+| `min_size` | `int` | N | Interpreters pre-warmed at construction time (default: 2). |
+| `max_size` | `int` | N | Maximum total interpreters (idle + checked out) (default: 8). |
+| `acquire_timeout` | `float \| None` | N | Seconds to wait when exhausted; `None` blocks indefinitely (default: 10.0). |
+
+### Methods
+
+#### `acquire() -> _PooledInterpreter`
+Acquire a subinterpreter from the pool. Returns immediately when idle or below `max_size`;
+blocks when all `max_size` interpreters are checked out. Always use as a context manager:
+```python
+with pool.acquire() as interp:
+    result = interp.call(my_function, arg1, arg2)
+```
+
+#### `release(pooled, *, healthy=True) -> None`
+Return a checked-out interpreter. Called automatically by `_PooledInterpreter.__exit__`.
+Pass `healthy=False` to trigger replacement with a fresh interpreter.
+
+#### `close() -> None`
+Close all idle interpreters and mark the pool as closed. Idempotent.
+
+### Constraints
+- Raises (`__post_init__`): `ValueError` if `min_size < 1` or `max_size < min_size`.
+- Raises (`acquire`): `TimeoutError` if `acquire_timeout` expires; `RuntimeError` if pool is closed.
+- Crash Isolation: `ExecutionFailed` (user code raised) leaves interpreter healthy and returned to pool. `InterpreterError` (interpreter corrupted) triggers replacement.
+- Thread: Safe. All state protected by `threading.Condition`.
+- Python: 3.14+ required (`concurrent.interpreters` is PEP 734 stdlib from 3.14).
+- Context Manager: Supports `with InterpreterPool(...) as pool:` — calls `close()` on exit.
+- Version: Added in v0.155.0.
+- Import: `from ftllexengine import InterpreterPool` or `from ftllexengine.runtime import InterpreterPool`
+
+---
+
+## `InterpreterPool.acquire` / `_PooledInterpreter`
+
+Context-manager wrapper for a subinterpreter checked out from `InterpreterPool`.
+
+### Signature
+```python
+class _PooledInterpreter:
+    @property
+    def interpreter(self) -> concurrent.interpreters.Interpreter: ...
+
+    def call(
+        self,
+        callable_: Callable[..., object],
+        /,
+        *args: object,
+        **kwargs: object,
+    ) -> object: ...
+```
+
+### Parameters
+| Parameter | Type | Description |
+|:----------|:-----|:------------|
+| `callable_` | `Callable` | Module-level callable to invoke inside the subinterpreter. |
+| `*args` | `object` | Positional arguments forwarded to the callable. |
+| `**kwargs` | `object` | Keyword arguments forwarded to the callable. |
+
+### Constraints
+- Callable Constraint: Must be importable by name in the subinterpreter context (module-level function, not lambda or closure).
+- Argument Types: Arguments and return values must be picklable or natively shareable across interpreter boundaries.
+- Raises: `concurrent.interpreters.ExecutionFailed` if user code raised; interpreter stays healthy. `concurrent.interpreters.InterpreterError` if interpreter corrupted; pool replaces on release.
+- Usage: Always use via `with pool.acquire() as interp:` — direct construction is prohibited.
+
+---
+
+## `clear_module_caches`
+
+Clear module-level LRU caches to release cached memory.
+
+### Signature
+```python
+def clear_module_caches(components: frozenset[str] | None = None) -> None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `components` | `frozenset[str] \| None` | N | Component names to clear. `None` clears all. |
+
+### Constraints
+- Default: `components=None` clears all six caches.
+- Component Names: `'introspection.iso'`, `'introspection.message'`, `'parsing.currency'`, `'parsing.dates'`, `'runtime.functions'`, `'runtime.locale_context'`.
+- Unknown Components: Silently ignored (no error raised for unrecognized names).
+- Empty Set: `frozenset()` clears nothing.
+- Thread: Not safe to call concurrently with active cache reads (no lock held).
+- Import: `from ftllexengine import clear_module_caches`
+- Version: `components` parameter added in v0.155.0.
 
 ---

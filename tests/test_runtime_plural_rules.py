@@ -266,6 +266,8 @@ class TestLatvianPluralRules:
         i_mod_10 = n % 10
         i_mod_100 = n % 100
 
+        event(f"category={result}")
+        event(f"n_mod_10={i_mod_10}")
         if i_mod_10 == 0:
             assert result in {"zero", "other"}
         elif i_mod_10 == 1 and i_mod_100 != 11:
@@ -291,6 +293,8 @@ class TestSlavicPluralRules:
 
         result = select_plural_category(n, "ru")
 
+        event(f"category={result}")
+        event(f"n_mod_10={i_mod_10}")
         if i_mod_10 == 1 and i_mod_100 != 11:
             assert result == "one"
 
@@ -308,6 +312,8 @@ class TestSlavicPluralRules:
 
         result = select_plural_category(n, "ru")
 
+        event(f"category={result}")
+        event(f"n_mod_10={i_mod_10}")
         if 2 <= i_mod_10 <= 4 and not 12 <= i_mod_100 <= 14:
             assert result == "few"
 
@@ -325,6 +331,8 @@ class TestSlavicPluralRules:
 
         result = select_plural_category(n, "ru")
 
+        event(f"category={result}")
+        event(f"n_mod_10={i_mod_10}")
         if i_mod_10 == 0 or 5 <= i_mod_10 <= 9 or 11 <= i_mod_100 <= 14:
             assert result == "many"
 
@@ -345,6 +353,7 @@ class TestSlavicPluralRules:
 
         category = select_plural_category(fraction, "ru_RU")
 
+        event(f"category={category}")
         assert category == "other"
 
 
@@ -372,6 +381,7 @@ class TestArabicPluralRules:
         Property: 3 ≤ n ≤ 10 => category = "few"
         """
         result = select_plural_category(n, "ar")
+        event(f"n={n}")
         assert result == "few"
 
     @given(n=st.integers(min_value=11, max_value=99))
@@ -383,6 +393,7 @@ class TestArabicPluralRules:
         Property: 11 ≤ n ≤ 99 => category = "many"
         """
         result = select_plural_category(n, "ar")
+        event(f"n={n}")
         assert result == "many"
 
     @given(n=st.integers(min_value=100, max_value=1000))
@@ -394,6 +405,7 @@ class TestArabicPluralRules:
         Property: For all n ≥ 100, category ∈ valid_categories
         """
         result = select_plural_category(n, "ar")
+        event(f"category={result}")
         assert result in {"zero", "one", "two", "few", "many", "other"}
 
 
@@ -414,6 +426,8 @@ class TestPluralRuleEdgeCases:
         Property: For all locale strings, select_plural_category does not raise
         """
         result = select_plural_category(42, locale)
+        event(f"locale_len={len(locale)}")
+        event(f"category={result}")
         assert isinstance(result, str)
 
     @given(n=st.decimals(
@@ -428,6 +442,7 @@ class TestPluralRuleEdgeCases:
         Property: For all n < 0, category ∈ valid_categories
         """
         result = select_plural_category(n, "en")
+        event(f"category={result}")
         assert result in {"zero", "one", "two", "few", "many", "other"}
 
     @given(locale=LOCALE_CODES)
@@ -439,6 +454,8 @@ class TestPluralRuleEdgeCases:
         Property: For all locales, large numbers return valid category
         """
         result = select_plural_category(10**9, locale)
+        event(f"locale={locale}")
+        event(f"category={result}")
         assert result in {"zero", "one", "two", "few", "many", "other"}
 
 
@@ -466,6 +483,8 @@ class TestPluralRuleMetamorphic:
         result1 = select_plural_category(n, locale)
         result2 = select_plural_category(n + 100, locale)
 
+        event(f"locale={locale}")
+        event(f"category_n={result1}")
         valid = {"zero", "one", "two", "few", "many", "other"}
         assert result1 in valid
         assert result2 in valid
@@ -481,6 +500,7 @@ class TestPluralRuleMetamorphic:
         en_result = select_plural_category(n, "en")
         de_result = select_plural_category(n, "de")
 
+        event(f"category_en={en_result}")
         assert en_result in {"one", "other"}
         assert de_result in {"one", "other"}
 
@@ -508,6 +528,7 @@ class TestDecimalSupport:
         int_result = select_plural_category(n, "en_US")
         decimal_result = select_plural_category(Decimal(n), "en_US")
 
+        event(f"category={int_result}")
         assert int_result == decimal_result
 
     def test_decimal_one_is_one(self) -> None:
@@ -636,6 +657,8 @@ class TestPrecisionParameter:
         """
         result = select_plural_category(n, "en_US", precision=precision)
 
+        event(f"category={result}")
+        event(f"precision={precision}")
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
         assert result in valid_categories
 
@@ -654,6 +677,8 @@ class TestPrecisionParameter:
         """
         result = select_plural_category(n, "en_US", precision=precision)
 
+        event(f"category={result}")
+        event(f"precision={precision}")
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
         assert result in valid_categories
 
@@ -671,6 +696,8 @@ class TestPrecisionParameter:
         decimal_n = Decimal(n)
         result = select_plural_category(decimal_n, "en_US", precision=precision)
 
+        event(f"category={result}")
+        event(f"precision={precision}")
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
         assert result in valid_categories
 
@@ -722,6 +749,9 @@ class TestPrecisionParameter:
         result1 = select_plural_category(n, locale, precision=precision)
         result2 = select_plural_category(n, locale, precision=precision)
 
+        event(f"locale={locale}")
+        event(f"precision={precision}")
+        event(f"category={result1}")
         assert result1 == result2
 
     def test_precision_large_value(self) -> None:
@@ -750,6 +780,9 @@ class TestPrecisionParameter:
         result_no_precision = select_plural_category(n, "ru_RU")
         result_with_precision = select_plural_category(n, "ru_RU", precision=precision)
 
+        event(f"category_no_precision={result_no_precision}")
+        event(f"category_with_precision={result_with_precision}")
+        event(f"precision={precision}")
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
         assert result_no_precision in valid_categories
         assert result_with_precision in valid_categories
@@ -769,6 +802,8 @@ class TestPrecisionParameter:
         """
         result = select_plural_category(n, "ar_SA", precision=precision)
 
+        event(f"category={result}")
+        event(f"precision={precision}")
         valid_categories = {"zero", "one", "two", "few", "many", "other"}
         assert result in valid_categories
 
@@ -877,6 +912,8 @@ class TestRoundingConsistency:
         category_via_precision = select_plural_category(n, "en_US", precision=precision)
         category_via_rounded = select_plural_category(expected, "en_US")
 
+        event(f"category_via_precision={category_via_precision}")
+        event(f"precision={precision}")
         assert category_via_precision == category_via_rounded, (
             f"Rounding mismatch for n={n}, precision={precision}: "
             f"precision path gave '{category_via_precision}', "

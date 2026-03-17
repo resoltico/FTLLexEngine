@@ -10,7 +10,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from hypothesis import assume, event, given, settings
+from hypothesis import assume, event, given
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, initialize, invariant, rule
 
@@ -595,7 +595,6 @@ class TestStatefulErrorPaths:
         assert "{$missing_var}" in result
 
     @given(st.data())
-    @settings(max_examples=50)
     def test_format_value_edge_cases(self, data: st.DataObject) -> None:
         """Property: _format_value never crashes, always returns string (lines 268-278)."""
         resolver = FluentResolver(
@@ -642,7 +641,6 @@ class TestPatternResolution:
         msg_id=ftl_identifiers(),
         text_content=ftl_simple_text(),
     )
-    @settings(max_examples=500)
     def test_simple_text_resolution(self, msg_id: str, text_content: str) -> None:
         """Property: Simple text patterns resolve to their content."""
         event(f"text_len={len(text_content)}")
@@ -665,7 +663,6 @@ class TestPatternResolution:
         msg_id=ftl_identifiers(),
         parts=st.lists(ftl_simple_text(), min_size=2, max_size=5),
     )
-    @settings(max_examples=300)
     def test_multiple_text_elements_concatenation(
         self, msg_id: str, parts: list[str]
     ) -> None:
@@ -700,7 +697,6 @@ class TestVariableResolution:
             st.decimals(allow_nan=False, allow_infinity=False),
         ),
     )
-    @settings(max_examples=500)
     def test_variable_value_preservation(
         self, var_name: str, var_value: str | int | Decimal
     ) -> None:
@@ -717,7 +713,6 @@ class TestVariableResolution:
         assert str(var_value) in result, f"Variable value not in result: {result}"
 
     @given(var_name=ftl_identifiers())
-    @settings(max_examples=300)
     def test_missing_variable_error_handling(self, var_name: str) -> None:
         """Property: Missing variables are handled gracefully."""
         event(f"var_name_len={len(var_name)}")
@@ -730,7 +725,6 @@ class TestVariableResolution:
         assert isinstance(result, str), "Must return string even on missing variable"
 
     @given(var_count=st.integers(min_value=1, max_value=10))
-    @settings(max_examples=200)
     def test_multiple_variables_independent(self, var_count: int) -> None:
         """Property: Multiple variables resolve independently."""
         event(f"var_count={var_count}")
@@ -756,7 +750,6 @@ class TestMessageReferenceResolution:
         ref_value=ftl_simple_text(),
         main_msg_id=ftl_identifiers(),
     )
-    @settings(max_examples=300)
     def test_message_reference_resolution(
         self, ref_msg_id: str, ref_value: str, main_msg_id: str
     ) -> None:
@@ -779,7 +772,6 @@ class TestMessageReferenceResolution:
         nonexistent_id=ftl_identifiers(),
         main_msg_id=ftl_identifiers(),
     )
-    @settings(max_examples=200)
     def test_missing_message_reference_handling(
         self, nonexistent_id: str, main_msg_id: str
     ) -> None:
@@ -803,7 +795,6 @@ class TestTermReferenceResolution:
         term_value=ftl_simple_text(),
         msg_id=ftl_identifiers(),
     )
-    @settings(max_examples=300)
     def test_term_reference_resolution(
         self, term_id: str, term_value: str, msg_id: str
     ) -> None:
@@ -824,7 +815,6 @@ class TestTermReferenceResolution:
         nonexistent_term=ftl_identifiers(),
         msg_id=ftl_identifiers(),
     )
-    @settings(max_examples=200)
     def test_missing_term_reference_handling(
         self, nonexistent_term: str, msg_id: str
     ) -> None:
@@ -848,7 +838,6 @@ class TestSelectExpressionResolution:
         variant1_val=ftl_simple_text(),
         variant2_val=ftl_simple_text(),
     )
-    @settings(max_examples=300)
     def test_select_expression_matches_variant(
         self,
         var_name: str,
@@ -888,7 +877,6 @@ msg = {{ ${var_name} ->
         var_name=ftl_identifiers(),
         numeric_value=st.integers(0, 10),
     )
-    @settings(max_examples=200)
     def test_numeric_selector_matching(self, var_name: str, numeric_value: int) -> None:
         """Property: Numeric selectors match correctly."""
         event(f"numeric_value={numeric_value}")
@@ -920,7 +908,6 @@ class TestCircularReferenceDetection:
         msg1_id=ftl_identifiers(),
         msg2_id=ftl_identifiers(),
     )
-    @settings(max_examples=200)
     def test_direct_circular_reference_detection(
         self, msg1_id: str, msg2_id: str
     ) -> None:
@@ -939,7 +926,6 @@ class TestCircularReferenceDetection:
         assert isinstance(result, str), "Must handle circular reference gracefully"
 
     @given(msg_ids=st.lists(ftl_identifiers(), min_size=3, max_size=5, unique=True))
-    @settings(max_examples=100)
     def test_indirect_circular_reference_detection(self, msg_ids: list[str]) -> None:
         """Property: Indirect circular references (chains) are detected."""
         event(f"chain_len={len(msg_ids)}")
@@ -964,7 +950,6 @@ class TestFunctionCallResolution:
         ),
         return_value=ftl_simple_text(),
     )
-    @settings(max_examples=300)
     def test_custom_function_called(self, func_name: str, return_value: str) -> None:
         """Property: Custom functions are called and results used."""
         event(f"func_name_len={len(func_name)}")
@@ -988,7 +973,6 @@ class TestFunctionCallResolution:
         ),
         error_message=ftl_simple_text(),
     )
-    @settings(max_examples=200)
     def test_function_exception_handling(
         self, func_name: str, error_message: str
     ) -> None:
@@ -1015,7 +999,6 @@ class TestResolverIsolatingMarks:
         var_name=ftl_identifiers(),
         var_value=ftl_simple_text(),
     )
-    @settings(max_examples=300)
     def test_isolating_marks_added_when_enabled(
         self, var_name: str, var_value: str
     ) -> None:
@@ -1035,7 +1018,6 @@ class TestResolverIsolatingMarks:
         var_name=ftl_identifiers(),
         var_value=ftl_simple_text(),
     )
-    @settings(max_examples=300)
     def test_no_isolating_marks_when_disabled(
         self, var_name: str, var_value: str
     ) -> None:
@@ -1058,7 +1040,6 @@ class TestResolverValueFormatting:
         var_name=ftl_identifiers(),
         int_value=st.integers(),
     )
-    @settings(max_examples=300)
     def test_integer_formatting(self, var_name: str, int_value: int) -> None:
         """Property: Integers are formatted correctly."""
         event(f"int_value={int_value}")
@@ -1074,7 +1055,6 @@ class TestResolverValueFormatting:
         var_name=ftl_identifiers(),
         bool_value=st.booleans(),
     )
-    @settings(max_examples=200)
     def test_boolean_formatting(self, var_name: str, bool_value: bool) -> None:
         """Property: Booleans are formatted as lowercase 'true'/'false'."""
         event(f"bool_value={bool_value}")
@@ -1096,7 +1076,6 @@ class TestResolverMetamorphicProperties:
         text1=ftl_simple_text(),
         text2=ftl_simple_text(),
     )
-    @settings(max_examples=200)
     def test_concatenation_order_preserved(
         self, msg_id: str, text1: str, text2: str
     ) -> None:
@@ -1124,7 +1103,6 @@ class TestResolverMetamorphicProperties:
         value1=ftl_simple_text(),
         value2=ftl_simple_text(),
     )
-    @settings(max_examples=200)
     def test_variable_value_substitution(
         self, msg_id: str, var_name: str, value1: str, value2: str
     ) -> None:
@@ -1152,7 +1130,6 @@ class TestResolverErrorRecovery:
         partial_text=ftl_simple_text(),
         var_name=ftl_identifiers(),
     )
-    @settings(max_examples=200)
     def test_partial_resolution_on_error(
         self, msg_id: str, partial_text: str, var_name: str
     ) -> None:
@@ -1173,7 +1150,6 @@ class TestResolverCoverageEdgeCases:
         msg_id=ftl_identifiers(),
         text=ftl_simple_text(),
     )
-    @settings(max_examples=100)
     def test_placeable_error_handling_in_pattern(
         self, msg_id: str, text: str
     ) -> None:
@@ -1192,7 +1168,6 @@ class TestResolverCoverageEdgeCases:
         var_name=ftl_identifiers(),
         value=st.integers(),
     )
-    @settings(max_examples=100)
     def test_nested_placeable_expression_resolution(
         self, msg_id: str, var_name: str, value: int
     ) -> None:

@@ -62,7 +62,7 @@ class TestErrorCodeProperties:
             assert isinstance(code.name, str)
 
     @given(st.sampled_from(list(DiagnosticCode)))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_diagnostic_creation(self, code: DiagnosticCode) -> None:
         """Property: Diagnostics can be created for any code."""
         diagnostic = Diagnostic(
@@ -87,7 +87,7 @@ class TestErrorMessageProperties:
     """Property tests for error message formatting."""
 
     @given(st.text(min_size=1, max_size=100))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_reference_error_formatting(self, msg: str) -> None:
         """Property: Reference errors format properly."""
         error = FrozenFluentError(msg, ErrorCategory.REFERENCE)
@@ -99,7 +99,7 @@ class TestErrorMessageProperties:
         event("outcome=error_formatted")
 
     @given(st.lists(st.text(min_size=1, max_size=20), min_size=2, max_size=10))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_cyclic_error_formatting(self, path: list[str]) -> None:
         """Property: Cyclic errors format with full path."""
         # Create a Diagnostic using the ErrorTemplate
@@ -118,7 +118,7 @@ class TestErrorMessageProperties:
         event("outcome=cycle_error_formatted")
 
     @given(st.text(min_size=1, max_size=100))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_resolution_error_formatting(self, detail: str) -> None:
         """Property: Resolution errors format properly."""
         error = FrozenFluentError(detail, ErrorCategory.RESOLUTION)
@@ -138,7 +138,7 @@ class TestErrorTemplateProperties:
     """Property tests for ErrorTemplate factory methods."""
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=50))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_message_not_found_template(self, msg_id: str) -> None:
         """Property: message_not_found creates valid Diagnostic."""
         diagnostic = ErrorTemplate.message_not_found(msg_id)
@@ -150,7 +150,7 @@ class TestErrorTemplateProperties:
         event("outcome=template_created")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_term_not_found_template(self, term_id: str) -> None:
         """Property: term_not_found creates valid Diagnostic."""
         diagnostic = ErrorTemplate.term_not_found(term_id)
@@ -161,7 +161,7 @@ class TestErrorTemplateProperties:
         event("template=term_not_found")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_variable_not_provided_template(self, var_name: str) -> None:
         """Property: variable_not_provided creates valid Diagnostic."""
         diagnostic = ErrorTemplate.variable_not_provided(var_name)
@@ -181,7 +181,7 @@ class TestDiagnosticIntegration:
     """Property tests for diagnostic integration with bundle."""
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_missing_message_diagnostic(self, msg_id: str) -> None:
         """Property: Missing messages produce diagnostics.
 
@@ -204,7 +204,7 @@ class TestDiagnosticIntegration:
             event("outcome=msg_found")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_missing_variable_diagnostic(self, var_name: str) -> None:
         """Property: Missing variables produce diagnostics.
 
@@ -268,7 +268,7 @@ class TestDiagnosticFormatter:
     """Property tests for diagnostic formatter."""
 
     @given(st.sampled_from(list(DiagnosticCode)))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_formatter_handles_all_codes(self, code: DiagnosticCode) -> None:
         """Property: Formatter handles all diagnostic codes."""
         diagnostic = Diagnostic(
@@ -286,7 +286,7 @@ class TestDiagnosticFormatter:
         event("outcome=diagnostic_formatted")
 
     @given(st.sampled_from(["error", "warning"]))
-    @settings(max_examples=10, deadline=None)
+    @settings(deadline=None)
     def test_formatter_severity_levels(self, severity: str) -> None:
         """Property: Formatter handles all severity levels."""
         diagnostic = Diagnostic(
@@ -338,7 +338,7 @@ class TestDiagnosticEdgeCases:
         assert isinstance(result, str)
 
     @given(st.text(min_size=1, max_size=200))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_long_message_in_diagnostic(self, long_text: str) -> None:
         """Property: Long text in diagnostics doesn't crash."""
         error = FrozenFluentError(long_text, ErrorCategory.REFERENCE)
@@ -371,7 +371,7 @@ class TestDiagnosticStrategyProperties:
     """
 
     @given(span=source_spans())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_source_span_invariants(self, span: SourceSpan) -> None:
         """Property: source_spans() produces structurally valid SourceSpan."""
         event(f"outcome=span_range={span.end - span.start}")
@@ -381,7 +381,7 @@ class TestDiagnosticStrategyProperties:
         assert span.column >= 1
 
     @given(ctx=frozen_error_contexts())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_frozen_error_context_invariants(
         self, ctx: FrozenErrorContext
     ) -> None:
@@ -392,7 +392,7 @@ class TestDiagnosticStrategyProperties:
         assert isinstance(ctx.fallback_value, str)
 
     @given(diag=gen_diagnostics())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_diagnostic_invariants(self, diag: Diagnostic) -> None:
         """Property: diagnostics() produces valid Diagnostic objects."""
         event(f"outcome=has_span={diag.span is not None}")
@@ -401,7 +401,7 @@ class TestDiagnosticStrategyProperties:
         assert isinstance(diag.code, DiagnosticCode)
 
     @given(verr=validation_errors())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_validation_error_invariants(self, verr: ValidationError) -> None:
         """Property: validation_errors() produces valid ValidationError objects."""
         has_loc = verr.line is not None
@@ -410,7 +410,7 @@ class TestDiagnosticStrategyProperties:
         assert isinstance(verr.code, DiagnosticCode)
 
     @given(vwarn=validation_warnings())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_validation_warning_invariants(
         self, vwarn: ValidationWarning
     ) -> None:
@@ -420,7 +420,7 @@ class TestDiagnosticStrategyProperties:
         assert isinstance(vwarn.code, DiagnosticCode)
 
     @given(vresult=validation_results())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_validation_result_invariants(
         self, vresult: ValidationResult
     ) -> None:
@@ -432,7 +432,7 @@ class TestDiagnosticStrategyProperties:
             assert len(vresult.errors) == 0
 
     @given(err=frozen_fluent_errors())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_frozen_fluent_error_invariants(
         self, err: FrozenFluentError
     ) -> None:

@@ -75,6 +75,18 @@ def get_process() -> psutil.Process:
 # --- Dependency Checks ---
 
 
+_DEFAULT_INSTALL_HINT = "Install with: uv sync --group atheris"
+
+# Per-dependency hints for modules that are not pip-installable.
+_DEPENDENCY_HINTS: dict[str, str] = {
+    "concurrent.interpreters": (
+        "concurrent.interpreters is stdlib in Python 3.14+ (PEP 734). "
+        "Atheris requires Python <= 3.13. These constraints are mutually exclusive until "
+        "Atheris supports Python 3.14. Use fuzz_interpreter_pool via the main runtime instead."
+    ),
+}
+
+
 def check_dependencies(dep_names: Sequence[str], dep_modules: Sequence[Any]) -> None:
     """Verify fuzzing dependencies are importable, exit with instructions if not.
 
@@ -87,10 +99,16 @@ def check_dependencies(dep_names: Sequence[str], dep_modules: Sequence[Any]) -> 
         print("-" * 80, file=sys.stderr)
         print("ERROR: Missing required dependencies for fuzzing:", file=sys.stderr)
         for dep in missing:
-            print(f"  - {dep}", file=sys.stderr)
-        print(file=sys.stderr)
-        print("Install with: uv sync --group atheris", file=sys.stderr)
-        print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
+            hint = _DEPENDENCY_HINTS.get(dep)
+            if hint:
+                print(f"  - {dep}: {hint}", file=sys.stderr)
+            else:
+                print(f"  - {dep}", file=sys.stderr)
+        has_pip_deps = any(dep not in _DEPENDENCY_HINTS for dep in missing)
+        if has_pip_deps:
+            print(file=sys.stderr)
+            print(_DEFAULT_INSTALL_HINT, file=sys.stderr)
+            print("See docs/FUZZING_GUIDE.md for details.", file=sys.stderr)
         print("-" * 80, file=sys.stderr)
         sys.exit(1)
 

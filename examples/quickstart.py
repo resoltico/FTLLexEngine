@@ -252,14 +252,18 @@ print("Example 9: System Locale Detection")
 print("=" * 50)
 
 # for_system_locale() auto-detects system locale via locale.getlocale()
-system_bundle = FluentBundle.for_system_locale(use_isolating=False)
-system_bundle.add_resource("""
+# Requires LANG/LC_ALL/LC_MESSAGES to be set in the environment.
+try:
+    system_bundle = FluentBundle.for_system_locale(use_isolating=False)
+    system_bundle.add_resource("""
 system-locale = Detected system locale: { $locale }
 """)
-
-result, _ = system_bundle.format_pattern("system-locale", {"locale": system_bundle.locale})
-print(result)
-# Output: Detected system locale: en_us (or your system locale)
+    result, _ = system_bundle.format_pattern("system-locale", {"locale": system_bundle.locale})
+    print(result)
+    # Output: Detected system locale: en_us (or your system locale)
+except RuntimeError as e:
+    print(f"[SKIP] System locale not available: {e}")
+    print("[SKIP] Set LANG=en_US.UTF-8 or similar to enable this example.")
 
 # Example 10: Strict Mode (Fail-Fast) - the default
 print("\n" + "=" * 50)

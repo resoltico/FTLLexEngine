@@ -191,6 +191,7 @@ class TestCursorNavigation:
     @settings(max_examples=100)
     def test_advance_once_equals_advance_one(self, source: str) -> None:
         """PROPERTY: advance() == advance(1)."""
+        event(f"source_len={len(source)}")
         cursor = Cursor(source, 0)
 
         cursor1 = cursor.advance()
@@ -205,6 +206,7 @@ class TestCursorNavigation:
     @settings(max_examples=100)
     def test_peek_reads_ahead_without_advancing(self, source: str, offset: int) -> None:
         """PROPERTY: peek(offset) reads ahead without changing position."""
+        event(f"offset={offset}")
         cursor = Cursor(source, 0)
 
         if offset < len(source):
@@ -223,6 +225,7 @@ class TestCursorNavigation:
     @settings(max_examples=100)
     def test_slice_to_extracts_substring(self, source: str, start_pos: int) -> None:
         """PROPERTY: slice_to(end) extracts source[pos:end]."""
+        event(f"source_len={len(source)}")
         start_pos = min(start_pos, len(source) - 1)
         cursor = Cursor(source, start_pos)
 
@@ -244,6 +247,7 @@ class TestCursorLineColumn:
     @settings(max_examples=100)
     def test_line_starts_at_one(self, source: str) -> None:
         """PROPERTY: Line numbers start at 1."""
+        event(f"source_len={len(source)}")
         cursor = Cursor(source, 0)
         line, _ = cursor.compute_line_col()
 
@@ -253,6 +257,7 @@ class TestCursorLineColumn:
     @settings(max_examples=100)
     def test_column_starts_at_one(self, source: str) -> None:
         """PROPERTY: Column numbers start at 1."""
+        event(f"source_len={len(source)}")
         cursor = Cursor(source, 0)
         _, column = cursor.compute_line_col()
 
@@ -262,6 +267,7 @@ class TestCursorLineColumn:
     @settings(max_examples=50)
     def test_newline_increments_line_number(self, lines: list[str]) -> None:
         """PROPERTY: Newlines increment line number."""
+        event(f"line_count={len(lines)}")
         source = "\n".join(lines)
 
         # Count newlines
@@ -278,6 +284,7 @@ class TestCursorLineColumn:
     @settings(max_examples=50)
     def test_compute_line_col_equals_property(self, source: str) -> None:
         """PROPERTY: compute_line_col() returns same as line_col property."""
+        event(f"source_len={len(source)}")
         cursor = Cursor(source, min(len(source), 10))
 
         result1 = cursor.compute_line_col()
@@ -298,6 +305,7 @@ class TestCursorRobustness:
     @settings(max_examples=100)
     def test_empty_source_is_eof(self, source: str) -> None:
         """PROPERTY: Empty source is always EOF."""
+        event(f"source_len={len(source)}")
         if len(source) == 0:
             cursor = Cursor(source, 0)
             assert cursor.is_eof is True
@@ -328,6 +336,7 @@ class TestCursorRobustness:
     @settings(max_examples=50)
     def test_advance_at_eof_stays_at_eof(self, source: str) -> None:
         """PROPERTY: Advancing at EOF stays at EOF."""
+        event(f"source_len={len(source)}")
         cursor = Cursor(source, len(source))
         assert cursor.is_eof is True
 
@@ -342,6 +351,7 @@ class TestCursorRobustness:
     @settings(max_examples=100)
     def test_peek_beyond_eof_returns_none(self, source: str, offset: int) -> None:
         """PROPERTY: peek(offset) returns None when offset >= remaining chars."""
+        event(f"offset={offset}")
         cursor = Cursor(source, 0)
 
         if offset >= len(source):
@@ -352,6 +362,7 @@ class TestCursorRobustness:
     @settings(max_examples=100)
     def test_advance_clamps_at_eof(self, source: str, count: int) -> None:
         """PROPERTY: advance(count) clamps position at source length."""
+        event(f"advance_count={count}")
         cursor = Cursor(source, 0)
 
         new_cursor = cursor.advance(count)
@@ -372,6 +383,7 @@ class TestCursorIdempotence:
     @settings(max_examples=100)
     def test_is_eof_is_idempotent(self, source: str, pos: int) -> None:
         """PROPERTY: Multiple is_eof calls return same value."""
+        event(f"source_len={len(source)}")
         # Clamp pos to the valid range [0, len(source)]
         pos = min(pos, len(source))
         cursor = Cursor(source, pos)
@@ -386,6 +398,7 @@ class TestCursorIdempotence:
     @settings(max_examples=100)
     def test_current_is_idempotent(self, source: str) -> None:
         """PROPERTY: Multiple current accesses return same character."""
+        event(f"source_len={len(source)}")
         cursor = Cursor(source, 0)
 
         if not cursor.is_eof:
@@ -402,6 +415,7 @@ class TestCursorIdempotence:
     @settings(max_examples=100)
     def test_peek_is_idempotent(self, source: str, offset: int) -> None:
         """PROPERTY: Multiple peek calls return same result."""
+        event(f"offset={offset}")
         cursor = Cursor(source, 0)
 
         peek1 = cursor.peek(offset)
@@ -414,6 +428,7 @@ class TestCursorIdempotence:
     @settings(max_examples=100)
     def test_line_col_is_idempotent(self, source: str, pos: int) -> None:
         """PROPERTY: Multiple line_col accesses return same value."""
+        event(f"source_len={len(source)}")
         pos = min(pos, len(source))
         cursor = Cursor(source, pos)
 

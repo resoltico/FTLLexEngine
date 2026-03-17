@@ -49,8 +49,13 @@ Data Integrity:
     FormattingIntegrityError - Strict mode formatting failure
     ImmutabilityViolationError - Mutation attempt on frozen object
     IntegrityCheckFailedError - Generic verification failure
+    LedgerInvariantError - Financial domain invariant violated in persisted data
+    PersistenceIntegrityError - Storage-layer read produced structurally invalid data
     SyntaxIntegrityError - Strict mode syntax error during resource loading
     WriteConflictError - Write-once violation in cache
+
+Concurrency:
+    InterpreterPool - Thread-safe pool of reusable PEP 734 subinterpreters (requires Babel install)
 
 Submodules:
     ftllexengine.syntax - Parser and AST (no Babel dependency)
@@ -106,6 +111,8 @@ from .integrity import (
     ImmutabilityViolationError,
     IntegrityCheckFailedError,
     IntegrityContext,
+    LedgerInvariantError,
+    PersistenceIntegrityError,
     SyntaxIntegrityError,
     WriteConflictError,
 )
@@ -134,6 +141,14 @@ try:
     from .runtime import (
         FluentNumber as FluentNumber,
     )
+
+    # InterpreterPool has no Babel dependency (concurrent.interpreters is PEP 734 stdlib),
+    # but ftllexengine.runtime requires Babel to initialize (FluentBundle etc. are eager
+    # imports). On parser-only installs runtime/__init__.py cannot load, so InterpreterPool
+    # is unavailable through this import path. Users on full installs access it unconditionally.
+    from .runtime import (
+        InterpreterPool as InterpreterPool,
+    )
     from .runtime import (
         fluent_function as fluent_function,
     )
@@ -149,13 +164,13 @@ try:
 except ImportError:
     pass  # Parser-only install; __getattr__ provides the installation hint on access
 
-
 _BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
     "CacheConfig",
     "FluentBundle",
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
+    "InterpreterPool",
     "fluent_function",
     "make_fluent_number",
     "get_cldr_version",
@@ -183,21 +198,36 @@ def __getattr__(name: str) -> object:
     raise AttributeError(msg)
 
 
-def clear_module_caches() -> None:
-    """Clear all module-level caches in the library.
+def clear_module_caches(
+    components: frozenset[str] | None = None,
+) -> None:
+    """Clear module-level caches in the library.
 
-    Provides unified cache management for long-running applications. Clears:
-    - Babel locale object cache (locale_utils)
-    - CLDR date/datetime pattern caches (parsing.dates)
-    - CLDR currency data caches (parsing.currency)
-    - LocaleContext instance cache (runtime.locale_context)
-    - Message introspection result cache (introspection.message)
-    - ISO territory/currency introspection cache (introspection.iso)
+    Provides unified cache management for long-running applications. With
+    ``components=None`` (the default), clears all caches:
+
+    - ``'parsing.currency'``: CLDR currency data caches
+    - ``'parsing.dates'``: CLDR date/datetime pattern caches
+    - ``'locale'``: Babel locale object cache (locale_utils)
+    - ``'runtime.locale_context'``: LocaleContext instance cache
+    - ``'introspection.message'``: Message introspection result cache
+    - ``'introspection.iso'``: ISO territory/currency introspection cache
+
+    Pass a ``frozenset`` of component names to clear only specific caches.
+    This is useful when certain caches (e.g., Babel locale data) are expensive
+    to repopulate and should not be cleared during routine periodic trimming.
+
+    Args:
+        components: Set of component names to clear. When ``None``, clears all
+            caches. Known component names: ``'parsing.currency'``,
+            ``'parsing.dates'``, ``'locale'``, ``'runtime.locale_context'``,
+            ``'introspection.message'``, ``'introspection.iso'``.
+            Unknown component names are silently ignored.
 
     Useful for:
-    - Memory reclamation in long-running server applications
-    - Testing scenarios requiring fresh cache state
-    - After Babel/CLDR data updates
+        - Memory reclamation in long-running server applications
+        - Testing scenarios requiring fresh cache state
+        - After Babel/CLDR data updates
 
     Thread-safe. Each underlying cache uses its own locking mechanism.
 
@@ -212,7 +242,10 @@ def clear_module_caches() -> None:
 
     Example:
         >>> import ftllexengine
-        >>> ftllexengine.clear_module_caches()  # Reclaim memory from all caches
+        >>> ftllexengine.clear_module_caches()  # Clear all caches
+        >>> ftllexengine.clear_module_caches(  # Clear only ISO + message caches
+        ...     components=frozenset({'introspection.iso', 'introspection.message'})
+        ... )
     """
     # Import and clear each cache module.
     # Order: parsing caches first (depend on locale cache), then locale, then introspection.
@@ -220,36 +253,53 @@ def clear_module_caches() -> None:
     # may not have been imported in parser-only installations. Skipping an unimported module
     # is semantically correct — an unimported module has no populated cache to clear.
 
-    # 1. Parsing caches (Babel-dependent: only present in full-runtime installations)
-    try:
-        from .parsing.currency import clear_currency_caches
-        clear_currency_caches()
-    except ImportError:  # pragma: no cover
-        pass  # Parser-only installation; parsing.currency never imported
+    # When components is None (clear all), use an empty sentinel so that every
+    # `_want()` call short-circuits via clear_all without inspecting the set.
+    clear_all = components is None
+    _comps: frozenset[str] = frozenset() if components is None else components
 
-    try:
-        from .parsing.dates import clear_date_caches
-        clear_date_caches()
-    except ImportError:  # pragma: no cover
-        pass  # Parser-only installation; parsing.dates never imported
+    def _want(name: str) -> bool:
+        return clear_all or name in _comps
+
+    # 1. Parsing caches (Babel-dependent: only present in full-runtime installations)
+    if _want("parsing.currency"):
+        try:
+            from .parsing.currency import clear_currency_caches
+            clear_currency_caches()
+        except ImportError:  # pragma: no cover
+            pass  # Parser-only installation; parsing.currency never imported
+
+    if _want("parsing.dates"):
+        try:
+            from .parsing.dates import clear_date_caches
+            clear_date_caches()
+        except ImportError:  # pragma: no cover
+            pass  # Parser-only installation; parsing.dates never imported
 
     # 2. Locale caches (always present: core.locale_utils has no Babel dep at module level)
-    from .core.locale_utils import clear_locale_cache
+    if _want("locale"):
+        from .core.locale_utils import clear_locale_cache
 
-    clear_locale_cache()
+        clear_locale_cache()
 
     # 3. Runtime locale context (Babel-dependent)
-    try:
-        from .runtime.locale_context import LocaleContext
-        LocaleContext.clear_cache()
-    except ImportError:  # pragma: no cover
-        pass  # Parser-only installation; runtime.locale_context never imported
+    if _want("runtime.locale_context"):
+        try:
+            from .runtime.locale_context import LocaleContext
+            LocaleContext.clear_cache()
+        except ImportError:  # pragma: no cover
+            pass  # Parser-only installation; runtime.locale_context never imported
 
     # 4. Introspection caches (message introspection + ISO standards data)
-    from .introspection import clear_introspection_cache, clear_iso_cache
+    if _want("introspection.message"):
+        from .introspection import clear_introspection_cache
 
-    clear_introspection_cache()
-    clear_iso_cache()
+        clear_introspection_cache()
+
+    if _want("introspection.iso"):
+        from .introspection import clear_iso_cache
+
+        clear_iso_cache()
 
 
 # Version information - Auto-populated from package metadata
@@ -276,6 +326,7 @@ __all__ = [
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
+    "InterpreterPool",
     "fluent_function",
     "make_fluent_number",
     # Error types (immutable, sealed)
@@ -290,6 +341,8 @@ __all__ = [
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "LedgerInvariantError",
+    "PersistenceIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
     # Fiscal calendar (no Babel dependency)

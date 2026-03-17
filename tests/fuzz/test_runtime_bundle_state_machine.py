@@ -326,9 +326,8 @@ class FluentBundleStateMachine(RuleBasedStateMachine):
 TestFluentBundleStateMachine = FluentBundleStateMachine.TestCase
 TestFluentBundleStateMachine = pytest.mark.fuzz(TestFluentBundleStateMachine)
 TestFluentBundleStateMachine.settings = settings(
-    max_examples=100,
     stateful_step_count=30,
-    deadline=None,  # Disable deadline for stateful tests
+    deadline=None,
 )
 
 

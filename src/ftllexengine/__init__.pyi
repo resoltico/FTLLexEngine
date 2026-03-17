@@ -49,6 +49,12 @@ from .integrity import (
     IntegrityContext as IntegrityContext,
 )
 from .integrity import (
+    LedgerInvariantError as LedgerInvariantError,
+)
+from .integrity import (
+    PersistenceIntegrityError as PersistenceIntegrityError,
+)
+from .integrity import (
     SyntaxIntegrityError as SyntaxIntegrityError,
 )
 from .integrity import (
@@ -69,6 +75,7 @@ from .runtime import FluentNumber as FluentNumber
 from .runtime import fluent_function as fluent_function
 from .runtime import make_fluent_number as make_fluent_number
 from .runtime.cache_config import CacheConfig as CacheConfig
+from .runtime.interpreter_pool import InterpreterPool as InterpreterPool
 from .runtime.value_types import FluentValue as FluentValue
 
 # Syntax API (no Babel required)
@@ -79,7 +86,7 @@ from .syntax import serialize as serialize_ftl
 from .validation import validate_resource as validate_resource
 
 # Cache management
-def clear_module_caches() -> None: ...
+def clear_module_caches(components: frozenset[str] | None = ...) -> None: ...
 
 # Version and specification information
 __version__: str
@@ -96,6 +103,7 @@ __all__: list[str] = [
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
+    "InterpreterPool",
     "fluent_function",
     "make_fluent_number",
     # Error types (immutable, sealed)
@@ -110,6 +118,8 @@ __all__: list[str] = [
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "LedgerInvariantError",
+    "PersistenceIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
     # Fiscal calendar (no Babel dependency)

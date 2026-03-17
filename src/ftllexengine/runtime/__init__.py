@@ -5,7 +5,7 @@ custom function extension points, cache audit entry aliases, the public RWLock
 concurrency primitive, and the FluentBundle API.
 Depends on syntax package for parsing.
 
-Python 3.13+.
+Python 3.14+.
 """
 
 from ftllexengine.diagnostics import ValidationResult
@@ -21,6 +21,7 @@ from .functions import (
     get_shared_registry,
     number_format,
 )
+from .interpreter_pool import InterpreterPool
 from .plural_rules import select_plural_category
 from .resolution_context import ResolutionContext
 from .resolver import FluentResolver
@@ -34,6 +35,7 @@ __all__ = [
     "FluentNumber",
     "FluentResolver",
     "FunctionRegistry",
+    "InterpreterPool",
     "RWLock",
     "ResolutionContext",
     "ValidationResult",

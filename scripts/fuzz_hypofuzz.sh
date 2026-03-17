@@ -23,7 +23,7 @@ if [[ "${BASH_VERSINFO[0]}" -ge 5 ]]; then
 fi
 
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.13}"
+PY_VERSION="${PY_VERSION:-3.14}"
 TARGET_VENV=".venv-${PY_VERSION}"
 
 if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
@@ -54,10 +54,12 @@ IS_GHA="${GITHUB_ACTIONS:-false}"
 MODE="check"
 VERBOSE=false
 METRICS=false
-WORKERS=4
+WORKERS=1
 TIME_LIMIT=""
 TARGET=""
 REPRO_TEST=""
+HEARTBEAT_ENABLED=true
+HEARTBEAT_INTERVAL_SEC="${FUZZ_HEARTBEAT_INTERVAL_SEC:-30}"
 
 # Colors (respects NO_COLOR standard and non-terminal detection)
 if [[ "${NO_COLOR:-}" == "1" ]]; then
@@ -68,6 +70,10 @@ else
     RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
 fi
 
+# psutil availability: cached once for heartbeat CPU/memory stats.
+HAS_PSUTIL=false
+python -c "import psutil" 2>/dev/null && HAS_PSUTIL=true || true
+
 # Logging (consistent with lint.sh and test.sh)
 log_group_start() { [[ "$IS_GHA" == "true" ]] && echo "::group::$1"; echo -e "\n${BOLD}${CYAN}=== $1 ===${RESET}"; }
 log_group_end()   { [[ "$IS_GHA" == "true" ]] && echo "::endgroup::"; return 0; }
@@ -77,10 +83,114 @@ log_pass() { echo -e "${GREEN}[PASS]${RESET} $1"; }
 log_fail() { echo -e "${RED}[FAIL]${RESET} $1"; }
 log_err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
 
+format_bytes() {
+    local bytes="$1"
+    if (( bytes >= 1048576 )); then
+        printf "%d MiB" $((bytes / 1048576))
+    elif (( bytes >= 1024 )); then
+        printf "%d KiB" $((bytes / 1024))
+    else
+        printf "%d B" "$bytes"
+    fi
+}
+last_nonempty_log_line() {
+    local log_file="$1"
+    local last_line
+    last_line=$(awk 'NF { line = $0 } END { print line }' "$log_file" 2>/dev/null || true)
+    last_line=${last_line//$'\r'/}
+    if [[ -z "$last_line" ]]; then
+        echo "awaiting first output"
+        return 0
+    fi
+    if (( ${#last_line} > 160 )); then
+        echo "${last_line:0:157}..."
+        return 0
+    fi
+    echo "$last_line"
+}
+_heartbeat_daemon() {
+    # Background subshell: emits [HEARTBEAT] lines to stderr while watched_pid is alive.
+    # First beat fires at T+5s (short runs stay silent); subsequent beats every
+    # HEARTBEAT_INTERVAL_SEC seconds. Uses psutil for CPU/memory when available.
+    local watched_pid="$1" log_file="$2" start_sec="$3"
+    sleep 5
+    while kill -0 "$watched_pid" 2>/dev/null; do
+        local elapsed=$(( SECONDS - start_sec ))
+        local log_bytes=0
+        [[ -f "$log_file" ]] && log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
+        local last_line
+        last_line=$(last_nonempty_log_line "$log_file")
+        if [[ "$HAS_PSUTIL" == "true" ]]; then
+            local stats
+            stats=$(python -c "
+import psutil
+try:
+    p = psutil.Process(${watched_pid})
+    all_procs = [p] + p.children(recursive=True)
+    cpu = sum(x.cpu_percent(interval=0.2) for x in all_procs)
+    mem_mb = sum(x.memory_info().rss for x in all_procs) // 1048576
+    print(f'CPU={cpu:.0f}% MEM={mem_mb}MB procs={len(all_procs)}')
+except Exception:
+    print('CPU=? MEM=? procs=?')
+" 2>/dev/null || echo "CPU=? MEM=? procs=?")
+            echo "[HEARTBEAT] T+${elapsed}s | ${stats} | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+        else
+            echo "[HEARTBEAT] T+${elapsed}s | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+        fi
+        sleep "$HEARTBEAT_INTERVAL_SEC"
+    done
+}
+_run_with_heartbeat() {
+    # Run a command with FIFO capture and heartbeat.
+    # Usage: _run_with_heartbeat LOG_FILE APPEND -- CMD [ARGS...]
+    #   APPEND: "true" to append to log, "false" to overwrite
+    # [HEARTBEAT] lines go to stderr; command output goes to log and
+    # optionally to stdout (when VERBOSE=true).
+    local log_file="$1" append="$2"; shift 2
+    if [[ "$1" == "--" ]]; then shift; fi
+    local fifo
+    fifo=$(mktemp -u)
+    mkfifo "$fifo"
+
+    "$@" > "$fifo" 2>&1 &
+    local cmd_pid=$!
+
+    local hb_pid=0
+    if [[ "$HEARTBEAT_ENABLED" == "true" && "$HEARTBEAT_INTERVAL_SEC" -gt 0 ]]; then
+        _heartbeat_daemon "$cmd_pid" "$log_file" "$SECONDS" &
+        hb_pid=$!
+    fi
+
+    if [[ "$VERBOSE" == "true" ]]; then
+        if [[ "$append" == "true" ]]; then
+            tee -a "$log_file" < "$fifo"
+        else
+            tee "$log_file" < "$fifo"
+        fi
+    else
+        if [[ "$append" == "true" ]]; then
+            cat < "$fifo" >> "$log_file"
+        else
+            cat < "$fifo" > "$log_file"
+        fi
+    fi
+
+    wait "$cmd_pid"
+    local exit_code=$?
+
+    if [[ "$hb_pid" -gt 0 ]]; then
+        kill "$hb_pid" 2>/dev/null || true
+        wait "$hb_pid" 2>/dev/null || true
+    fi
+
+    rm -f "$fifo"
+    return "$exit_code"
+}
+
 show_help() {
     local project_name="Project"
     if [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
-        project_name=$(python3 -c 'import sys; sys.path.append(sys.argv[1]); import tomllib; print(tomllib.load(open(sys.argv[2], "rb")).get("project", {}).get("name", "Project").capitalize())' "$PROJECT_ROOT" "$PROJECT_ROOT/pyproject.toml" 2>/dev/null || echo "Project")
+        project_name=$(python -c 'import sys; sys.path.append(sys.argv[1]); import tomllib; print(tomllib.load(open(sys.argv[2], "rb")).get("project", {}).get("name", "Project").capitalize())' "$PROJECT_ROOT" "$PROJECT_ROOT/pyproject.toml" 2>/dev/null || echo "Project")
     fi
 
     cat << HELPEOF
@@ -101,9 +211,10 @@ MODES:
 OPTIONS:
     --verbose       Show detailed progress during tests
     --metrics       Enable periodic per-strategy metrics (for --deep)
-    --workers N     Number of parallel workers (default: 4)
+    --workers N     Number of parallel workers (default: 1; see NOTE below)
     --time N        Time limit in seconds (for --deep)
     --target FILE   Specific test file to run (check mode only)
+    --no-heartbeat  Disable periodic [HEARTBEAT] status lines on stderr
 
     --force         Bypass confirmation prompts (e.g., for --clean)
 
@@ -120,7 +231,11 @@ HYPOTHESIS PROFILES:
     The default mode runs ALL tests but skips @pytest.mark.fuzz tests.
     This is why it completes quickly. Use --deep for intensive fuzzing.
 
-    --deep --metrics uses pytest (single-pass) instead of HypoFuzz
+    --deep targets tests/fuzz/ exclusively, concentrating all workers on
+    high-value fuzz targets (state machines, grammar fuzzers, oracle tests)
+    rather than diluting effort across all 1500+ @given tests in the suite.
+
+    --deep --metrics uses pytest (single process) instead of HypoFuzz
     (continuous) because HypoFuzz multiprocessing prevents metrics
     collection across worker processes. Results are saved to
     .hypothesis/strategy_metrics.json. A human-readable summary is
@@ -152,6 +267,18 @@ NOTE:
     Use --repro for verbose output and @example extraction.
 
     For Atheris native fuzzing, use ./scripts/fuzz_atheris.sh instead.
+
+NOTE:
+    --workers defaults to 1. Python 3.14's multiprocessing.managers has a
+    teardown race where workers reconnect to the manager socket after it is
+    cleaned up, producing spurious BrokenPipeError on session exit. A single
+    worker eliminates this. Use --workers N only if you need parallelism and
+    can tolerate the teardown noise.
+
+    All modes emit periodic [HEARTBEAT] lines to stderr (T+5s first beat,
+    then every 30s). Each line shows elapsed time, CPU%, memory, log size,
+    and the last log line — letting agents distinguish working from hung.
+    Suppress with --no-heartbeat or set FUZZ_HEARTBEAT_INTERVAL_SEC=0.
 HELPEOF
 }
 
@@ -180,6 +307,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --verbose|-v) VERBOSE=true; shift ;;
         --metrics) METRICS=true; shift ;;
+        --no-heartbeat) HEARTBEAT_ENABLED=false; shift ;;
         --workers) WORKERS="$2"; shift 2 ;;
         --time) TIME_LIMIT="$2"; shift 2 ;;
         --target) TARGET="$2"; shift 2 ;;
@@ -240,8 +368,13 @@ run_diagnostics() {
 run_preflight() {
     log_group_start "Preflight Infrastructure Audit"
 
+    # Capture the Python audit exit code separately: the heredoc subprocess exits 0 or 1
+    # but 'set +e' (active from main dispatch) prevents it from aborting the function.
+    # Without explicit capture, log_group_end's exit 0 overwrites the audit result.
+    local audit_exit=0
+
     # AST-based per-test event checking via Python
-    python << PREFLIGHT_EOF
+    python << PREFLIGHT_EOF || audit_exit=$?
 import ast
 import re
 import sys
@@ -291,12 +424,13 @@ for py_file in tests_dir.rglob("*.py"):
     except Exception:
         pass
 
-# ---- Pass 3: Per-test event checking (AST-based) ----
+# ---- Pass 3: Per-test event checking (AST-based, ALL @given tests) ----
+# Every @given test discovered by HypoFuzz must emit event() for semantic guidance.
 tests_without_events = []
 for py_file in tests_dir.rglob("*.py"):
     try:
         content = py_file.read_text()
-        if "pytest.mark.fuzz" not in content:
+        if "@given" not in content:
             continue
         tree = ast.parse(content, filename=str(py_file))
         rel_path = str(py_file.relative_to(tests_dir))
@@ -330,11 +464,6 @@ for py_file in tests_dir.rglob("*.py"):
     except Exception:
         pass
 
-# ---- Pass 4: Strategy analysis ----
-# __init__.py is a pure re-export aggregator; event() calls belong in domain modules.
-_STRATEGY_REEXPORT_FILES = {"__init__.py"}
-strategy_coverage = {}
-strategy_gaps = []
 # ---- Pass 4: Strategy analysis ----
 # __init__.py is a pure re-export aggregator; event() calls belong in domain modules.
 _STRATEGY_REEXPORT_FILES = {"__init__.py"}
@@ -390,21 +519,12 @@ else:
     print()
 
 if tests_without_events:
-    print("[WARN] @given Tests in Fuzz Modules WITHOUT event() Calls:")
+    print("[FAIL] @given Tests WITHOUT event() Calls (ALL test files):")
     for test_id in sorted(tests_without_events):
-        print(f"  [ WARN ] {test_id}")
+        print(f"  [ FAIL ] {test_id}")
     print()
 else:
-    print("[  OK  ] All @given tests in fuzz modules emit events (per-test)")
-    print()
-
-# Non-fuzz files with @given but no events (informational)
-no_event_files = [(f, c) for f, c in given_by_file.items() if f not in event_by_file]
-top_files = sorted(no_event_files, key=lambda x: x[1], reverse=True)
-if top_files:
-    print("Non-Fuzz Files with @given but no events:")
-    for f, count in top_files:
-        print(f"  [ INFO ] {f}: {count} @given tests, 0 events")
+    print("[  OK  ] All @given tests emit events (per-test, all files)")
     print()
 
 # Summary
@@ -417,6 +537,7 @@ else:
 PREFLIGHT_EOF
 
     log_group_end
+    return "$audit_exit"
 }
 
 # =============================================================================
@@ -457,13 +578,8 @@ run_check() {
 
     local exit_code=0
     set +e
-    if [[ "$VERBOSE" == "true" ]]; then
-        "${cmd[@]}" 2>&1 | tee "$temp_log"
-        exit_code=${PIPESTATUS[0]}
-    else
-        "${cmd[@]}" > "$temp_log" 2>&1
-        exit_code=$?
-    fi
+    _run_with_heartbeat "$temp_log" false -- "${cmd[@]}"
+    exit_code=$?
     set -e
 
     # Log Parsing via Python
@@ -590,16 +706,15 @@ run_deep() {
     # Activate hypofuzz profile: deadline=None, suppress health checks
     export HYPOTHESIS_PROFILE="hypofuzz"
 
-    # Enable strategy metrics collection
-    export STRATEGY_METRICS="1"
-
     # Log file for this session (append to preserve history)
     local log_file="$PROJECT_ROOT/.hypothesis/hypofuzz.log"
     mkdir -p "$PROJECT_ROOT/.hypothesis"
 
-    # When --metrics is enabled, use pytest instead of HypoFuzz
-    # HypoFuzz uses multiprocessing where metrics aren't shared across workers
+    # When --metrics is enabled, use pytest instead of HypoFuzz.
+    # HypoFuzz uses multiprocessing; STRATEGY_METRICS is only exported here,
+    # so each worker does not independently print zero-event summaries.
     if [[ "$METRICS" == "true" ]]; then
+        export STRATEGY_METRICS="1"
         export STRATEGY_METRICS_DETAILED="1"
         export STRATEGY_METRICS_LIVE="1"
         export STRATEGY_METRICS_INTERVAL="10"
@@ -618,8 +733,8 @@ run_deep() {
 
         local exit_code=0
         set +e
-        uv run pytest tests/ -m fuzz -v --tb=short 2>&1 | tee -a "$log_file"
-        exit_code=${PIPESTATUS[0]}
+        _run_with_heartbeat "$log_file" true -- uv run pytest tests/ -m fuzz -v --tb=short
+        exit_code=$?
         set -e
 
         log_group_end
@@ -644,15 +759,45 @@ run_deep() {
         echo "================================================================================"
     } >> "$log_file"
 
+    # Record log start position to count only THIS SESSION's failures
+    local log_start=0
+    if [[ -f "$log_file" ]]; then
+        log_start=$(wc -c < "$log_file" | tr -d ' ')
+    fi
+
     local exit_code=0
     set +e
-    uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/ 2>&1 | tee -a "$log_file"
-    exit_code=${PIPESTATUS[0]}
+    if [[ -n "$TIME_LIMIT" ]]; then
+        # timeout(1) sends SIGTERM after TIME_LIMIT seconds; exit 124 = time limit reached
+        _run_with_heartbeat "$log_file" true -- timeout "$TIME_LIMIT" uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
+        exit_code=$?
+        [[ $exit_code -eq 124 ]] && exit_code=0  # time limit reached is a clean stop
+    else
+        _run_with_heartbeat "$log_file" true -- uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
+        exit_code=$?
+    fi
     set -e
 
-    # Count failures
+    # Detect Python 3.14 multiprocessing teardown race (BrokenPipeError from worker cleanup).
+    # Workers attempt to reconnect to the manager socket after it has been cleaned up;
+    # this produces spurious BrokenPipeError/FileNotFoundError on session exit but does
+    # not indicate test failures. Downgrade to a warning and exit 0.
+    # Root fix: use --workers 1 (the default) to eliminate the race entirely.
+    if [[ $exit_code -ne 0 && $exit_code -ne 130 && $exit_code -ne 120 ]]; then
+        if [[ -f "$log_file" ]] \
+            && grep -qF "_start_worker" "$log_file" 2>/dev/null \
+            && grep -qE "(BrokenPipeError|FileNotFoundError.*connection)" "$log_file" 2>/dev/null; then
+            log_warn "Worker teardown race detected (Python 3.14 multiprocessing, exit $exit_code)."
+            log_warn "BrokenPipeError during shutdown is not a test failure. Use --workers 1 to avoid."
+            exit_code=0
+        fi
+    fi
+
+    # Count failures in THIS SESSION ONLY (tail from byte offset avoids counting prior sessions)
     local failure_count=0
-    failure_count=$(grep -c "Falsifying example" "$log_file" 2>/dev/null) || failure_count=0
+    if [[ -f "$log_file" ]]; then
+        failure_count=$(tail -c "+$((log_start + 1))" "$log_file" | grep -c "Falsifying example" 2>/dev/null) || failure_count=0
+    fi
 
     if [[ $exit_code -eq 0 || $exit_code -eq 130 || $exit_code -eq 120 ]]; then
         # 0 = Done, 130 = SIGINT (Ctrl+C), 120 = HypoFuzz Interrupted

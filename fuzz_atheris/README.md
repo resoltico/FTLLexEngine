@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.154.0"
+version: "0.155.0"
 domain: FUZZING
-updated: "2026-03-15"
+updated: "2026-03-16"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -23,8 +23,9 @@ route:
 | `fuzz_currency.py` | `runtime.functions` | 8 | 65 (.txt) + 23 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
 | `fuzz_parse_currency.py` | `parsing.currency`, `parsing.guards` | 9 | 5 (.txt) + 20 (.bin) | Locale-aware currency parsing, symbol disambiguation, cache stability |
 | `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 38 (.bin) | Fiscal calendar arithmetic, contracts |
-| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 29 | 68 (.ftl) + 35 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer |
-| `fuzz_iso.py` | `introspection.iso` | 10 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle |
+| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 31 | 68 (.ftl) + 38 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer, LedgerInvariantError, PersistenceIntegrityError |
+| `_inactive_fuzz_interpreter_pool.py` | `runtime.interpreter_pool` | 6 | 6 (.bin) | InterpreterPool lifecycle, acquire/release, crash isolation (ExecutionFailed), close semantics -- INACTIVE: requires Python 3.14+ (`concurrent.interpreters`, PEP 734); Atheris requires Python <= 3.13 |
+| `fuzz_iso.py` | `introspection.iso`, `ftllexengine` | 11 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle; `clear_module_caches(components=...)` |
 | `fuzz_lock.py` | `runtime`, `runtime.rwlock` | 16 | 39 (.bin) | RWLock concurrency primitives and public runtime export |
 | `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
 | `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 9 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, FluentNumber parsing, locale normalization/cache behavior, boundary locale validation, pseudo-locale fallback |
@@ -36,7 +37,7 @@ route:
 | `fuzz_scope.py` | `runtime.resolver`, `runtime.bundle` | 13 | 29 (.bin) | Variable scoping, term isolation, depth guards, expansion budget |
 | `fuzz_structured.py` | `syntax.parser`, `syntax.serializer` | 10 | 16 (.ftl) + 6 (.bin) | Grammar-aware AST construction |
 | `fuzz_cursor.py` | `syntax.cursor`, `syntax.position` | 8 | 5 (.txt) + 35 (.bin) | Cursor state machine, ParseError formatting, position helper parity |
-| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 22 | 13 (.bin) | FluentLocalization orchestration, canonical locale boundary, boot validation, single-message schema validation, AST lookup, cache audit trails, loader init, LoadSummary, fallback chains |
+| `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 24 | 13 (.bin) | FluentLocalization orchestration, canonical locale boundary, boot validation, `required_messages`, `boot()`/`boot_simple()` 3-tuple API, single-message schema validation, AST lookup, cache audit trails, loader init, LoadSummary, fallback chains |
 | `fuzz_dates.py` | `parsing.dates` | 14 | 59 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing; 4-digit year oracle (lv-LV/de-DE) |
 | `fuzz_locale_context.py` | `runtime.locale_context`, `core.locale_utils` | 14 | 25 (.bin) | LocaleContext direct formatting, canonical locale_code contract, ROUND_HALF_UP oracle, cross-locale determinism |
 | `fuzz_introspection.py` | `introspection.message` | 13 | 25 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction; `validate_message_variables` schema oracle |
@@ -53,6 +54,7 @@ route:
 | `diagnostics.validation` | diagnostics_formatter, integrity |
 | `integrity` | runtime, cache, integrity |
 | `introspection.iso` | iso |
+| `runtime.interpreter_pool` | interpreter_pool |
 | `introspection.message` | introspection |
 | `localization.loading` | localization |
 | `localization.orchestrator` | localization |
@@ -401,7 +403,7 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ### Patterns
 
-29 patterns across 5 categories:
+31 patterns across 6 categories:
 
 **VALIDATION (10)** - Standalone `validate_resource()`:
 
@@ -457,15 +459,68 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 | `frozen_error_sealed` | 6 | type() subclassing raises TypeError (fuzzed subclass name) |
 | `frozen_error_hash_stability` | 6 | hash() and content_hash stable across repeated calls |
 
+**DOMAIN_INTEGRITY (2)** - LedgerInvariantError and PersistenceIntegrityError:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `domain_integrity_ledger` | 6 | `invariant_code`/`entity_ref` properties; `None` default for entity_ref; ImmutabilityViolationError on setattr; isinstance DataIntegrityError |
+| `domain_integrity_persistence` | 6 | Basic construction matches message; ImmutabilityViolationError on setattr; isinstance DataIntegrityError |
+
 ### Allowed Exceptions
 
-`DataIntegrityError` (and subclasses), `FrozenFluentError`, `ValueError`, `TypeError`, `KeyError`, `RecursionError`, `MemoryError` -- expected for strict mode and adversarial inputs.
+`DataIntegrityError` (and subclasses), `LedgerInvariantError`, `PersistenceIntegrityError`, `FrozenFluentError`, `ValueError`, `TypeError`, `KeyError`, `RecursionError`, `MemoryError` -- expected for strict mode and adversarial inputs.
+
+---
+
+## `fuzz_interpreter_pool` (INACTIVE)
+
+**Blocked: requires `concurrent.interpreters` (Python 3.14+, PEP 734). Atheris requires Python <= 3.13. These constraints are mutually exclusive.** The fuzzer is preserved as `_inactive_fuzz_interpreter_pool.py` (excluded from plugin discovery) until Atheris supports Python 3.14.
+
+Target: `runtime.interpreter_pool.InterpreterPool`, `runtime.interpreter_pool._PooledInterpreter` -- subinterpreter pool lifecycle, acquire/release context manager protocol, crash isolation for `ExecutionFailed`, close semantics.
+
+Concern boundary: This fuzzer stress-tests the `InterpreterPool` resource lifecycle. It covers construction validation (`min_size >= 1`, `max_size >= min_size`), acquire/release via context manager, `call()` argument passing, `ExecutionFailed` crash isolation (interpreter reused after user-code raise), pool-as-context-manager (`__enter__`/`__exit__` closing on exit), and `close()` idempotency and post-close acquire rejection. Does NOT cover concurrent multi-threaded access (covered by `test_runtime_interpreter_pool.py`).
+
+Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `InterpreterPoolMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
+
+### Patterns
+
+6 patterns across 3 categories:
+
+**CONSTRUCTION (2)** - Configuration validation:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `construction_valid` | 8 | Default and custom min/max sizes construct without error; attributes stored correctly |
+| `construction_invalid` | 8 | `min_size=0` and `max_size < min_size` raise `ValueError` |
+
+**LIFECYCLE (2)** - acquire/release/call cycles:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `lifecycle_call` | 10 | `call()` returns expected value; argument passing works; repeated sequential cycles maintain pool availability |
+| `lifecycle_context_manager` | 10 | Pool context manager closes on exit; `_PooledInterpreter` context manager auto-releases |
+
+**CRASH_ISOLATION (1)** - ExecutionFailed behavior:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `crash_isolation` | 8 | `ExecutionFailed` propagates from `call()`; interpreter remains healthy and reusable; multiple cycles do not exhaust pool |
+
+**CLOSE (1)** - close() semantics:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `close_behavior` | 8 | `close()` prevents acquire (`RuntimeError`); idempotent (multiple close() calls safe); pool closeable after sequential acquire/release |
+
+### Allowed Exceptions
+
+`ValueError`, `TypeError`, `TimeoutError`, `RuntimeError`, `concurrent.interpreters.ExecutionFailed`, `concurrent.interpreters.InterpreterError` -- construction validation, closed pool, subinterpreter-level errors.
 
 ---
 
 ## `fuzz_iso`
 
-Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookups, type guards, cache.
+Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookups, type guards, cache; `ftllexengine.clear_module_caches` -- selective and full module cache clearing.
 
 ### Patterns
 
@@ -481,6 +536,7 @@ Target: `introspection.iso` -- ISO 3166-1 territory and ISO 4217 currency lookup
 | `cross_reference` | 8 | Territory currencies resolve via get_currency |
 | `invalid_input_stress` | 7 | Empty, long, null, unicode, mixed case |
 | `decimal_digits_convenience` | 8 | `get_currency_decimal_digits` == `get_currency().decimal_digits`; valid range {0,2,3,4} |
+| `clear_module_caches` | 6 | All-clear, single component, subset, unknown (silently ignored), re-lookup after clear |
 
 ### Allowed Exceptions
 
@@ -894,10 +950,11 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `loader_junk_summary` | 4 | Junk-bearing resources are surfaced through LoadSummary |
 | `loader_path_error` | 4 | Invalid `resource_id` becomes a loader error, not a crash |
 | `require_clean_api` | 5 | clean initialization returns summary; missing/junk/error states raise integrity context |
+| `boot_config_api` | 6 | `LocalizationBootConfig` validation, `boot_simple()` → FluentLocalization, `boot()` → 3-tuple, `required_messages` absent raises IntegrityCheckFailedError, `required_messages` present succeeds |
 
 ### Allowed Exceptions
 
-`ValueError`, `TypeError`, `UnicodeEncodeError`, `FrozenFluentError`, `DataIntegrityError`, `FormattingIntegrityError`, `SyntaxIntegrityError` -- invalid locale/resource input, loader validation, strict mode enforcement, and resolution errors.
+`ValueError`, `TypeError`, `UnicodeEncodeError`, `FrozenFluentError`, `DataIntegrityError`, `FormattingIntegrityError`, `SyntaxIntegrityError`, `IntegrityCheckFailedError` -- invalid locale/resource input, loader validation, strict mode enforcement, required-message absence, and resolution errors.
 
 ---
 

@@ -292,6 +292,7 @@ class TestParseCurrencyHypothesis:
     @settings(max_examples=100)
     def test_parse_currency_no_symbol_returns_error(self, value: str) -> None:
         """Strings without currency symbols/codes should return error in tuple."""
+        event(f"input_len={len(value)}")
         result, errors = parse_currency(value, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -310,6 +311,9 @@ class TestCurrencyMetamorphicProperties:
         self, amount1: Decimal, amount2: Decimal, currency: str
     ) -> None:
         """parse(format(a)) < parse(format(b)) iff a < b (ordering preserved)."""
+        event(f"currency={currency}")
+        ordering = "before" if amount1 < amount2 else ("after" if amount1 > amount2 else "equal")
+        event(f"ordering={ordering}")
         from ftllexengine.runtime.functions import currency_format
 
         formatted1 = str(currency_format(amount1, "en_US", currency=currency))
@@ -344,6 +348,8 @@ class TestCurrencyMetamorphicProperties:
         self, amount: Decimal, locale1: str, locale2: str
     ) -> None:
         """parse(format(x, L1), L1) == parse(format(x, L2), L2) for all locales."""
+        event(f"locale1={locale1}")
+        event(f"locale2={locale2}")
         from ftllexengine.runtime.functions import currency_format
 
         # Format in different locales
@@ -372,6 +378,8 @@ class TestCurrencyMetamorphicProperties:
     @settings(max_examples=100)
     def test_parse_currency_addition_homomorphism(self, amount: Decimal) -> None:
         """parse(format(a)) + parse(format(a)) == parse(format(2*a)) (within precision)."""
+        magnitude = "large" if amount >= Decimal(100) else "small"
+        event(f"magnitude={magnitude}")
         from ftllexengine.runtime.functions import currency_format
 
         formatted1 = str(currency_format(amount, "en_US", currency="USD"))
@@ -405,6 +413,8 @@ class TestCurrencyMetamorphicProperties:
         self, amount: Decimal, currency: str
     ) -> None:
         """Very large amounts should parse correctly (stress test)."""
+        event(f"currency={currency}")
+        event(f"magnitude={'billions' if amount >= Decimal(1000000000) else 'millions'}")
         from ftllexengine.runtime.functions import currency_format
 
         formatted = str(currency_format(amount, "en_US", currency=currency))
@@ -425,6 +435,7 @@ class TestCurrencyMetamorphicProperties:
     @settings(max_examples=50)
     def test_parse_currency_symbol_position_invariance(self, symbol: str) -> None:
         """Currency symbol position shouldn't affect parsing result."""
+        event(f"symbol={symbol}")
         # Test both prefix and suffix positions
         amount = Decimal("123.45")
 
@@ -456,6 +467,7 @@ class TestCurrencyMetamorphicProperties:
     @settings(max_examples=10)
     def test_parse_currency_zero_amount(self, amount: Decimal) -> None:  # noqa: ARG002 - unused
         """Zero amounts should parse correctly."""
+        event("boundary=zero_amount")
         currency_str = "$0.00"
 
         result, errors = parse_currency(currency_str, "en_US", default_currency="USD")
@@ -477,6 +489,7 @@ class TestCurrencyMetamorphicProperties:
     @settings(max_examples=50)
     def test_parse_currency_whitespace_tolerance(self, whitespace: str) -> None:
         """Currency parsing should tolerate whitespace."""
+        event(f"whitespace_len={len(whitespace)}")
         # Add whitespace around currency and amount
         currency_str = f"{whitespace}€{whitespace}100.50{whitespace}"
 
@@ -509,6 +522,7 @@ class TestCurrencyInferFromLocale:
     @settings(max_examples=100)
     def test_infer_from_locale_with_us_dollar(self, amount: Decimal) -> None:
         """infer_from_locale=True resolves $ to USD from en_US locale."""
+        event("locale=en_US")
         currency_str = f"${amount}"
 
         result, errors = parse_currency(currency_str, "en_US", infer_from_locale=True)
@@ -531,6 +545,7 @@ class TestCurrencyInferFromLocale:
     @settings(max_examples=100)
     def test_infer_from_locale_with_canadian_dollar(self, amount: Decimal) -> None:
         """infer_from_locale=True resolves $ to CAD from en_CA locale."""
+        event("locale=en_CA")
         currency_str = f"${amount}"
 
         result, errors = parse_currency(currency_str, "en_CA", infer_from_locale=True)

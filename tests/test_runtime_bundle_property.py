@@ -238,6 +238,8 @@ valid-message = Hello
         """Property: Messages must have value or attributes."""
         assume(has_value or has_attributes)  # Skip invalid case
 
+        event(f"has_value={has_value}")
+        event(f"has_attributes={has_attributes}")
         bundle = FluentBundle("en")
 
         # Construct valid FTL
@@ -684,6 +686,8 @@ class TestMessageFormatting:
     def test_format_value_simple_message(self, msg_id: str, text: str) -> None:
         """PROPERTY: format_value returns message value."""
         assume(len(text) > 0)
+        event(f"msg_id_len={len(msg_id)}")
+        event(f"text_len={len(text)}")
 
         bundle = FluentBundle("en")
         bundle.add_resource(f"{msg_id} = {text}")
@@ -1196,6 +1200,7 @@ class TestNumberFormattingVariations:
 
         result, errors = bundle.format_pattern(msg_id, {"num": number})
 
+        event(f"min_digits={min_digits}")
         assert errors == ()
         assert isinstance(result, str)
 
@@ -1213,6 +1218,7 @@ class TestNumberFormattingVariations:
 
         result, errors = bundle.format_pattern(msg_id, {"num": number})
 
+        event(f"number={number}")
         assert errors == ()
         assert isinstance(result, str)
 
@@ -1239,6 +1245,7 @@ class TestWhitespaceHandling:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"spaces={spaces}")
         assert errors == ()
         # Whitespace may be trimmed by parser/formatter
         assert "Value" in result
@@ -1266,6 +1273,7 @@ class TestWhitespaceHandling:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"text_len={len(text)}")
         assert errors == ()
         assert text in result
 
@@ -1307,6 +1315,7 @@ class TestUnicodeEdgeCases:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"rtl_text_len={len(rtl_text)}")
         assert errors == ()
         assert rtl_text in result
 
@@ -1325,6 +1334,7 @@ class TestUnicodeEdgeCases:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"codepoint={ord(char):#06x}")
         assert errors == ()
         assert char in result
 
@@ -1351,6 +1361,7 @@ class TestPerformanceProperties:
 
         # Format random message should be fast
         result, _ = bundle.format_pattern(f"msg{msg_count // 2}")
+        event(f"msg_count={msg_count}")
         assert isinstance(result, str)
 
     @given(
@@ -1371,6 +1382,7 @@ class TestPerformanceProperties:
             for _ in range(iterations)
         ]
 
+        event(f"iterations={iterations}")
         # All results should be identical
         assert all(r == results[0] for r in results)
 
@@ -1463,6 +1475,7 @@ class TestArgumentTypeHandling:
         self, msg_id: str, var_name: str, list_value: list[int]
     ) -> None:
         """PROPERTY: List arguments are handled."""
+        event(f"list_len={len(list_value)}")
         bundle = FluentBundle("en")
         bundle.add_resource(f"{msg_id} = {{ ${var_name} }}")
 
@@ -1511,6 +1524,7 @@ class TestAttributeEdgeCases:
         self, msg_id: str, attr_name: str, var_name: str, var_value: int
     ) -> None:
         """PROPERTY: Attributes with variables work."""
+        event(f"var_value={var_value}")
         bundle = FluentBundle("en")
         bundle.add_resource(
             f"{msg_id} = Main\n"
@@ -1546,6 +1560,7 @@ class TestIsolationMode:
     ) -> None:
         """PROPERTY: Isolating mode works correctly."""
         assume(len(text) > 0)
+        event(f"use_isolating={use_isolating}")
 
         bundle = FluentBundle("en", use_isolating=use_isolating)
         bundle.add_resource(f"{msg_id} = {text}")
@@ -1597,6 +1612,7 @@ class TestValidationProperties:
 
         result = bundle.validate_resource(ftl)
 
+        event(f"msg_count={count}")
         # All should validate successfully
         assert result.errors == ()
 
@@ -1624,6 +1640,7 @@ class TestBundleState:
         # Locale should remain unchanged
         assert bundle.locale == normalize_locale(locale)
 
+        event(f"locale={locale}")
         # After formatting
         bundle.format_pattern(msg_id)
         assert bundle.locale == normalize_locale(locale)
@@ -1648,6 +1665,7 @@ class TestBundleState:
         # Format again - should still work
         result2, _ = bundle.format_pattern(msg_id)
 
+        event(f"text_len={len(text)}")
         assert result1 == result2
         assert text in result1
 
@@ -1726,6 +1744,7 @@ msg3 = { msg1 }
 
         result, errors = bundle.format_pattern("msg0")
 
+        event(f"depth={depth}")
         # Should resolve entire chain
         assert errors == ()
         assert "End" in result
@@ -1814,6 +1833,8 @@ msg = { $x ->
 
         result, errors = bundle.format_pattern("msg", {"x": outer_val, "y": inner_val})
 
+        event(f"outer_val={outer_val}")
+        event(f"inner_val={inner_val}")
         assert errors == ()
         assert isinstance(result, str)
         assert len(result) > 0
@@ -1862,6 +1883,8 @@ items = { $count ->
 
         result, errors = bundle.format_pattern("items", {"count": count})
 
+        event(f"locale={locale}")
+        event(f"count={count}")
         assert errors == ()
         assert isinstance(result, str)
 
@@ -1911,6 +1934,7 @@ class TestCacheBehavior:
         # Format multiple times
         results = [bundle.format_pattern(msg_id)[0] for _ in range(iterations)]
 
+        event(f"iterations={iterations}")
         # All results should be identical
         assert all(r == results[0] for r in results)
         assert all(text in r for r in results)
@@ -1934,6 +1958,7 @@ class TestCacheBehavior:
             for val in values
         ]
 
+        event(f"value_count={len(values)}")
         # Results should differ
         unique_results = set(results)
         assert len(unique_results) == len(values)
@@ -1955,6 +1980,8 @@ class TestCacheBehavior:
             result, errors = bundle.format_pattern(f"msg{i}")
             assert errors == ()
             assert f"Message {i}" in result
+
+        event(f"msg_count={msg_count}")
 
     @given(
         msg_id=ftl_identifiers,
@@ -1979,6 +2006,7 @@ class TestCacheBehavior:
         # Update resource
         bundle.add_resource(f"{msg_id} = {text2}")
 
+        event(f"text1_len={len(text1)}")
         # Format again - should get new value
         result2, _ = bundle.format_pattern(msg_id)
         assert text2 in result2
@@ -2029,6 +2057,7 @@ class TestBidirectionalTextHandling:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"use_isolating={use_isolating}")
         assert errors == ()
         # Text should appear (possibly with isolating chars)
         assert rtl_text in result or rtl_text in result.replace("\u2068", "").replace("\u2069", "")
@@ -2059,6 +2088,7 @@ class TestBidirectionalTextHandling:
 
         result, errors = bundle.format_pattern(msg_id, {var_name: rtl_value})
 
+        event(f"rtl_value_len={len(rtl_value)}")
         assert errors == ()
         # RTL value should appear
         assert rtl_value in result.replace("\u2068", "").replace("\u2069", "")
@@ -2089,6 +2119,7 @@ class TestAdditionalErrorRecovery:
 
         result, errors = bundle.format_pattern("msg0")
 
+        event(f"depth={depth}")
         # Should have errors but not crash
         assert len(errors) > 0
         assert isinstance(result, str)
@@ -2107,6 +2138,7 @@ class TestAdditionalErrorRecovery:
 
         result, _errors = bundle.format_pattern(msg_id, {"var": 123})
 
+        event(f"func_name_len={len(func_name)}")
         # Should return fallback without crashing
         assert isinstance(result, str)
 
@@ -2145,6 +2177,7 @@ msg = { $var ->
         with contextlib.suppress(Exception):
             bundle.add_resource(f'{msg_id} = "Text {invalid_escape} more"')
 
+        event(f"escape_seq={invalid_escape}")
         # Bundle should still work
         assert isinstance(bundle.locale, str)
 
@@ -2208,6 +2241,7 @@ msg = { -outer }
 
         result, errors = bundle.format_pattern(msg_id, args)
 
+        event(f"var_count={var_count}")
         assert errors == ()
         # All values should appear
         for i in range(var_count):
@@ -2261,6 +2295,7 @@ msg = { $variant ->
 
         result, errors = bundle.format_pattern(msg_id, args)
 
+        event(f"segment_count={len(text_segments)}")
         assert errors == ()
         # All text segments should appear
         for text in text_segments:
@@ -2324,6 +2359,7 @@ class TestFunctionArgumentEdgeCases:
 
         result, errors = bundle.format_pattern(msg_id, {"num": number})
 
+        event("num_magnitude=small")
         assert errors == ()
         assert isinstance(result, str)
 
@@ -2346,6 +2382,7 @@ class TestFunctionArgumentEdgeCases:
 
         result, errors = bundle.format_pattern(msg_id, {"num": number})
 
+        event("num_magnitude=large")
         assert errors == ()
         assert isinstance(result, str)
 
@@ -2380,6 +2417,7 @@ class TestFunctionArgumentEdgeCases:
 
         result, errors = bundle.format_pattern(msg_id, {"amt": amount})
 
+        event("amount_magnitude=tiny")
         assert not errors
 
         # May have errors depending on currency support
@@ -2418,6 +2456,7 @@ class TestLocaleFallbackBehavior:
 
         assert bundle.locale == normalize_locale(locale)
 
+        event(f"locale={locale}")
         # After formatting, locale should remain
         bundle.format_pattern(msg_id)
         assert bundle.locale == normalize_locale(locale)
@@ -2453,6 +2492,8 @@ class TestLocaleFallbackBehavior:
         bundle1.add_resource("msg = Bundle 1")
         bundle2.add_resource("msg = Bundle 2")
 
+        event(f"locale1={locale1}")
+        event(f"locale2={locale2}")
         # Locales should remain distinct
         assert bundle1.locale == normalize_locale(locale1)
         assert bundle2.locale == normalize_locale(locale2)
@@ -2485,6 +2526,7 @@ class TestResourceOrdering:
 
         result, _ = bundle.format_pattern(msg_id)
 
+        event(f"override_count={len(values)}")
         # Last value should win
         assert values[-1] in result
 
@@ -2505,6 +2547,8 @@ class TestResourceOrdering:
             result, errors = bundle.format_pattern(f"msg{i}")
             assert errors == ()
             assert f"Value {i}" in result
+
+        event(f"msg_count={msg_count}")
 
     def test_partial_override_preserves_others(self) -> None:
         """Partial resource override preserves other messages."""
@@ -2554,6 +2598,7 @@ class TestAdditionalRobustness:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"whitespace_repr={whitespace!r}")
         assert errors == ()
         assert "Value" in result
 
@@ -2571,6 +2616,7 @@ class TestAdditionalRobustness:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"special_char={special_char}")
         assert errors == ()
         assert special_char in result
 
@@ -2598,6 +2644,7 @@ class TestAdditionalRobustness:
 
         result, errors = bundle.format_pattern(msg_id, {msg_id: number})
 
+        event(f"number={number}")
         assert errors == ()
         assert str(number) in result
 
@@ -2761,6 +2808,7 @@ class TestBundleVariableInterpolation:
         args = {vn: str(i) for i, vn in enumerate(var_names)}
         result, errors = bundle.format_pattern(msg_id, args)
 
+        event(f"var_count={var_count}")
         for value in args.values():
             assert value in result, f"Variable value {value} missing from result"
         assert errors == (), f"No errors expected for multiple variables, got {errors}"
@@ -2786,6 +2834,7 @@ class TestBundleLocaleHandling:
         ftl_source = f"{msg_id} = {msg_value}"
         bundle.add_resource(ftl_source)
 
+        event(f"locale={locale}")
         result, errors = bundle.format_pattern(msg_id)
         assert isinstance(result, str), "Locale should not affect basic formatting"
         assert errors == (), f"No errors expected for simple message, got {errors}"
@@ -2811,6 +2860,7 @@ class TestBundleIsolatingMarks:
 
         result, errors = bundle.format_pattern(msg_id, {var_name: var_value})
 
+        event("use_isolating=True")
         assert "\u2068" in result, "FSI mark missing with use_isolating=True"
         assert "\u2069" in result, "PDI mark missing with use_isolating=True"
         assert errors == (), f"No errors expected for isolating marks, got {errors}"
@@ -2832,6 +2882,7 @@ class TestBundleIsolatingMarks:
 
         result, errors = bundle.format_pattern(msg_id, {var_name: var_value})
 
+        event("use_isolating=False")
         assert "\u2068" not in result, "FSI mark present with use_isolating=False"
         assert "\u2069" not in result, "PDI mark present with use_isolating=False"
         assert errors == (), f"No errors expected without isolating marks, got {errors}"
@@ -2852,6 +2903,7 @@ class TestBundleValidation:
         ftl_source = f"{msg_id} = {msg_value}"
         result = bundle.validate_resource(ftl_source)
 
+        event(f"id_len={len(msg_id)}")
         assert result.is_valid, f"Valid FTL failed validation: {ftl_source}"
         assert result.error_count == 0, "Valid FTL should have no errors"
 
@@ -2867,6 +2919,7 @@ class TestBundleValidation:
 
         result = bundle.validate_resource(invalid_syntax)
 
+        event(f"syntax_len={len(invalid_syntax)}")
         assert isinstance(result.error_count, int), "error_count must be integer"
 
 
@@ -2887,6 +2940,7 @@ class TestBundleStateConsistency:
 
         retrieved_ids = bundle.get_message_ids()
 
+        event(f"msg_count={msg_count}")
         assert len(retrieved_ids) == msg_count, "Message count mismatch"
         for msg_id in msg_ids:
             assert msg_id in retrieved_ids, f"Message {msg_id} missing from get_message_ids()"
@@ -2907,6 +2961,7 @@ class TestBundleStateConsistency:
         has_msg = bundle.has_message(msg_id)
         assert has_msg, f"has_message returned False for registered message {msg_id}"
 
+        event(f"id_len={len(msg_id)}")
         result, errors = bundle.format_pattern(msg_id)
         assert isinstance(result, str), "format_pattern should succeed when has_message=True"
         assert errors == (), f"No errors expected when has_message=True, got {errors}"
@@ -2934,6 +2989,7 @@ class TestBundleErrorHandling:
         bundle.add_resource(valid_msg)
 
         msg_ids = bundle.get_message_ids()
+        event(f"msg_count_after_error={len(msg_ids)}")
         assert len(msg_ids) > 0, "Bundle should accept valid resources after errors"
 
     @given(
@@ -2955,6 +3011,7 @@ class TestBundleErrorHandling:
 
         result, errors = bundle.format_pattern(msg_id)
 
+        event(f"error_count={len(errors)}")
         assert isinstance(
             result, str
         ), "format_pattern must return string even when function raises"
@@ -2986,4 +3043,5 @@ class TestBundleMetamorphicProperties:
         ids1 = sorted(bundle1.get_message_ids())
         ids2 = sorted(bundle2.get_message_ids())
 
+        event(f"resource_order={resource_order}")
         assert ids1 == ids2, "Resource addition order should not affect final state"

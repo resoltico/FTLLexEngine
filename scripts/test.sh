@@ -8,7 +8,7 @@
 #
 # AI AGENT OPTIMIZATION:
 #   - Quiet by default (Log-on-Fail)
-#   - Periodic heartbeat in quiet mode (prevents long silent hangs)
+#   - Periodic heartbeat in all modes (prevents long silent hangs)
 #   - Focused failure digest with persisted full log path
 #   - Structured markers: [SECTION-NAME] for navigation
 #   - JSON output: [SUMMARY-JSON-BEGIN/END] with "failed_tests"
@@ -72,6 +72,11 @@ else
     RED="\033[31m"; GREEN="\033[32m"; YELLOW="\033[33m"; BLUE="\033[34m"; CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
 fi
 
+# psutil availability: cached once for heartbeat CPU/memory stats.
+# psutil is a dev dependency — available in the test venv.
+HAS_PSUTIL=false
+python -c "import psutil" 2>/dev/null && HAS_PSUTIL=true || true
+
 log_group_start() { [[ "$IS_GHA" == "true" ]] && echo "::group::$1"; echo -e "\n${BOLD}${CYAN}=== $1 ===${RESET}"; }
 log_group_end() { [[ "$IS_GHA" == "true" ]] && echo "::endgroup::"; return 0; }
 log_info() { echo -e "${BLUE}[INFO]${RESET} $1"; }
@@ -103,36 +108,74 @@ last_nonempty_log_line() {
     fi
     echo "$last_line"
 }
-emit_quiet_heartbeat() {
-    local log_file="$1"
-    local elapsed=$((SECONDS - RUN_START_SECONDS))
-    local log_bytes=0
-    local last_line
-    if [[ -f "$log_file" ]]; then
-        log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
-    fi
-    last_line=$(last_nonempty_log_line "$log_file")
-    log_info \
-        "Pytest still running (${elapsed}s, log=$(format_bytes "$log_bytes"), last=${last_line})"
-}
-capture_pytest_with_heartbeat() {
-    local log_file="$1"
-    "${CMD[@]}" > "$log_file" 2>&1 &
-    local pytest_pid=$!
-
-    if [[ "$HEARTBEAT_ENABLED" != "true" || "$HEARTBEAT_INTERVAL_SEC" -le 0 ]]; then
-        wait "$pytest_pid"
-        return $?
-    fi
-
-    while kill -0 "$pytest_pid" 2>/dev/null; do
-        sleep "$HEARTBEAT_INTERVAL_SEC"
-        if kill -0 "$pytest_pid" 2>/dev/null; then
-            emit_quiet_heartbeat "$log_file"
+_heartbeat_daemon() {
+    # Background subshell: emits [HEARTBEAT] lines to stderr while watched_pid is alive.
+    # First beat fires at T+5s (short runs stay silent); subsequent beats every
+    # HEARTBEAT_INTERVAL_SEC seconds. Uses psutil for CPU/memory when available.
+    local watched_pid="$1" log_file="$2" start_sec="$3"
+    sleep 5
+    while kill -0 "$watched_pid" 2>/dev/null; do
+        local elapsed=$(( SECONDS - start_sec ))
+        local log_bytes=0
+        [[ -f "$log_file" ]] && log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
+        local last_line
+        last_line=$(last_nonempty_log_line "$log_file")
+        if [[ "$HAS_PSUTIL" == "true" ]]; then
+            local stats
+            stats=$(python -c "
+import psutil
+try:
+    p = psutil.Process(${watched_pid})
+    all_procs = [p] + p.children(recursive=True)
+    cpu = sum(x.cpu_percent(interval=0.2) for x in all_procs)
+    mem_mb = sum(x.memory_info().rss for x in all_procs) // 1048576
+    print(f'CPU={cpu:.0f}% MEM={mem_mb}MB procs={len(all_procs)}')
+except Exception:
+    print('CPU=? MEM=? procs=?')
+" 2>/dev/null || echo "CPU=? MEM=? procs=?")
+            echo "[HEARTBEAT] T+${elapsed}s | ${stats} | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+        else
+            echo "[HEARTBEAT] T+${elapsed}s | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
         fi
+        sleep "$HEARTBEAT_INTERVAL_SEC"
     done
+}
+run_and_capture() {
+    # FIFO-based runner: captures pytest output to log_file and emits [HEARTBEAT]
+    # to stderr in all modes. In verbose mode, output is also streamed to stdout.
+    #
+    # Using a FIFO gives an exact pytest PID for psutil monitoring and a reliable
+    # exit code via "wait $cmd_pid" — avoids PIPESTATUS fragility with background pipes.
+    local log_file="$1"
+    local fifo
+    fifo=$(mktemp -u)
+    mkfifo "$fifo"
 
-    wait "$pytest_pid"
+    "${CMD[@]}" > "$fifo" 2>&1 &
+    local cmd_pid=$!
+
+    local hb_pid=0
+    if [[ "$HEARTBEAT_ENABLED" == "true" && "$HEARTBEAT_INTERVAL_SEC" -gt 0 ]]; then
+        _heartbeat_daemon "$cmd_pid" "$log_file" "$SECONDS" &
+        hb_pid=$!
+    fi
+
+    if [[ "$VERBOSE" == "true" ]]; then
+        tee "$log_file" < "$fifo"
+    else
+        cat < "$fifo" > "$log_file"
+    fi
+
+    wait "$cmd_pid"
+    local exit_code=$?
+
+    if [[ "$hb_pid" -gt 0 ]]; then
+        kill "$hb_pid" 2>/dev/null || true
+        wait "$hb_pid" 2>/dev/null || true
+    fi
+
+    rm -f "$fifo"
+    return "$exit_code"
 }
 persist_failure_log() {
     local log_file="$1"
@@ -300,18 +343,13 @@ trap 'rm -f "$LOG_FILE"' EXIT
 START_TIME="${EPOCHREALTIME}"
 RUN_START_SECONDS=$SECONDS
 
-# Execution Logic: Capture vs Stream
+# Execution: FIFO-based capture with heartbeat in all modes.
+# The FIFO gives an exact pytest PID for psutil monitoring and a reliable
+# exit code (wait $cmd_pid, not PIPESTATUS). Heartbeat fires on stderr so
+# it does not pollute the captured log or the agent's stdout stream.
 set +e
-if [[ "$VERBOSE" == "true" ]]; then
-    # Verbose: Stream to stdout using tee (agent sees everything as it happens)
-    "${CMD[@]}" 2>&1 | tee "$LOG_FILE"
-    EXIT_CODE=${PIPESTATUS[0]}
-else
-    # Quiet: Capture to file but emit periodic heartbeats so non-interactive
-    # runners do not mistake a long suite for a hung process.
-    capture_pytest_with_heartbeat "$LOG_FILE"
-    EXIT_CODE=$?
-fi
+run_and_capture "$LOG_FILE"
+EXIT_CODE=$?
 set -e
 
 END_TIME="${EPOCHREALTIME}"
@@ -432,7 +470,7 @@ for item in "${FAILED_TEST_LIST[@]}"; do
     echo "$item" >> "$FAILED_TESTS_FILE"
 done
 
-python3 -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE"
+python -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE"
 rm -f "$FAILED_TESTS_FILE"
 echo "[SUMMARY-JSON-END]"
 

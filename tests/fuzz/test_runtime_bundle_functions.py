@@ -82,7 +82,7 @@ class TestFunctionRegistrationProperties:
     """Property tests for function registration."""
 
     @given(st.text(alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ", min_size=1, max_size=20))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_function_name_registration(self, func_name: str) -> None:
         """Property: Valid function names can be registered."""
         bundle = FluentBundle("en-US")
@@ -104,7 +104,7 @@ class TestFunctionRegistrationProperties:
             event("outcome=func_registered_error")
 
     @given(st.sampled_from(["UPPER", "LOWER", "REVERSE", "LENGTH", "CUSTOM"]))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_multiple_function_registration(self, name: str) -> None:
         """Property: Multiple functions can be registered."""
         # name parameter used to verify property holds for different function names
@@ -142,7 +142,7 @@ class TestFunctionInvocationProperties:
     """Property tests for function invocation."""
 
     @given(st.text(min_size=1, max_size=100))
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_string_argument_passing(self, value: str) -> None:
         """Property: String arguments are passed correctly."""
         bundle = FluentBundle("en-US")
@@ -162,7 +162,7 @@ class TestFunctionInvocationProperties:
             event("outcome=string_arg_error")
 
     @given(st.integers(min_value=-1000, max_value=1000))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_integer_argument_passing(self, value: int) -> None:
         """Property: Integer arguments are handled."""
         bundle = FluentBundle("en-US")
@@ -182,7 +182,7 @@ class TestFunctionInvocationProperties:
             allow_infinity=False,
         )
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_decimal_argument_passing(self, value: Decimal) -> None:
         """Property: Decimal arguments are handled."""
         bundle = FluentBundle("en-US")
@@ -204,7 +204,7 @@ class TestFunctionErrorHandlingProperties:
     """Property tests for error handling in custom functions."""
 
     @given(st.text(min_size=1, max_size=50))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_throwing_function_caught(self, value: str) -> None:
         """Property: Exceptions in functions are caught, not propagated.
 
@@ -225,7 +225,7 @@ class TestFunctionErrorHandlingProperties:
         event("outcome=throwing_func_caught")
 
     @given(st.text(min_size=1, max_size=50))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_none_return_handled(self, value: str) -> None:
         """Property: Functions returning None are handled gracefully."""
         bundle = FluentBundle("en-US")
@@ -252,7 +252,7 @@ class TestFunctionErrorHandlingProperties:
         assert len(errors) > 0
 
     @given(st.text(min_size=1, max_size=50))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_unexpected_return_type_handled(self, value: str) -> None:
         """Property: Functions returning unexpected types are handled."""
         bundle = FluentBundle("en-US")
@@ -274,7 +274,7 @@ class TestBuiltinFunctionProperties:
     """Property tests for built-in functions (NUMBER, DATETIME)."""
 
     @given(st.integers(min_value=-1000000, max_value=1000000))
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_number_function_integers(self, n: int) -> None:
         """Property: NUMBER function handles integers."""
         bundle = FluentBundle("en-US")
@@ -295,7 +295,7 @@ class TestBuiltinFunctionProperties:
             allow_infinity=False,
         )
     )
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_number_function_decimals(self, n: Decimal) -> None:
         """Property: NUMBER function handles Decimals."""
         bundle = FluentBundle("en-US")
@@ -308,7 +308,7 @@ class TestBuiltinFunctionProperties:
         event("outcome=number_func_decimal_success")
 
     @given(st.text(min_size=1, max_size=50))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_number_function_invalid_input(self, s: str) -> None:
         """Property: NUMBER function handles non-numeric input gracefully.
 
@@ -354,7 +354,7 @@ class TestFunctionArgumentVariations:
         # Should have error for missing variable
 
     @given(st.dictionaries(st.text(min_size=1, max_size=10), st.integers(), max_size=5))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_function_with_extra_args(self, extra: dict[str, int]) -> None:
         """Property: Extra arguments don't crash functions."""
         bundle = FluentBundle("en-US")

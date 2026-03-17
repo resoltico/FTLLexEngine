@@ -579,6 +579,8 @@ class TestErrorContentHashIncludesAllDiagnosticFields:
     @settings(max_examples=50)
     def test_property_string_fields_affect_hash(self, hint: str, help_url: str) -> None:
         """PROPERTY: String field changes affect content hash."""
+        event(f"hint_len={len(hint)}")
+        event(f"help_url_len={len(help_url)}")
         diag1 = Diagnostic(
             code=DiagnosticCode.MESSAGE_NOT_FOUND,
             message="Test",

@@ -54,11 +54,7 @@ class TestASTSerializationProperties:
     """Property tests for serializing AST nodes directly."""
 
     @given(ftl_message_nodes())
-    @settings(
-        max_examples=500,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_message_roundtrip(self, message: Message) -> None:
         """Property: serialize(message) produces parseable FTL."""
         serializer = FluentSerializer()
@@ -84,11 +80,7 @@ class TestASTSerializationProperties:
         event("outcome=message_roundtrip_success")
 
     @given(ftl_term_nodes())
-    @settings(
-        max_examples=300,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_term_roundtrip(self, term: Term) -> None:
         """Property: serialize(term) produces parseable FTL."""
         serializer = FluentSerializer()
@@ -106,11 +98,7 @@ class TestASTSerializationProperties:
         event("outcome=term_roundtrip_success")
 
     @given(ftl_attribute_nodes())
-    @settings(
-        max_examples=300,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_attribute_roundtrip(self, attr: Attribute) -> None:
         """Property: Attributes serialize within a message."""
         serializer = FluentSerializer()
@@ -137,7 +125,7 @@ class TestASTSerializationProperties:
         event("outcome=attribute_roundtrip_success")
 
     @given(ftl_comment_nodes())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_comment_roundtrip(self, comment: Comment) -> None:
         """Property: serialize(comment) produces parseable FTL."""
         serializer = FluentSerializer()
@@ -155,11 +143,7 @@ class TestASTSerializationProperties:
         event("outcome=comment_roundtrip_success")
 
     @given(ftl_resources())
-    @settings(
-        max_examples=300,
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example], deadline=None)
     def test_resource_roundtrip(self, resource: Resource) -> None:
         """Property: serialize(parse(serialize(resource))) stabilizes."""
         serializer = FluentSerializer()
@@ -187,11 +171,7 @@ class TestPatternSerializationProperties:
     """Property tests for pattern serialization."""
 
     @given(ftl_patterns())
-    @settings(
-        max_examples=500,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_pattern_in_message(self, pattern: Pattern) -> None:
         """Property: Any valid pattern can be serialized in a message."""
         serializer = FluentSerializer()
@@ -213,11 +193,7 @@ class TestPatternSerializationProperties:
         event("outcome=pattern_serialized")
 
     @given(ftl_select_expressions())
-    @settings(
-        max_examples=300,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_select_expression_serialization(self, select: SelectExpression) -> None:
         """Property: Select expressions serialize correctly."""
         serializer = FluentSerializer()
@@ -245,11 +221,7 @@ class TestAttributeSerializationProperties:
     """Property tests for attribute serialization."""
 
     @given(ftl_patterns(), ftl_patterns())
-    @settings(
-        max_examples=200,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_message_with_attributes(self, value: Pattern, attr_value: Pattern) -> None:
         """Property: Messages with attributes serialize correctly."""
         serializer = FluentSerializer()
@@ -281,11 +253,7 @@ class TestSemanticEquivalence:
     """Tests for semantic equivalence after roundtrip."""
 
     @given(ftl_resources())
-    @settings(
-        max_examples=200,
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example], deadline=None)
     def test_semantic_preservation(self, resource: Resource) -> None:
         """Property: Roundtrip preserves semantic content."""
         serializer = FluentSerializer()
@@ -343,7 +311,7 @@ class TestEdgeCaseSerialization:
         assert len(reparsed.entries) >= 1
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=100))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_identifier_roundtrip(self, name: str) -> None:
         """Property: Valid identifiers survive roundtrip."""
         serializer = FluentSerializer()

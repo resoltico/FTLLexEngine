@@ -87,6 +87,8 @@ class TestAnnotationDataclass:
     @given(st.text(min_size=1), st.text(min_size=1))
     def test_annotation_construction_required_only(self, code: str, message: str) -> None:
         """Property: Annotation can be constructed with required fields only."""
+        event(f"code_len={len(code)}")
+        event(f"message_len={len(message)}")
         ann = Annotation(code=code, message=message)
         assert ann.code == code
         assert ann.message == message
@@ -120,6 +122,7 @@ class TestIdentifierDataclass:
     @given(st.text(min_size=1))
     def test_identifier_construction(self, name: str) -> None:
         """Property: Identifier can be constructed with any name."""
+        event(f"name_len={len(name)}")
         ident = Identifier(name=name)
         assert ident.name == name
 
@@ -131,6 +134,7 @@ class TestIdentifierDataclass:
     @given(st.text())
     def test_identifier_guard_false(self, not_identifier: str) -> None:
         """Property: Identifier.guard returns False for non-Identifier objects."""
+        event(f"input_len={len(not_identifier)}")
         assert Identifier.guard(not_identifier) is False
 
 
@@ -174,6 +178,7 @@ class TestMessageDataclass:
     @given(st.text(min_size=1))
     def test_message_construction_minimal(self, name: str) -> None:
         """Property: Message can be constructed with minimal fields."""
+        event(f"name_len={len(name)}")
         msg = Message(id=Identifier(name=name), value=Pattern(elements=()), attributes=())
         assert msg.id.name == name
         assert msg.value == Pattern(elements=())
@@ -213,6 +218,7 @@ class TestTermDataclass:
     @given(st.text(min_size=1))
     def test_term_construction_minimal(self, name: str) -> None:
         """Property: Term can be constructed with minimal fields."""
+        event(f"name_len={len(name)}")
         term = Term(
             id=Identifier(name=name),
             value=Pattern(elements=()),
@@ -253,6 +259,7 @@ class TestAttributeDataclass:
     @given(st.text(min_size=1))
     def test_attribute_construction(self, name: str) -> None:
         """Property: Attribute can be constructed with any name."""
+        event(f"name_len={len(name)}")
         attr = Attribute(
             id=Identifier(name=name),
             value=Pattern(elements=()),
@@ -274,6 +281,8 @@ class TestCommentDataclass:
     @given(st.text(), st.sampled_from(CommentType))
     def test_comment_construction(self, content: str, comment_type: CommentType) -> None:
         """Property: Comment can be constructed with any content and type."""
+        event(f"comment_type={comment_type.name}")
+        event(f"content_len={len(content)}")
         comment = Comment(content=content, type=comment_type)
         assert comment.content == content
         assert comment.type is comment_type
@@ -303,6 +312,7 @@ class TestJunkDataclass:
     @given(st.text())
     def test_junk_construction_minimal(self, content: str) -> None:
         """Property: Junk can be constructed with content only."""
+        event(f"content_len={len(content)}")
         junk = Junk(content=content)
         assert junk.content == content
         assert junk.annotations == ()
@@ -365,6 +375,7 @@ class TestTextElementDataclass:
     @given(st.text())
     def test_text_element_construction(self, value: str) -> None:
         """Property: TextElement can be constructed with any text."""
+        event(f"value_len={len(value)}")
         elem = TextElement(value=value)
         assert elem.value == value
 
@@ -468,6 +479,7 @@ class TestVariantDataclass:
     @given(st.booleans())
     def test_variant_construction(self, default: bool) -> None:
         """Property: Variant default field accepts any boolean."""
+        event(f"default={default}")
         variant = Variant(
             key=Identifier(name="test"),
             value=Pattern(elements=()),
@@ -489,6 +501,7 @@ class TestStringLiteralDataclass:
     @given(st.text())
     def test_string_literal_construction(self, value: str) -> None:
         """Property: StringLiteral can be constructed with any string."""
+        event(f"value_len={len(value)}")
         lit = StringLiteral(value=value)
         assert lit.value == value
 
@@ -506,6 +519,7 @@ class TestNumberLiteralDataclass:
     @given(st.integers())
     def test_number_literal_int_construction(self, value: int) -> None:
         """Property: NumberLiteral accepts integer values."""
+        event(f"value_sign={'negative' if value < 0 else 'non_negative'}")
         raw = str(value)
         lit = NumberLiteral(value=value, raw=raw)
         assert lit.value == value
@@ -514,6 +528,7 @@ class TestNumberLiteralDataclass:
     @given(st.decimals(allow_nan=False, allow_infinity=False))
     def test_number_literal_decimal_construction(self, value: Decimal) -> None:
         """Property: NumberLiteral accepts Decimal values."""
+        event(f"decimal_sign={'negative' if value < 0 else 'non_negative'}")
         raw = format(value, "f")
         lit = NumberLiteral(value=value, raw=raw)
         assert lit.value == value
@@ -583,6 +598,7 @@ class TestVariableReferenceDataclass:
     @given(st.text(min_size=1))
     def test_variable_reference_construction(self, name: str) -> None:
         """Property: VariableReference can be constructed with any identifier."""
+        event(f"name_len={len(name)}")
         ref = VariableReference(id=Identifier(name=name))
         assert ref.id.name == name
 
@@ -610,6 +626,7 @@ class TestMessageReferenceDataclass:
     @given(st.text(min_size=1))
     def test_message_reference_without_attribute(self, name: str) -> None:
         """Property: MessageReference can be constructed without attribute."""
+        event(f"name_len={len(name)}")
         ref = MessageReference(id=Identifier(name=name))
         assert ref.id.name == name
         assert ref.attribute is None
@@ -648,6 +665,7 @@ class TestTermReferenceDataclass:
     @given(st.text(min_size=1))
     def test_term_reference_minimal(self, name: str) -> None:
         """Property: TermReference can be constructed with minimal fields."""
+        event(f"name_len={len(name)}")
         ref = TermReference(id=Identifier(name=name))
         assert ref.id.name == name
         assert ref.attribute is None
@@ -689,6 +707,7 @@ class TestFunctionReferenceDataclass:
     @given(st.text(min_size=1))
     def test_function_reference_construction(self, name: str) -> None:
         """Property: FunctionReference can be constructed with any function name."""
+        event(f"name_len={len(name)}")
         args = CallArguments(positional=(), named=())
         ref = FunctionReference(id=Identifier(name=name), arguments=args)
         assert ref.id.name == name
@@ -757,6 +776,8 @@ class TestNamedArgumentDataclass:
     @given(st.text(min_size=1), st.text())
     def test_named_argument_construction(self, name: str, value: str) -> None:
         """Property: NamedArgument can be constructed with any name and value."""
+        event(f"name_len={len(name)}")
+        event(f"value_len={len(value)}")
         arg = NamedArgument(
             name=Identifier(name=name),
             value=StringLiteral(value=value),

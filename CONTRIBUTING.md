@@ -36,15 +36,14 @@ To ensure data integrity and zero "environment stomping," the project is strictl
 | Environment | Purpose | Managed By |
 |-------------|---------|------------|
 | `.venv` (Root) | **IDE Sanctuary** - Autocomplete, LSP, manual runs. | You (`uv sync`) |
-| `.venv-3.13` | **Validation Silo** - Clean-room lint/test baseline. | `scripts/test.sh` |
-| `.venv-3.14` | **Validation Silo** - Python 3.14 compatibility checks. | `scripts/lint.sh` |
-| `.venv-fuzzing` | **Specialized Toolchain** - Native Atheris/LLVM builds. | `scripts/check-atheris.sh` |
+| `.venv-3.14` | **Validation Silo** - Clean-room lint/test baseline (Python 3.14, declared minimum). | `scripts/lint.sh`, `scripts/test.sh` |
+| `.venv-atheris` | **Atheris Fuzzing** - Python 3.13 venv; INACTIVE until Atheris supports Python 3.14+. | `scripts/fuzz_atheris.sh --setup` |
 
 ---
 
 ## Automated Scripts (The Pivot)
 
-All validation scripts are **self-isolating**. They automatically "pivot" into the correct silo, ensuring that testing Python 3.14 never breaks your Python 3.13 environment or your specialized Atheris build.
+All validation scripts are **self-isolating**. They automatically "pivot" into `.venv-3.14`, ensuring a clean, reproducible baseline independent of your IDE venv or Atheris toolchain.
 
 | Script | Purpose | Preferred Command |
 |--------|---------|-------------------|
@@ -61,26 +60,25 @@ All validation scripts are **self-isolating**. They automatically "pivot" into t
 
 ## Multi-Version Development
 
-FTLLexEngine guarantees performance and stability on both Python 3.13 and 3.14. 
+Python 3.14 is the declared minimum. Python 3.15 is the forward-compatibility target (N+1 policy).
 
 ### The Master Control: `PY_VERSION`
 
-The `PY_VERSION` environment variable is the master control for environment selection. It directs both tests and linters to the correct silo.
+The `PY_VERSION` environment variable selects the target Python version. The default is 3.14.
 
 | Task | Command | Target Silo |
 |------|---------|-------------|
-| **Lint (3.13 default)** | `./scripts/lint.sh` | `.venv-3.13` |
-| **Lint (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/lint.sh` | `.venv-3.14` |
-| **Test (3.13 default)** | `./scripts/test.sh` | `.venv-3.13` |
-| **Test (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
-| **Benchmark (3.13 default)** | `./scripts/benchmark.sh` | `.venv-3.13` |
-| **Benchmark (3.14 explicit)** | `PY_VERSION=3.14 ./scripts/benchmark.sh` | `.venv-3.14` |
-| **Full 3.14 Verification** | `PY_VERSION=3.14 ./scripts/lint.sh && PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
+| **Lint (default)** | `./scripts/lint.sh` | `.venv-3.14` |
+| **Lint (3.15 forward-compat)** | `PY_VERSION=3.15 ./scripts/lint.sh` | `.venv-3.15` |
+| **Test (default)** | `./scripts/test.sh` | `.venv-3.14` |
+| **Test (3.15 forward-compat)** | `PY_VERSION=3.15 ./scripts/test.sh` | `.venv-3.15` |
+| **Benchmark (default)** | `./scripts/benchmark.sh` | `.venv-3.14` |
+| **Benchmark (3.15 forward-compat)** | `PY_VERSION=3.15 ./scripts/benchmark.sh` | `.venv-3.15` |
 
 ### Why this works
-- **Zero Stomping**: Running 3.14 checks will **never** wipe your 3.13 environment.
-- **Instant Switching**: Switching between 3.13 and 3.14 is now instant (no `uv sync` overhead).
-- **Parallel Testing**: You can run 3.13 tests in one terminal and 3.14 tests in another simultaneously.
+- **Zero Stomping**: Running 3.15 checks will **never** wipe your 3.14 environment.
+- **Instant Switching**: Switching between 3.14 and 3.15 is instant (no `uv sync` overhead).
+- **Parallel Testing**: You can run 3.14 tests in one terminal and 3.15 tests in another simultaneously.
 
 ---
 
@@ -128,15 +126,15 @@ If you see `HYPOTHESIS DETECTED A LOGIC FLAW`, an edge case has been found.
 Before submitting a PR, ensure both versions pass verification:
 
 ```bash
-# Verify Baseline
+# Verify Baseline (Python 3.14)
 ./scripts/lint.sh && ./scripts/test.sh
 
-# Verify Tomorrow (Python 3.14)
-PY_VERSION=3.14 ./scripts/lint.sh && PY_VERSION=3.14 ./scripts/test.sh
+# Verify Tomorrow (Python 3.15 forward-compat)
+PY_VERSION=3.15 ./scripts/lint.sh && PY_VERSION=3.15 ./scripts/test.sh
 ```
 
 ### CI Requirements
-- Parallel matrix testing on 3.13 and 3.14.
+- Parallel matrix testing on 3.14 and 3.15.
 - Coverage >= 95.00%.
 - Strict type checking (mypy) on all targets.
 - Successful documentation validation (`scripts/validate_docs.py`).

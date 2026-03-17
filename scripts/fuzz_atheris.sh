@@ -44,7 +44,8 @@
 #
 # ENVIRONMENT STRICTNESS:
 # This script FORCES the use of '.venv-atheris' by setting UV_PROJECT_ENVIRONMENT.
-# It manages its own Python 3.13 dependencies separate from the main project.
+# It pins Python 3.13 explicitly (--python 3.13) because Atheris requires Python <= 3.13,
+# independent of the project's .python-version (currently 3.14).
 
 set -euo pipefail
 
@@ -62,8 +63,12 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# FORCE ISOLATED ENVIRONMENT
-export UV_PROJECT_ENVIRONMENT=".venv-atheris"
+# Atheris venv: managed independently of uv's project system.
+# Atheris requires Python <= 3.13; the project baseline is Python 3.14.
+# UV_PROJECT_ENVIRONMENT must NOT be set — it would cause uv to recreate the
+# venv with Python 3.14 (matching requires-python), which breaks Atheris.
+ATHERIS_VENV="${PROJECT_ROOT}/.venv-atheris"
+ATHERIS_PYTHON="${ATHERIS_VENV}/bin/python"
 # Unset VIRTUAL_ENV to prevent uv from confusing it with an active shell venv
 unset VIRTUAL_ENV
 
@@ -152,17 +157,69 @@ discover_plugins() {
 discover_plugins
 
 # =============================================================================
+# Atheris Venv Bootstrap
+# =============================================================================
+
+_find_python313() {
+    # Prefer pyenv (most reliable on macOS dev machines)
+    if command -v pyenv &>/dev/null; then
+        local pyenv_root resolved
+        pyenv_root=$(pyenv root 2>/dev/null)
+        resolved=$(pyenv latest 3.13 2>/dev/null || echo "")
+        if [[ -n "$resolved" ]] && [[ -f "${pyenv_root}/versions/${resolved}/bin/python3" ]]; then
+            echo "${pyenv_root}/versions/${resolved}/bin/python3"
+            return 0
+        fi
+    fi
+    # Fall back to system python3.13
+    if command -v python3.13 &>/dev/null; then
+        echo "python3.13"
+        return 0
+    fi
+    return 1
+}
+
+ensure_atheris_venv() {
+    # If venv exists and is already Python 3.13, nothing to do.
+    if [[ -f "$ATHERIS_PYTHON" ]]; then
+        local venv_mm
+        venv_mm=$("$ATHERIS_PYTHON" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        if [[ "$venv_mm" == "3.13" ]]; then
+            return 0
+        fi
+        echo -e "${YELLOW}[WARN] .venv-atheris has Python $venv_mm (need 3.13). Recreating...${NC}"
+        rm -rf "$ATHERIS_VENV"
+    fi
+
+    local python313
+    if ! python313=$(_find_python313); then
+        log_error "Python 3.13 not found. Install with: pyenv install 3.13"
+        exit 1
+    fi
+
+    echo -e "${BOLD}Creating .venv-atheris with Python 3.13...${NC}"
+    "$python313" -m venv "$ATHERIS_VENV"
+    echo "Installing atheris + psutil..."
+    "$ATHERIS_PYTHON" -m pip install --quiet "atheris>=3.0.0" "psutil>=7.0.0"
+    echo "Installing ftllexengine[babel]..."
+    # --ignore-requires-python: project baseline is 3.14 but atheris requires 3.13;
+    # the library code is compatible — only the fuzzer infrastructure is version-gated.
+    "$ATHERIS_PYTHON" -m pip install --quiet --ignore-requires-python -e "${PROJECT_ROOT}[babel]"
+    echo -e "${GREEN}[OK] .venv-atheris ready (Python 3.13 + Atheris).${NC}"
+}
+
+# =============================================================================
 # Pre-Flight Diagnostics & "Binary Surgery" (macOS Fix)
 # =============================================================================
 
 # This function ensures Atheris is installed, linked correctly, and running
 # on the correct Python version. It auto-heals macOS dynamic linking issues.
 run_diagnostics() {
+    ensure_atheris_venv
+
     if [[ $QUIET -eq 1 ]]; then
         # Minimal diagnostics in quiet mode
-        local python_bin
-        python_bin=$(uv run --group atheris python -c "import sys; print(sys.executable)" 2>/dev/null)
-        if ! "$python_bin" -c "import atheris.core_with_libfuzzer" 2>/dev/null; then
+        if ! "$ATHERIS_PYTHON" -c "import atheris.core_with_libfuzzer" 2>/dev/null; then
             log_error "Atheris is not properly installed. Run without --quiet for diagnostics."
             exit 1
         fi
@@ -175,8 +232,7 @@ run_diagnostics() {
     echo -e "${BOLD}============================================================${NC}\n"
 
     # 1. Check Python Version (Must be < 3.14)
-    local python_bin
-    python_bin=$(uv run --group atheris python -c "import sys; print(sys.executable)" 2>/dev/null)
+    local python_bin="$ATHERIS_PYTHON"
     local python_version
     python_version=$("$python_bin" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
 
@@ -208,6 +264,12 @@ run_diagnostics() {
             exit 1
         fi
 
+        # Target-specific: interpreter_pool requires concurrent.interpreters (Python 3.13
+        # with --with-experimental-isolated-subinterpreters compiled in).
+        if [[ "${TARGET:-}" == "interpreter_pool" ]]; then
+            check_concurrent_interpreters "$python_bin"
+        fi
+
         echo -e "\n${BOLD}============================================================${NC}"
         echo -e "${GREEN}[OK]${NC} Atheris is ready."
         echo -e "${BOLD}============================================================${NC}\n"
@@ -234,7 +296,7 @@ run_diagnostics() {
         fi
     else
         log_error "Atheris setup is broken and this is not macOS (cannot auto-heal)."
-        echo "Try: uv cache clean atheris && uv sync --group atheris --reinstall"
+        echo "Try: rm -rf .venv-atheris && ./scripts/fuzz_atheris.sh --setup"
         exit 1
     fi
 }
@@ -287,9 +349,48 @@ heal_macos_atheris() {
     fi
 }
 
+
+check_concurrent_interpreters() {
+    local python_bin="$1"
+
+    echo -n "concurrent.interpreters... "
+    if "$python_bin" -c "import concurrent.interpreters" 2>/dev/null; then
+        echo -e "${GREEN}OK${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}MISSING${NC}"
+    # concurrent.interpreters (PEP 734) shipped in Python 3.14. It is not
+    # available in Python 3.13 under any build configuration — there is no
+    # configure flag that adds it. Atheris requires Python <= 3.13. This
+    # fuzzer is therefore blocked until Atheris gains Python 3.14 support.
+    # No heal is possible; report the constraint and exit cleanly.
+    echo -e "${YELLOW}[INFO] concurrent.interpreters requires Python 3.14 (PEP 734).${NC}"
+    echo -e "       Atheris requires Python <= 3.13. These constraints are mutually exclusive."
+    echo -e "       fuzz_interpreter_pool cannot run until Atheris supports Python 3.14."
+    exit 3
+}
+
 # =============================================================================
 # Subroutines
 # =============================================================================
+
+run_setup() {
+    # Explicit environment setup/heal. Runs full diagnostics including any
+    # target-specific checks (e.g. concurrent.interpreters for interpreter_pool).
+    # Heals automatically on macOS; prints manual instructions on other platforms.
+    echo -e "${BOLD}Environment Setup / Heal${NC}"
+    if [[ -n "${TARGET:-}" ]]; then
+        echo "Target: $TARGET (target-specific checks enabled)"
+    else
+        echo "Target: (none) -- pass a target name for target-specific checks"
+        echo "  Example: ./scripts/fuzz_atheris.sh --setup interpreter_pool"
+    fi
+    echo ""
+    run_diagnostics
+    echo -e "${GREEN}[OK]${NC} Environment is ready."
+}
+
 
 show_help() {
     cat << EOF
@@ -307,6 +408,11 @@ EOF
     cat << EOF
 
 COMMANDS:
+    --setup [TARGET]    Check and auto-heal the fuzzing environment. Runs all
+                        diagnostics including target-specific checks (e.g.
+                        concurrent.interpreters for interpreter_pool). Heals
+                        automatically on macOS; prints manual instructions
+                        on other platforms. No fuzzing run is started.
     --list              List all crashes and finding artifacts
     --corpus            Run corpus health check (fuzz_atheris_corpus_health.py)
     --minimize TARGET FILE   Minimize a crash input using the specified target
@@ -322,9 +428,26 @@ OPTIONS:
     --dry-run           Show what would run without executing
     --help              Show this help
 
+AUTO-HEAL:
+    The script automatically checks and repairs the environment before each
+    fuzzing run. On macOS, one issue is healed automatically:
+
+    1. Atheris ABI mismatch (LLVM version): Atheris is rebuilt from source
+       using the system LLVM (brew install llvm required).
+
+    NOT healable: interpreter_pool requires concurrent.interpreters (Python
+    3.14, PEP 734). Atheris requires Python <= 3.13. These are mutually
+    exclusive until Atheris gains Python 3.14 support. The check reports
+    this and exits cleanly (exit code 3) — no heal is attempted.
+
+    To trigger heals without starting a fuzz run:
+        ./scripts/fuzz_atheris.sh --setup
+        ./scripts/fuzz_atheris.sh --setup interpreter_pool
+
 EXAMPLES:
     ./scripts/fuzz_atheris.sh currency --time 60
     ./scripts/fuzz_atheris.sh stability --workers 8
+    ./scripts/fuzz_atheris.sh --setup interpreter_pool
     ./scripts/fuzz_atheris.sh --minimize currency .fuzz_atheris_corpus/crash_abc123
     ./scripts/fuzz_atheris.sh --replay structured
     ./scripts/fuzz_atheris.sh --replay structured .fuzz_atheris_corpus/structured/findings/
@@ -341,7 +464,7 @@ run_list() {
     fi
 
     # Use Python for robust JSON parsing and listing
-    uv run python - "$corpus_dir" << 'EOF'
+    "$ATHERIS_PYTHON" - "$corpus_dir" << 'EOF'
 import sys
 import os
 import json
@@ -414,7 +537,7 @@ run_corpus_health() {
         exit 1
     fi
     echo -e "${BOLD}Checking Corpus Health...${NC}"
-    uv run --group atheris python "$health_script"
+    "$ATHERIS_PYTHON" "$health_script"
 }
 
 parse_and_display_report() {
@@ -430,7 +553,7 @@ parse_and_display_report() {
     fi
 
     # Use Python for robust JSON parsing and display
-    uv run python - "$report_file" << 'EOF'
+    "$ATHERIS_PYTHON" - "$report_file" << 'EOF'
 import sys
 import json
 import os
@@ -601,7 +724,7 @@ run_fuzz_target() {
 
     # Run fuzzer (report will be written to .fuzz_atheris_corpus/fuzz_<target>_report.json)
     local exit_code=0
-    uv run --group atheris python "$target_script" "${fuzz_args[@]}" || exit_code=$?
+    "$ATHERIS_PYTHON" "$target_script" "${fuzz_args[@]}" || exit_code=$?
 
     # Parse and display report from file
     local report_exit=0
@@ -614,7 +737,7 @@ run_fuzz_target() {
         if [[ -d "$findings_dir" ]] && [[ -f "$replay_script" ]]; then
             echo ""
             echo -e "${BOLD}Auto-replaying findings without Atheris instrumentation...${NC}"
-            uv run python "$replay_script" "$findings_dir" || true
+            "$ATHERIS_PYTHON" "$replay_script" "$findings_dir" || true
         fi
 
         log_error "Fuzzer detected API contract violations"
@@ -660,7 +783,7 @@ run_replay() {
     echo ""
 
     # Run replay in the main project venv (no Atheris instrumentation)
-    uv run python "$replay_script" "$findings_dir"
+    "$ATHERIS_PYTHON" "$replay_script" "$findings_dir"
 }
 
 run_minimize() {
@@ -696,7 +819,7 @@ run_minimize() {
     local minimized="${crash_file}.minimized"
 
     # Run Atheris with -minimize_crash=1 using the CORRECT target
-    uv run --group atheris python "$target_script" \
+    "$ATHERIS_PYTHON" "$target_script" \
         -minimize_crash=1 \
         -exact_artifact_path="$minimized" \
         "$crash_file"
@@ -715,7 +838,7 @@ run_minimize() {
         echo -e "${BOLD}============================================================${NC}"
 
         echo -e "\n${YELLOW}Next Steps:${NC}"
-        echo "  1. Reproduce: uv run --group atheris python $target_script $minimized"
+        echo "  1. Reproduce: $ATHERIS_PYTHON $target_script $minimized"
         echo "  2. Debug: xxd $minimized | head -20"
         echo "  3. Create regression test with minimized input"
     else
@@ -742,6 +865,15 @@ REPLAY_DIR=""
 # Strict Argument Parser
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --setup)
+            MODE="setup"
+            shift
+            # Optional TARGET argument (not prefixed with --)
+            if [[ $# -gt 0 ]] && [[ ! "$1" == --* ]]; then
+                TARGET="$1"
+                shift
+            fi
+            ;;
         --list|--corpus)
             if [[ "$MODE" != "fuzz" && "$MODE" != "${1#--}" ]]; then
                 log_error "Conflicting modes selected: $MODE vs ${1#--}"
@@ -873,6 +1005,9 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 case "$MODE" in
+    setup)
+        run_setup
+        ;;
     list)
         run_list
         ;;

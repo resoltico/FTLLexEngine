@@ -11,7 +11,7 @@ RETRIEVAL_HINTS:
 
 Comprehensive examples demonstrating all FTLLexEngine features.
 
-**Requirements**: Python 3.13+
+**Requirements**: Python 3.14+
 
 ## Note on Bidi Isolation Marks
 
@@ -211,7 +211,7 @@ Demonstrates:
 
 **Key Features**:
 - Number/currency parsing via Babel (CLDR-compliant)
-- Date/datetime parsing via Python 3.13 stdlib with Babel CLDR patterns
+- Date/datetime parsing via Python 3.14 stdlib with Babel CLDR patterns
 - Financial precision with Decimal type
 - Form validation patterns
 - Import/export workflows

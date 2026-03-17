@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.154.0"
+version: "0.156.0"
 domain: CHANGELOG
-updated: "2026-03-15"
+updated: "2026-03-16"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,68 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.156.0] - 2026-03-17
+
+### Breaking Changes
+
+- **Python 3.14 minimum baseline** (`requires-python = ">=3.14"`):
+  FTLLexEngine now requires Python 3.14+. Python 3.13 is no longer supported.
+  Rationale: `InterpreterPool` depends on `concurrent.interpreters` (PEP 734), which
+  is stdlib only in Python 3.14+. Raising the baseline aligns the supported runtime
+  with the shipped public API surface rather than carrying a split-version contract.
+  All type stubs, mypy targets, and ruff lint targets updated to `py314`. Callers on
+  Python 3.13 must upgrade before adopting this or any later release.
+
+- **`LocalizationBootConfig` boot API inversion** (`ftllexengine.localization`):
+  - `boot()` now returns `(FluentLocalization, LoadSummary, tuple[MessageVariableValidationResult, ...])`
+    — the evidence-returning form is the PRIMARY API; structured evidence is always available
+  - `boot_with_summary()` is REMOVED; callers must migrate to `boot()`
+  - `boot_simple()` is the new name for the old `boot()` → `FluentLocalization` form (no
+    structured evidence returned)
+  - Rationale: compliance-grade systems need audit evidence by default; returning only
+    `FluentLocalization` was the wrong default for an infrastructure library
+
+### Changed
+
+- **`LedgerInvariantError`** (`ftllexengine.integrity`, `ftllexengine`):
+  `@final` exception for financial domain invariants violated in persisted data; carries
+  `invariant_code: str` (machine-readable) and optional `entity_ref: str | None`; subclasses
+  `DataIntegrityError`; immutable via `__setattr__` override
+
+- **`PersistenceIntegrityError`** (`ftllexengine.integrity`, `ftllexengine`):
+  `@final` exception for storage-layer structural violations (structurally invalid data read
+  from persistence); subclasses `DataIntegrityError`; no additional fields beyond `message`
+  and optional `context`
+
+- **`InterpreterPool`** (`ftllexengine.runtime`, `ftllexengine`):
+  thread-safe bounded pool of reusable `concurrent.interpreters` subinterpreters (PEP 734,
+  Python 3.14+); pre-warms `min_size` interpreters at construction; grows to `max_size` on
+  demand; `acquire()` blocks until an interpreter is available or `acquire_timeout` expires;
+  `ExecutionFailed` (user code raised inside subinterpreter) leaves the interpreter healthy
+  and returns it to the pool; `InterpreterError` triggers replacement; context manager
+  protocol supported on both pool and checked-out interpreter; available only in full-runtime
+  installs (`pip install ftllexengine[babel]`)
+
+- **`LocalizationBootConfig.required_messages`** (`ftllexengine.localization`):
+  optional `frozenset[str] | None` field (default `None`); when set, `boot()` and
+  `boot_simple()` raise `IntegrityCheckFailedError` if any required message ID is absent from
+  all locales in the fallback chain; `IntegrityContext` carries
+  `component="localization.boot"`, `operation="required_messages"`, `key=<first absent ID>`
+
+### Changed
+
+- **`clear_module_caches()`** (`ftllexengine`):
+  gains optional `components: frozenset[str] | None = None` parameter; `None` (the default)
+  clears all caches as before; a frozenset of component names clears only the named caches:
+  `'parsing.currency'`, `'parsing.dates'`, `'locale'`, `'runtime.locale_context'`,
+  `'introspection.message'`, `'introspection.iso'`; unknown component names are silently
+  ignored; an empty frozenset is a no-op
+
+- **`FluentNumber` sign semantics** (`ftllexengine.core.value_types`):
+  docstring clarified — `FluentNumber` is sign-agnostic; negative values are permitted for
+  signed delta amounts, credit/debit display, and localized formatting of losses; callers
+  requiring non-negative amounts must enforce non-negativity at their own domain boundary
 
 ## [0.155.0] - 2026-03-16
 

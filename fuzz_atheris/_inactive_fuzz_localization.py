@@ -38,7 +38,7 @@ Unique coverage (not covered by other fuzzers):
 - LoadSummary aggregation (success, not_found, error, junk)
 - loader-backed source_path and path-validation error plumbing
 
-Patterns (23):
+Patterns (24):
 - single_locale_add_resource: 1 locale, add_resource, format
 - multi_locale_fallback: 2 locales, message only in fallback locale
 - chain_of_3_fallback: 3-locale chain, message in various positions
@@ -61,7 +61,8 @@ Patterns (23):
 - loader_junk_summary: eager load records Junk entries in LoadSummary
 - loader_path_error: invalid resource_id is captured as loader error in summary
 - require_clean_api: boot validation raises or returns based on LoadSummary cleanliness
-- boot_config_api: LocalizationBootConfig strict-mode boot sequence and invariants
+- boot_config_api: LocalizationBootConfig strict-mode boot sequence, boot_simple(), boot()
+  3-tuple primary API, and required_messages enforcement
 
 Metrics:
 - Pattern coverage with weighted round-robin schedule
@@ -322,7 +323,7 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
-    from ftllexengine import CacheConfig, validate_message_variables
+    from ftllexengine import validate_message_variables
     from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
     from ftllexengine.core.locale_utils import normalize_locale, require_locale_code
     from ftllexengine.diagnostics.errors import FrozenFluentError
@@ -339,6 +340,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         LocalizationCacheStats,
     )
     from ftllexengine.localization.loading import FallbackInfo, PathResourceLoader
+    from ftllexengine.runtime.cache_config import CacheConfig
     from ftllexengine.syntax import Message, Term
 
 
@@ -1900,7 +1902,7 @@ def _check_boot_config_validation(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _check_boot_config_boot_success(fdp: atheris.FuzzedDataProvider) -> None:
-    """boot() returns FluentLocalization for a valid in-memory FTL resource."""
+    """boot_simple() returns FluentLocalization for a valid in-memory FTL resource."""
     locale = fdp.PickValueInList(["en", "de", "lv"])
     ftl = f"greeting = Hello {{ $name }}\nmsg{fdp.ConsumeIntInRange(0, 9)} = Value\n"
     loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
@@ -1910,9 +1912,9 @@ def _check_boot_config_boot_success(fdp: atheris.FuzzedDataProvider) -> None:
             resource_ids=("ui.ftl",),
             loader=loader,
         )
-        l10n = cfg.boot()
+        l10n = cfg.boot_simple()
         if not isinstance(l10n, FluentLocalization):
-            msg = f"boot() returned {type(l10n).__name__}, expected FluentLocalization"
+            msg = f"boot_simple() returned {type(l10n).__name__}, expected FluentLocalization"
             raise LocalizationFuzzError(msg)
     except IntegrityCheckFailedError:
         pass  # strict syntax errors in generated FTL are acceptable
@@ -1921,7 +1923,7 @@ def _check_boot_config_boot_success(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _check_boot_config_boot_with_summary(fdp: atheris.FuzzedDataProvider) -> None:
-    """boot_with_summary() returns a 3-tuple with correct types and clean LoadSummary."""
+    """boot() returns a 3-tuple with correct types and clean LoadSummary."""
     locale = fdp.PickValueInList(["en", "de"])
     ftl = "msg = Value\n"
     loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
@@ -1931,16 +1933,16 @@ def _check_boot_config_boot_with_summary(fdp: atheris.FuzzedDataProvider) -> Non
             resource_ids=("ui.ftl",),
             loader=loader,
         )
-        result = cfg.boot_with_summary()
+        result = cfg.boot()
         if not isinstance(result, tuple) or len(result) != 3:
-            msg = f"boot_with_summary() returned wrong structure: {result!r}"
+            msg = f"boot() returned wrong structure: {result!r}"
             raise LocalizationFuzzError(msg)
         l10n, summary, schema_results = result
         if not isinstance(l10n, FluentLocalization):
-            msg = f"boot_with_summary()[0] is {type(l10n).__name__}, not FluentLocalization"
+            msg = f"boot()[0] is {type(l10n).__name__}, not FluentLocalization"
             raise LocalizationFuzzError(msg)
         if not isinstance(schema_results, tuple):
-            msg = f"boot_with_summary()[2] is {type(schema_results).__name__}, not tuple"
+            msg = f"boot()[2] is {type(schema_results).__name__}, not tuple"
             raise LocalizationFuzzError(msg)
         if summary.errors != 0:
             msg = f"LoadSummary.errors={summary.errors} for clean resource"
@@ -1973,6 +1975,53 @@ def _check_boot_config_boot_failure(fdp: atheris.FuzzedDataProvider) -> None:
         pass
 
 
+def _check_boot_config_required_messages_absent(fdp: atheris.FuzzedDataProvider) -> None:
+    """required_messages raises IntegrityCheckFailedError when an ID is absent."""
+    locale = fdp.PickValueInList(["en", "de"])
+    # Load a resource that has "greeting" but NOT "farewell"
+    ftl = "greeting = Hello\n"
+    loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
+    try:
+        cfg = LocalizationBootConfig(
+            locales=(locale,),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+            required_messages=frozenset({"greeting", "farewell"}),
+        )
+        cfg.boot()
+        msg = "boot() did not raise IntegrityCheckFailedError for absent required message"
+        raise LocalizationFuzzError(msg)
+    except IntegrityCheckFailedError:
+        pass  # expected: "farewell" is absent
+    except _ALLOWED_EXCEPTIONS:
+        pass
+
+
+def _check_boot_config_required_messages_present(fdp: atheris.FuzzedDataProvider) -> None:
+    """required_messages succeeds when all IDs resolve in at least one locale."""
+    locale = fdp.PickValueInList(["en", "de"])
+    ftl = "greeting = Hello\nfarewell = Goodbye\n"
+    loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
+    try:
+        cfg = LocalizationBootConfig(
+            locales=(locale,),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+            required_messages=frozenset({"greeting", "farewell"}),
+        )
+        l10n, summary, _ = cfg.boot()
+        if not isinstance(l10n, FluentLocalization):
+            msg = f"boot()[0] is {type(l10n).__name__}, expected FluentLocalization"
+            raise LocalizationFuzzError(msg)
+        if summary.errors != 0:
+            msg = f"LoadSummary.errors={summary.errors} for clean resource"
+            raise LocalizationFuzzError(msg)
+    except IntegrityCheckFailedError:
+        pass  # generated FTL may have syntax issues
+    except _ALLOWED_EXCEPTIONS:
+        pass
+
+
 def _pattern_boot_config_api(
     fdp: atheris.FuzzedDataProvider,
 ) -> None:
@@ -1983,6 +2032,8 @@ def _pattern_boot_config_api(
         _check_boot_config_boot_success,
         _check_boot_config_boot_with_summary,
         _check_boot_config_boot_failure,
+        _check_boot_config_required_messages_absent,
+        _check_boot_config_required_messages_present,
     )
     handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
     handler(fdp)

@@ -30,7 +30,6 @@ class TestParameterNameConversion:
     """Properties about snake_case ↔ camelCase conversion."""
 
     @given(snake_name=snake_case_identifiers())
-    @settings(max_examples=500)
     def test_snake_to_camel_conversion(self, snake_name: str) -> None:
         """Property: snake → camel produces valid camelCase."""
         registry = FunctionRegistry()
@@ -55,7 +54,6 @@ class TestParameterNameConversion:
             max_size=5,
         )
     )
-    @settings(max_examples=300)
     def test_multipart_name_conversion_preserves_part_count(
         self, parts: list[str]
     ) -> None:
@@ -76,7 +74,6 @@ class TestParameterNameConversion:
             alphabet=st.characters(whitelist_categories=["Ll"]), min_size=1, max_size=20
         )
     )
-    @settings(max_examples=200)
     def test_single_word_unchanged_by_conversion(self, word: str) -> None:
         """Property: Single words (no underscores) unchanged by camelCase conversion."""
         registry = FunctionRegistry()
@@ -96,7 +93,6 @@ class TestFunctionRegistration:
         ),
         return_value=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=300)
     def test_registered_function_callable(self, ftl_name: str, return_value: str) -> None:
         """Property: Registered functions can be called."""
         registry = FunctionRegistry()
@@ -116,7 +112,6 @@ class TestFunctionRegistration:
         python_name=snake_case_identifiers(),
         return_value=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=300)
     def test_auto_ftl_name_uppercase(self, python_name: str, return_value: str) -> None:
         """Property: Auto-generated FTL names are UPPERCASE."""
         registry = FunctionRegistry()
@@ -137,7 +132,6 @@ class TestFunctionRegistration:
     @given(
         param_count=st.integers(min_value=1, max_value=5),
     )
-    @settings(max_examples=200)
     def test_function_with_multiple_parameters(self, param_count: int) -> None:
         """Property: Functions with multiple parameters work correctly."""
         registry = FunctionRegistry()
@@ -161,7 +155,6 @@ class TestParameterMappingGeneration:
     @given(
         param_names=st.lists(snake_case_identifiers(), min_size=1, max_size=5, unique=True)
     )
-    @settings(max_examples=200)
     def test_auto_mapping_covers_all_parameters(self, param_names: list[str]) -> None:
         """Property: Auto-generated mappings cover all function parameters."""
         registry = FunctionRegistry()
@@ -178,7 +171,6 @@ class TestFunctionCalling:
     @given(
         positional_count=st.integers(min_value=1, max_value=5),
     )
-    @settings(max_examples=200)
     def test_positional_arguments_preserved(self, positional_count: int) -> None:
         """Property: Positional arguments are passed through unchanged."""
         registry = FunctionRegistry()
@@ -209,7 +201,6 @@ class TestErrorHandling:
             alphabet=st.characters(whitelist_categories=["Lu"]), min_size=5, max_size=15
         )
     )
-    @settings(max_examples=200)
     def test_calling_unregistered_function_raises_error(
         self, nonexistent_name: str
     ) -> None:
@@ -227,7 +218,6 @@ class TestErrorHandling:
         ),
         error_message=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=200)
     def test_function_exception_wrapped(self, ftl_name: str, error_message: str) -> None:
         """Property: Exceptions from functions are wrapped in FrozenFluentError."""
         registry = FunctionRegistry()
@@ -252,7 +242,6 @@ class TestRegistryQueries:
         ),
         python_name=snake_case_identifiers(),
     )
-    @settings(max_examples=200)
     def test_get_python_name_consistency(self, ftl_name: str, python_name: str) -> None:
         """Property: get_python_name returns registered Python function name."""
         registry = FunctionRegistry()
@@ -271,7 +260,6 @@ class TestRegistryQueries:
     @given(
         func_count=st.integers(min_value=1, max_value=10),
     )
-    @settings(max_examples=200)
     def test_has_function_for_all_registered(self, func_count: int) -> None:
         """Property: has_function returns True for all registered functions."""
         registry = FunctionRegistry()
@@ -296,7 +284,6 @@ class TestConversionEdgeCases:
     @given(
         empty_parts=st.integers(min_value=1, max_value=3),
     )
-    @settings(max_examples=100)
     def test_multiple_underscores_handling(self, empty_parts: int) -> None:
         """Property: Multiple consecutive underscores handled gracefully."""
         registry = FunctionRegistry()
@@ -315,7 +302,6 @@ class TestMetamorphicProperties:
         param_names=st.lists(snake_case_identifiers(), min_size=2, max_size=5, unique=True),
         param_values=st.lists(st.integers(), min_size=2, max_size=5),
     )
-    @settings(max_examples=200)
     def test_named_args_order_independence(
         self, param_names: list[str], param_values: list[int]
     ) -> None:
@@ -361,7 +347,6 @@ class TestFluentFunctionDecoratorProperties:
     @given(
         return_value=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=200)
     def test_decorator_preserves_function_behavior(
         self, return_value: str
     ) -> None:
@@ -377,7 +362,6 @@ class TestFluentFunctionDecoratorProperties:
     @given(
         return_value=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=200)
     def test_decorator_with_inject_locale(
         self, return_value: str
     ) -> None:
@@ -395,7 +379,6 @@ class TestFluentFunctionDecoratorProperties:
     @given(
         return_value=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=200)
     def test_decorator_without_inject_locale(
         self, return_value: str
     ) -> None:
@@ -417,7 +400,6 @@ class TestFreezeCopyMetamorphicProperties:
     @given(
         func_count=st.integers(min_value=1, max_value=10),
     )
-    @settings(max_examples=200)
     def test_freeze_prevents_registration(
         self, func_count: int
     ) -> None:
@@ -442,7 +424,6 @@ class TestFreezeCopyMetamorphicProperties:
     @given(
         func_count=st.integers(min_value=1, max_value=10),
     )
-    @settings(max_examples=200)
     def test_copy_of_frozen_is_mutable(
         self, func_count: int
     ) -> None:
@@ -471,7 +452,6 @@ class TestFreezeCopyMetamorphicProperties:
     @given(
         func_count=st.integers(min_value=0, max_value=10),
     )
-    @settings(max_examples=200)
     def test_copy_preserves_all_functions(
         self, func_count: int
     ) -> None:
@@ -502,7 +482,6 @@ class TestFluentNumberProperties:
         precision=st.integers(min_value=0, max_value=6)
         | st.none(),
     )
-    @settings(max_examples=300)
     def test_fluent_number_str_returns_formatted(
         self,
         value: int,
@@ -525,7 +504,6 @@ class TestFluentNumberProperties:
         precision=st.integers(min_value=0, max_value=6)
         | st.none(),
     )
-    @settings(max_examples=200)
     def test_fluent_number_immutable(
         self,
         value: int,
@@ -553,7 +531,7 @@ class TestFluentNumberStrategyProperties:
     """
 
     @given(fn=fluent_numbers())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_fluent_number_value_type(self, fn: FluentNumber) -> None:
         """Property: fluent_numbers() produces int or Decimal values."""
         is_decimal = isinstance(fn.value, Decimal)
@@ -563,7 +541,7 @@ class TestFluentNumberStrategyProperties:
         assert len(fn.formatted) > 0
 
     @given(fn=fluent_numbers())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_fluent_number_precision_optional(self, fn: FluentNumber) -> None:
         """Property: fluent_numbers() generates both None and int precision."""
         has_precision = fn.precision is not None
@@ -573,7 +551,7 @@ class TestFluentNumberStrategyProperties:
             assert fn.precision >= 0
 
     @given(fn=fluent_numbers())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_fluent_number_str_is_formatted(self, fn: FluentNumber) -> None:
         """Property: str(FluentNumber) returns the formatted string."""
         result = str(fn)

@@ -995,4 +995,4 @@ class TestFileSizeHypothesis:
 
 ---
 
-**Python Requirement**: 3.13+
+**Python Requirement**: 3.14+

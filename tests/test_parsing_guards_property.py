@@ -110,6 +110,7 @@ class TestValidCurrencyGuard:
         self, amount: Decimal, currency: str
     ) -> None:
         """PROPERTY: Valid (Decimal, str) tuple returns True."""
+        event(f"currency={currency}")
         value = (amount, currency)
         assert is_valid_currency(value) is True
 
@@ -117,12 +118,14 @@ class TestValidCurrencyGuard:
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
         """PROPERTY: None returns False."""
+        event("guard_type=currency")
         assert is_valid_currency(value) is False
 
     @given(currency=st.from_regex(r"[A-Z]{3}", fullmatch=True))
     @settings(max_examples=50)
     def test_nan_amount_returns_false(self, currency: str) -> None:
         """PROPERTY: NaN amount returns False."""
+        event(f"currency={currency}")
         value = (Decimal("NaN"), currency)
         assert is_valid_currency(value) is False
 
@@ -130,6 +133,7 @@ class TestValidCurrencyGuard:
     @settings(max_examples=50)
     def test_infinite_amount_returns_false(self, currency: str) -> None:
         """PROPERTY: Infinite amount returns False."""
+        event(f"currency={currency}")
         value = (Decimal("Infinity"), currency)
         assert is_valid_currency(value) is False
 
@@ -150,6 +154,7 @@ class TestValidDateGuard:
     @settings(max_examples=200)
     def test_valid_date_returns_true(self, year: int, month: int, day: int) -> None:
         """PROPERTY: Valid date objects return True."""
+        event(f"year={year}")
         value = date(year, month, day)
         assert is_valid_date(value) is True
 
@@ -157,6 +162,7 @@ class TestValidDateGuard:
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
         """PROPERTY: None returns False."""
+        event("guard_type=date")
         assert is_valid_date(value) is False
 
 
@@ -180,6 +186,8 @@ class TestValidDatetimeGuard:
         self, year: int, month: int, day: int, hour: int, minute: int
     ) -> None:
         """PROPERTY: Valid datetime objects return True."""
+        event(f"year={year}")
+        event(f"hour={hour}")
         value = datetime(year, month, day, hour, minute, tzinfo=UTC)
         assert is_valid_datetime(value) is True
 
@@ -187,6 +195,7 @@ class TestValidDatetimeGuard:
     @settings(max_examples=50)
     def test_none_returns_false(self, value: None) -> None:
         """PROPERTY: None returns False."""
+        event("guard_type=datetime")
         assert is_valid_datetime(value) is False
 
 
@@ -210,6 +219,7 @@ class TestTypeNarrowingIntegration:
     @settings(max_examples=100)
     def test_currency_type_narrowing(self, amount: Decimal, currency: str) -> None:
         """PROPERTY: Type guard correctly narrows currency result type."""
+        event(f"currency={currency}")
         from ftllexengine.parsing import parse_currency
 
         currency_str = f"{currency} {amount}"
@@ -230,6 +240,7 @@ class TestTypeNarrowingIntegration:
     @settings(max_examples=100)
     def test_date_type_narrowing(self, year: int, month: int, day: int) -> None:
         """PROPERTY: Type guard correctly narrows date result type."""
+        event(f"year={year}")
         from ftllexengine.parsing import parse_date
 
         date_str = f"{year:04d}-{month:02d}-{day:02d}"
@@ -252,6 +263,8 @@ class TestTypeNarrowingIntegration:
         self, year: int, month: int, day: int, hour: int, minute: int
     ) -> None:
         """PROPERTY: Type guard correctly narrows datetime result type."""
+        event(f"year={year}")
+        event(f"hour={hour}")
         from ftllexengine.parsing import parse_datetime
 
         datetime_str = f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:00"
@@ -272,6 +285,8 @@ class TestTypeNarrowingIntegration:
     @settings(max_examples=100)
     def test_decimal_type_narrowing(self, value: Decimal) -> None:
         """PROPERTY: Type guard correctly narrows decimal result type."""
+        magnitude = "large" if value >= Decimal(1000) else "small"
+        event(f"magnitude={magnitude}")
         from ftllexengine.parsing import parse_decimal
         from ftllexengine.runtime.functions import number_format
 

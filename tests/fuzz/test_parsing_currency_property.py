@@ -42,7 +42,7 @@ class TestCurrencyAmountStrategy:
     """
 
     @given(amount=currency_amounts())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_currency_amount_positive(self, amount: Decimal) -> None:
         """Property: currency_amounts() generates positive amounts."""
         event(f"outcome=magnitude_positive={amount > 0}")
@@ -50,7 +50,7 @@ class TestCurrencyAmountStrategy:
         assert amount > Decimal(0)
 
     @given(amount=currency_amounts())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_currency_amount_finite(self, amount: Decimal) -> None:
         """Property: currency_amounts() generates finite, non-NaN amounts."""
         event(f"outcome=is_finite={amount.is_finite()}")
@@ -59,7 +59,7 @@ class TestCurrencyAmountStrategy:
         assert not amount.is_infinite()
 
     @given(amount=currency_amounts())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_currency_amount_two_decimal_places(self, amount: Decimal) -> None:
         """Property: currency_amounts() uses exactly 2 decimal places."""
         _sign, _digits, exponent = amount.as_tuple()
@@ -80,7 +80,7 @@ class TestParseCurrencyProperties:
     """
 
     @given(input_data=unambiguous_currency_inputs())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_unambiguous_inputs_return_valid_structure(
         self, input_data: tuple[str, str, str]
     ) -> None:
@@ -100,7 +100,7 @@ class TestParseCurrencyProperties:
             assert len(code) == 3  # ISO 4217: 3-char codes
 
     @given(input_data=iso_code_currency_inputs())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_iso_code_inputs_return_valid_structure(
         self, input_data: tuple[str, str, str]
     ) -> None:
@@ -119,7 +119,7 @@ class TestParseCurrencyProperties:
             assert code == expected_code
 
     @given(input_data=invalid_currency_inputs())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_invalid_inputs_fail_gracefully(
         self, input_data: tuple[str, str]
     ) -> None:
@@ -135,7 +135,7 @@ class TestParseCurrencyProperties:
         assert result is None or len(errors) > 0
 
     @given(input_data=ambiguous_currency_inputs())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_ambiguous_inputs_with_locale_inference(
         self, input_data: tuple[str, str, str, str]
     ) -> None:

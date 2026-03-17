@@ -36,10 +36,10 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.155.0"
+version = "0.156.0"
 description = "Fluent (FTL) i18n infrastructure library: bidirectional parsing, locale-aware numbers/dates/currency, strict-mode boot validation, and Decimal precision"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = "MIT"
 authors = [
     {name = "Ervins Strauhmanis"},
@@ -81,8 +81,8 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Internationalization",
     "Topic :: Software Development :: Localization",
     "Topic :: Text Processing :: Linguistic",
@@ -108,8 +108,6 @@ dev = [
     "mypy>=1.19.1",
     "ruff>=0.15.6",
     "pytest-benchmark>=5.2.3",
-    "pytest-xdist>=3.8.0",
-    "pytest-sugar>=1.1.1",
     "hypofuzz>=25.11.1",
     "psutil>=7.2.2",
     "types-psutil>=7.2.2.20260130",
@@ -212,7 +210,7 @@ exclude_lines = [
 
 # Mypy configuration
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -236,6 +234,19 @@ module = "babel.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# concurrent.interpreters is a C-extension module (PEP 734, Python 3.14+); typeshed stubs
+# are not yet complete. Runtime availability is guaranteed by the Python 3.14+ requirement.
+module = "concurrent.interpreters"
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+# All calls into concurrent.interpreters (PEP 734, Python 3.14+) are untyped at the mypy
+# level because the module is a C-extension without complete typeshed stubs.
+module = "ftllexengine.runtime.interpreter_pool"
+disable_error_code = ["no-untyped-call"]
+
+[[tool.mypy.overrides]]
 module = "atheris"
 ignore_missing_imports = true
 follow_untyped_imports = true
@@ -249,7 +260,7 @@ disable_error_code = ["import-untyped", "attr-defined", "unreachable", "unused-i
 # Ruff configuration
 [tool.ruff]
 line-length = 100
-target-version = "py313"  # Match minimum requires-python version
+target-version = "py314"  # Match minimum requires-python version
 
 [tool.ruff.lint]
 # select = ["ALL"] is the strictest posture: new Ruff rules automatically apply.
@@ -300,7 +311,8 @@ ignore = [
 # PRODUCTION CODE - Architectural patterns only (real bugs fixed separately)
 
 # Package init: Lazy imports for optional Babel dependency + TYPE_CHECKING imports for hints
-"src/ftllexengine/__init__.py" = ["PLC0415", "F401"]
+# C901: clear_module_caches dispatches over 6 named cache components; structural, not accidental
+"src/ftllexengine/__init__.py" = ["PLC0415", "F401", "C901"]
 
 # Visitor pattern: N802 (visit_NodeName methods follow stdlib ast.NodeVisitor convention)
 # RUF022: __all__ organized by category (public/internal) for clarity
@@ -372,7 +384,9 @@ ignore = [
 # S110: try-except-pass is used intentionally to skip non-fatal errors in crash-tolerant fuzzers
 # S311: random used for test data generation, not cryptography
 # PERF401: fuzzer loops are not performance-critical relative to the fuzzing overhead
-"fuzz_atheris/**/*.py" = ["ERA001", "T201", "S101", "S110", "S311", "EXE001", "FBT001", "FBT002", "FBT003", "BLE001", "INP001", "C901", "PLC0415", "SLF001", "TRY301", "TC001", "TC003", "PERF401"]
+# ARG001: sub-handler functions in dispatch-to-sub-handlers pattern must have uniform (fdp) signatures;
+#          some handlers do not consume bytes from fdp but must accept it for the dispatch interface
+"fuzz_atheris/**/*.py" = ["ERA001", "T201", "S101", "S110", "S311", "EXE001", "FBT001", "FBT002", "FBT003", "BLE001", "INP001", "C901", "PLC0415", "SLF001", "TRY301", "TC001", "TC003", "PERF401", "ARG001"]
 
 # SCRIPTS - Developer tooling; same rationale as fuzz_atheris
 # T201: scripts output to terminal by design

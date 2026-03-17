@@ -184,6 +184,7 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
 
 # Create the test class from the state machine
 TestBundleOracle = BundleOracleStateMachine.TestCase
+TestBundleOracle.settings = settings(stateful_step_count=50, deadline=None)
 
 
 class BundleLifecycleStateMachine(RuleBasedStateMachine):
@@ -262,10 +263,4 @@ class BundleLifecycleStateMachine(RuleBasedStateMachine):
 
 
 TestBundleLifecycle = BundleLifecycleStateMachine.TestCase
-
-
-# Use centralized stateful_fuzz profile from conftest.py
-@pytest.fixture(autouse=True)
-def use_stateful_settings() -> None:
-    """Use stateful fuzzing profile for oracle tests."""
-    settings.load_profile("stateful_fuzz")
+TestBundleLifecycle.settings = settings(stateful_step_count=50, deadline=None)

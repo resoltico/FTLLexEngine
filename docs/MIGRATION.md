@@ -12,10 +12,10 @@ route:
 
 **Complete guide for migrating from Mozilla's fluent.runtime to FTLLexEngine**
 
-**Target Audience**: Developers currently using `fluent.runtime` (Mozilla's Python implementation) who want to migrate to FTLLexEngine for Python 3.13+ features, better type safety, and improved performance.
+**Target Audience**: Developers currently using `fluent.runtime` (Mozilla's Python implementation) who want to migrate to FTLLexEngine for Python 3.14+ features, better type safety, and improved performance.
 
-**[IMPORTANT] REQUIREMENT: Python 3.13+**
-FTLLexEngine requires Python 3.13 or later. If your project uses Python 3.12 or earlier, you must upgrade your Python version before migrating.
+**[IMPORTANT] REQUIREMENT: Python 3.14+**
+FTLLexEngine requires Python 3.14 or later. If your project uses Python 3.13 or earlier, you must upgrade your Python version before migrating.
 
 ---
 
@@ -23,7 +23,7 @@ FTLLexEngine requires Python 3.13 or later. If your project uses Python 3.12 or 
 
 ### FTLLexEngine Advantages
 
-1. **Python 3.13+ Modern Features**:
+1. **Python 3.14+ Modern Features**:
    - PEP 695 `type` keyword aliases
    - PEP 742 `TypeIs` type guards
    - Pattern matching for cleaner code
@@ -51,7 +51,7 @@ FTLLexEngine requires Python 3.13 or later. If your project uses Python 3.12 or 
 
 ### When to Stay with fluent.runtime
 
-- Your project requires Python 3.6-3.12 (FTLLexEngine requires 3.13+)
+- Your project requires Python 3.6-3.13 (FTLLexEngine requires 3.14+)
 - You need Mozilla's exact reference implementation behavior
 - Your project is tightly integrated with Firefox/Thunderbird ecosystem
 - Migration effort outweighs benefits for your use case
@@ -60,7 +60,7 @@ FTLLexEngine requires Python 3.13 or later. If your project uses Python 3.12 or 
 
 ## Quick Migration Checklist
 
-- [ ] Verify Python 3.13+ is available
+- [ ] Verify Python 3.14+ is available
 - [ ] Update dependencies in requirements.txt/pyproject.toml
 - [ ] Change import statements
 - [ ] Update FluentBundle constructor (remove transform_func)
@@ -579,7 +579,7 @@ def format_message(bundle: FluentBundle, msg_id: MessageId, args: dict[str, obje
 **Improvements**:
 - [OK] Full type safety with `mypy --strict`
 - [OK] Type aliases for clarity (`MessageId`)
-- [OK] Modern Python 3.13 dict syntax (`dict[str, object]` vs `Dict[str, Any]`)
+- [OK] Modern Python 3.14 dict syntax (`dict[str, object]` vs `Dict[str, Any]`)
 
 ---
 
@@ -713,7 +713,7 @@ from ftllexengine import FrozenFluentError, ErrorCategory
 [WARN] No FluentResource wrapper - direct string to `add_resource()`
 [WARN] Different exception types (but same behavior)
 Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError, ...]`)
-[WARN] Python 3.13+ required (vs 3.6+)
+[WARN] Python 3.14+ required (vs 3.6+)
 
 ### What's New in FTLLexEngine
 
@@ -724,7 +724,7 @@ Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError
 [NEW] `get_message_variables()` for variable discovery
 [NEW] `get_message_ids()` for listing messages
 [NEW] Full `mypy --strict` type safety
-[NEW] Python 3.13 modern features
+[NEW] Python 3.14 modern features
 [NEW] **Bi-directional parsing** (not in fluent.runtime):
   - `parse_decimal()` - locale-aware number parsing (financial-grade Decimal precision)
   - `parse_date()`, `parse_datetime()` - locale-aware date parsing
@@ -737,7 +737,7 @@ Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError
 
 ### Pre-Migration
 
-- [ ] Verify Python 3.13+ available in all environments
+- [ ] Verify Python 3.14+ available in all environments
 - [ ] Review breaking changes section
 - [ ] Identify custom function usage
 - [ ] List all multi-locale fallback logic
@@ -763,7 +763,7 @@ Return immutable error tuples instead of mutable lists (`tuple[FrozenFluentError
 - [ ] Test multi-locale fallback
 - [ ] Test error handling
 - [ ] Update documentation
-- [ ] Update CI/CD to use Python 3.13+
+- [ ] Update CI/CD to use Python 3.14+
 - [ ] Performance testing (should be faster!)
 
 ---

@@ -10,10 +10,10 @@ route:
 
 # Type Hints Guide - FTLLexEngine
 
-**Purpose**: Leverage Python 3.13+ type hints with FTLLexEngine.
+**Purpose**: Leverage Python 3.14+ type hints with FTLLexEngine.
 **Prerequisites**: Basic Python typing knowledge.
 
-FTLLexEngine is built with modern Python 3.13+ features and provides full `mypy --strict` type safety. This guide shows how to leverage type hints for better code quality and IDE support.
+FTLLexEngine is built with modern Python 3.14+ features and provides full `mypy --strict` type safety. This guide shows how to leverage type hints for better code quality and IDE support.
 
 ---
 
@@ -42,14 +42,14 @@ output = format_message(bundle, "hello")
 
 ---
 
-## Python 3.13+ Features in FTLLexEngine
+## Python 3.14+ Features in FTLLexEngine
 
 ### 1. PEP 695: Type Parameter Syntax (`type` keyword)
 
 FTLLexEngine uses the new `type` keyword for type aliases:
 
 ```python
-# FTLLexEngine source code (Python 3.13+)
+# FTLLexEngine source code (Python 3.14+)
 type MessageId = str
 type LocaleCode = str
 type ResourceId = str
@@ -390,7 +390,7 @@ from ftllexengine import FluentBundle
 from ftllexengine.runtime.functions import create_default_registry
 from typing import Literal
 
-# Python 3.13+ with precise types
+# Python 3.14+ with precise types
 def format_currency(
     amount: int | Decimal,
     *,
@@ -666,7 +666,7 @@ For maximum type safety with FTLLexEngine:
 ```ini
 # mypy.ini or pyproject.toml [tool.mypy]
 [mypy]
-python_version = 3.13
+python_version = 3.14
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -790,7 +790,7 @@ if Message.guard(msg):
 
 **FTLLexEngine provides**:
 - Full `mypy --strict` compatibility
-- Python 3.13+ modern type features
+- Python 3.14+ modern type features
 - Type aliases for clarity
 - Type guards for runtime narrowing
 - Complete type annotations
@@ -800,11 +800,11 @@ if Message.guard(msg):
 - Annotate function return types
 - Use type guards for AST manipulation
 - Enable `mypy --strict` in your project
-- Leverage Python 3.13+ features
+- Leverage Python 3.14+ features
 
 ---
 
-**Python Requirement**: 3.13+
+**Python Requirement**: 3.14+
 
 **See Also**:
 - [DOC_00_Index.md](DOC_00_Index.md) - Complete API reference

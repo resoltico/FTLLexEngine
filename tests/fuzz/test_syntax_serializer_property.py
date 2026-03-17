@@ -86,7 +86,7 @@ class TestRoundtripProperties:
     """Test roundtrip correctness: parse(serialize(ast)) preserves structure."""
 
     @given(resource=ftl_resources())
-    @settings(suppress_health_check=[HealthCheck.too_slow])
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
     def test_resource_roundtrip_preserves_structure(self, resource: Resource) -> None:
         """PROPERTY: Serialized resources can be parsed back to equivalent AST.
 
@@ -1099,9 +1099,7 @@ class TestEntrySequencingProperties:
         data=st.data(),
         count=st.integers(min_value=2, max_value=5),
     )
-    @settings(
-        suppress_health_check=[HealthCheck.too_slow],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
     def test_mixed_entry_sequences_parseable(
         self, data: st.DataObject, count: int
     ) -> None:

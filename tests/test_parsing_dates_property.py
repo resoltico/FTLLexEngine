@@ -59,6 +59,7 @@ class TestParseDateHypothesis:
         self, year: int, month: int, day: int, locale: str
     ) -> None:
         """ISO 8601 dates should parse consistently across all locales."""
+        event(f"locale={locale}")
         iso_date = f"{year:04d}-{month:02d}-{day:02d}"
 
         result, errors = parse_date(iso_date, locale)
@@ -85,6 +86,7 @@ class TestParseDateHypothesis:
     @settings(max_examples=100)
     def test_parse_date_invalid_returns_error(self, invalid_date: str) -> None:
         """Invalid dates should return error in tuple; function never raises."""
+        event(f"invalid_date_len={len(invalid_date)}")
         result, errors = parse_date(invalid_date, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -100,6 +102,7 @@ class TestParseDateHypothesis:
     @settings(max_examples=50)
     def test_parse_date_type_error_returns_error(self, value: object) -> None:
         """Non-string types should return error in tuple; function never raises."""
+        event(f"input_type={type(value).__name__}")
         result, errors = parse_date(value, "en_US")  # type: ignore[arg-type]
         assert len(errors) > 0
         assert result is None
@@ -111,6 +114,8 @@ class TestParseDateHypothesis:
     @settings(max_examples=100)
     def test_parse_date_us_format_month_first(self, month: int, day: int) -> None:
         """US format (M/D/YYYY) should parse with month first."""
+        event(f"month={month}")
+        event(f"day={day}")
         # US uses month-first format
         date_str = f"{month}/{day}/25"  # Use 2-digit year for CLDR
 
@@ -130,6 +135,8 @@ class TestParseDateHypothesis:
     @settings(max_examples=100)
     def test_parse_date_european_format_day_first(self, day: int, month: int) -> None:
         """European format (D.M.YYYY) should parse with day first."""
+        event(f"day={day}")
+        event(f"month={month}")
         # European uses day-first format
         date_str = f"{day:02d}.{month:02d}.2025"
 
@@ -152,6 +159,8 @@ class TestParseDateHypothesis:
         self, year: int, month: int, day: int
     ) -> None:
         """Common financial reporting date formats should parse correctly."""
+        event(f"year={year}")
+        event(f"month={month}")
         # Only ISO format is universal (no 4-digit year fallback)
         # Use 2-digit year for locale formats
         year_2d = year % 100  # Convert 2025 -> 25
@@ -179,6 +188,7 @@ class TestParseDateHypothesis:
         self, year: int, month: int, day: int
     ) -> None:
         """parse(str(date)) == date (roundtrip property)."""
+        event(f"year={year}")
         original_date = date(year, month, day)
 
         # Format as ISO (universal)
@@ -199,6 +209,8 @@ class TestParseDateHypothesis:
         self, date1: date, date2: date
     ) -> None:
         """parse(d1) < parse(d2) iff d1 < d2 (ordering preserved)."""
+        ordering = "before" if date1 < date2 else ("after" if date1 > date2 else "equal")
+        event(f"ordering={ordering}")
         iso1 = date1.isoformat()
         iso2 = date2.isoformat()
 
@@ -235,6 +247,8 @@ class TestParseDatetimeHypothesis:
         self, year: int, month: int, day: int, hour: int, minute: int, second: int
     ) -> None:
         """ISO 8601 datetime format should always parse correctly (financial standard)."""
+        event(f"year={year}")
+        event(f"hour={hour}")
         # ISO 8601 with time
         iso_datetime = (
             f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}"
@@ -265,6 +279,7 @@ class TestParseDatetimeHypothesis:
         self, year: int, month: int, day: int, hour: int, minute: int
     ) -> None:
         """ISO datetime without timezone should accept tzinfo parameter."""
+        event(f"hour={hour}")
         iso_datetime = (
             f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:00"
         )
@@ -297,6 +312,8 @@ class TestParseDatetimeHypothesis:
 
         Uses CLDR dateTimeFormat separator (en_US uses ", ").
         """
+        event(f"hour={hour}")
+        event(f"year={year}")
         # Use US format (not ISO) with CLDR separator
         # 2-digit year, CLDR separator
         datetime_str = f"{month}/{day}/{year % 100:02d}, {hour:02d}:{minute:02d}"
@@ -327,6 +344,7 @@ class TestParseDatetimeHypothesis:
     @settings(max_examples=100)
     def test_parse_datetime_invalid_returns_error(self, invalid_datetime: str) -> None:
         """Invalid datetimes should return error in tuple; function never raises."""
+        event(f"invalid_datetime_len={len(invalid_datetime)}")
         result, errors = parse_datetime(invalid_datetime, "en_US")
         assert len(errors) > 0
         assert result is None
@@ -342,6 +360,7 @@ class TestParseDatetimeHypothesis:
     @settings(max_examples=50)
     def test_parse_datetime_type_error_returns_error(self, value: object) -> None:
         """Non-string types should return error in tuple; function never raises."""
+        event(f"input_type={type(value).__name__}")
         result, errors = parse_datetime(value, "en_US")  # type: ignore[arg-type]
         assert len(errors) > 0
         assert result is None
@@ -353,6 +372,7 @@ class TestParseDatetimeHypothesis:
     @settings(max_examples=100)
     def test_parse_datetime_24hour_format(self, hour: int, minute: int) -> None:
         """24-hour time format should parse correctly (common in financial systems)."""
+        event(f"hour={hour}")
         datetime_str = f"2025-01-28 {hour:02d}:{minute:02d}"
 
         result, errors = parse_datetime(datetime_str, "en_US")
@@ -369,6 +389,7 @@ class TestParseDatetimeHypothesis:
     @settings(max_examples=50)
     def test_parse_datetime_locale_independent_iso(self, locale: str) -> None:
         """ISO 8601 datetimes should parse consistently across all locales."""
+        event(f"locale={locale}")
         iso_datetime = "2025-01-28T14:30:45"
 
         result, errors = parse_datetime(iso_datetime, locale)
@@ -562,6 +583,7 @@ class TestDateParsingEdgeCases:
     @settings(max_examples=50)
     def test_parse_date_invalid_locale_fallback(self, invalid_locale: str) -> None:
         """Invalid locales should return error for non-ISO patterns."""
+        event(f"locale_len={len(invalid_locale)}")
         # ISO date should still work with fromisoformat
         date_str = "2025-01-28"
 
@@ -598,6 +620,7 @@ class TestDateParsingEdgeCases:
     @settings(max_examples=50)
     def test_parse_datetime_invalid_locale_fallback(self, invalid_locale: str) -> None:
         """Invalid locales should return error for non-ISO patterns."""
+        event(f"locale_len={len(invalid_locale)}")
         datetime_str = "2025-01-28T14:30:00"
 
         result, errors = parse_datetime(datetime_str, invalid_locale)

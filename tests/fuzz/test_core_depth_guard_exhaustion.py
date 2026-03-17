@@ -49,7 +49,7 @@ class TestParserDepthExhaustion:
     """Test parser behavior at MAX_DEPTH boundaries."""
 
     @given(depth_offset=st.integers(min_value=-5, max_value=5))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_nested_placeables_at_boundary(self, depth_offset: int) -> None:
         """Parser handles nested placeables at MAX_DEPTH boundary.
 
@@ -86,7 +86,7 @@ class TestParserDepthExhaustion:
             pytest.fail(f"RecursionError at depth {depth} (MAX_DEPTH={MAX_DEPTH})")
 
     @given(depth=st.integers(min_value=1, max_value=150))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_nested_selects_no_crash(self, depth: int) -> None:
         """Parser handles nested select expressions without crashing.
 
@@ -169,7 +169,7 @@ class TestResolverDepthExhaustion:
     """Test resolver behavior with deep reference chains."""
 
     @given(chain_length=st.integers(min_value=2, max_value=50))
-    @settings(max_examples=30, deadline=None)
+    @settings(deadline=None)
     def test_message_reference_chain(self, chain_length: int) -> None:
         """Resolver handles message reference chains.
 
@@ -208,7 +208,7 @@ class TestResolverDepthExhaustion:
             pytest.fail(f"RecursionError with chain length {chain_length}")
 
     @given(depth=st.integers(min_value=2, max_value=MAX_DEPTH + 5))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_term_reference_depth(self, depth: int) -> None:
         """Resolver handles term reference chains at boundary depths."""
         # Cap for reasonable test time
@@ -294,7 +294,7 @@ class TestSerializerDepthExhaustion:
     """Test serializer with deeply nested ASTs."""
 
     @given(depth=st.integers(min_value=1, max_value=100))
-    @settings(max_examples=30, deadline=None)
+    @settings(deadline=None)
     def test_serialize_deep_placeables(self, depth: int) -> None:
         """Serializer handles deeply nested Placeable ASTs."""
         # Emit semantic events for HypoFuzz guidance
@@ -363,7 +363,7 @@ class TestRoundtripDepthExhaustion:
     """Test parse -> serialize roundtrip at depth boundaries."""
 
     @given(depth=st.integers(min_value=1, max_value=50))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_roundtrip_nested_placeables(self, depth: int) -> None:
         """Parse -> serialize roundtrip preserves nested placeables."""
         # Emit semantic events for HypoFuzz guidance

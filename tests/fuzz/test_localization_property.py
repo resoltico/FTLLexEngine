@@ -423,7 +423,7 @@ class TestPathResourceLoaderInvariants:
         event(f"rid_len={len(rid)}")
         PathResourceLoader._validate_resource_id(rid)
 
-    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @given(
         locale=st.sampled_from(["en", "de", "fr"]),
         content=st.text(

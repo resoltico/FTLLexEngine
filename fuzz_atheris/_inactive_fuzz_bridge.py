@@ -437,10 +437,10 @@ def _pattern_register_signatures(fdp: atheris.FuzzedDataProvider) -> None:
             def many_params(
                 value: Any,
                 *,
-                minimum_fraction_digits: int = 0,  # noqa: ARG001 - unused
-                maximum_fraction_digits: int = 3,  # noqa: ARG001 - unused
-                use_grouping: bool = True,  # noqa: ARG001 - unused
-                currency_display: str = "symbol",  # noqa: ARG001 - unused
+                minimum_fraction_digits: int = 0,
+                maximum_fraction_digits: int = 3,
+                use_grouping: bool = True,
+                currency_display: str = "symbol",
             ) -> str:
                 return str(value)
 
@@ -482,7 +482,7 @@ def _pattern_param_mapping_custom(fdp: atheris.FuzzedDataProvider) -> None:
     _domain.register_calls += 1
     reg = FunctionRegistry()
 
-    def target_fn(value: Any, *, minimum_fraction_digits: int = 0) -> str:  # noqa: ARG001 - unused
+    def target_fn(value: Any, *, minimum_fraction_digits: int = 0) -> str:
         return str(value)
 
     variant = fdp.ConsumeIntInRange(0, 2)
@@ -539,7 +539,7 @@ def _pattern_signature_validation(fdp: atheris.FuzzedDataProvider) -> None:
                 value: Any,
                 *,
                 _data: int = 0,
-                data: int = 0,  # noqa: ARG001 - unused
+                data: int = 0,
             ) -> str:
                 return str(value)
 

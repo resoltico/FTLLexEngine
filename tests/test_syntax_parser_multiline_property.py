@@ -171,6 +171,7 @@ class TestContinuationDetectionProperties:
     @settings(max_examples=50)
     def test_space_indent_required(self, msg_id, text1, text2, indent):
         """Continuation lines must start with space, not tab."""
+        event(f"indent_width={len(indent)}")
         # Space-indented continuation
         source_with_space = f"{msg_id} =\n{indent}{text1}\n{indent}{text2}\n"
 
@@ -192,6 +193,7 @@ class TestContinuationDetectionProperties:
     @settings(max_examples=30)
     def test_special_char_stops_continuation(self, msg_id, text, indent, special_char):
         """Lines starting with [, *, or . should not be continuations."""
+        event(f"special_char={special_char}")
         source = f"{msg_id} =\n{indent}{text}\n{indent}{special_char}something\n"
 
         parser = FluentParserV1()
@@ -221,6 +223,7 @@ class TestMultilineInvariants:
     @settings(max_examples=50)
     def test_parsing_is_deterministic(self, msg_id, lines, indent):
         """Parsing the same source twice should produce identical results."""
+        event(f"line_count={len(lines)}")
         source = f"{msg_id} =\n"
         for line in lines:
             source += f"{indent}{line}\n"
@@ -250,6 +253,7 @@ class TestMultilineInvariants:
     @settings(max_examples=50)
     def test_multiline_has_value(self, msg_id, lines, indent):
         """Every successfully parsed multiline message should have a value."""
+        event(f"line_count={len(lines)}")
         source = f"{msg_id} =\n"
         for line in lines:
             source += f"{indent}{line}\n"
@@ -274,6 +278,7 @@ class TestMultilineInvariants:
     @settings(max_examples=30)
     def test_multiline_works_for_terms(self, term_id, lines, indent):
         """Multiline patterns should work for terms too."""
+        event(f"line_count={len(lines)}")
         source = f"-{term_id} =\n"
         for line in lines:
             source += f"{indent}{line}\n"
@@ -300,6 +305,7 @@ class TestMultilineWithPlaceablesProperties:
     @settings(max_examples=30)
     def test_placeable_in_multiline(self, msg_id, text_before, var_name, text_after, indent):
         """Placeables in multiline patterns should be parsed correctly."""
+        event(f"var_name={var_name}")
         source = f"{msg_id} =\n{indent}{text_before} {{ ${var_name} }} {text_after}\n"
 
         parser = FluentParserV1()
@@ -321,6 +327,7 @@ class TestMultilineWithPlaceablesProperties:
     @settings(max_examples=30)
     def test_multiple_placeables_multiline(self, msg_id, var_names, indent):
         """Multiple placeables across lines should be parsed."""
+        event(f"var_count={len(var_names)}")
         source = f"{msg_id} =\n"
         for var_name in var_names:
             source += f"{indent}{{ ${var_name} }}\n"
@@ -349,6 +356,7 @@ class TestMultilineWhitespaceProperties:
     @settings(max_examples=30)
     def test_arbitrary_indentation_level(self, msg_id, text, num_spaces):
         """Any indentation level (1+ spaces) should work."""
+        event(f"indent={num_spaces}")
         indent = " " * num_spaces
         source = f"{msg_id} =\n{indent}{text}\n"
 
@@ -368,6 +376,7 @@ class TestMultilineWhitespaceProperties:
     @settings(max_examples=30)
     def test_consistent_indentation(self, msg_id, lines, base_indent):
         """Consistent indentation across lines should work."""
+        event(f"indent={base_indent}")
         indent = " " * base_indent
         source = f"{msg_id} =\n"
         for line in lines:
@@ -394,6 +403,7 @@ class TestMultilineErrorRecovery:
     @settings(max_examples=30)
     def test_incomplete_pattern_recovers(self, msg_id, text, indent):
         """Parser should handle incomplete patterns gracefully."""
+        event(f"indent_width={len(indent)}")
         # Pattern without closing newline
         source = f"{msg_id} =\n{indent}{text}"
 
@@ -414,6 +424,7 @@ class TestMultilineErrorRecovery:
     def test_multiple_messages_parsed(self, msg_id1, msg_id2, text1, text2, indent):
         """Multiple multiline messages should be parsed correctly."""
         assume(msg_id1 != msg_id2)  # Need different IDs
+        event(f"indent_width={len(indent)}")
 
         source = f"{msg_id1} =\n{indent}{text1}\n{msg_id2} =\n{indent}{text2}\n"
 

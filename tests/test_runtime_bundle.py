@@ -1867,6 +1867,7 @@ class TestBundleHypothesisProperties:
     ) -> None:
         """TypeError message includes actual type name."""
         type_name = type(invalid_functions).__name__
+        event(f"type={type_name}")
 
         with pytest.raises(TypeError) as exc_info:
             FluentBundle(

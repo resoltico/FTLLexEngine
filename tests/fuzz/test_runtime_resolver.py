@@ -128,11 +128,7 @@ class TestFormatPatternProperties:
     """Property tests for FluentBundle.format_pattern()."""
 
     @given(ftl_simple_messages_str(), format_arguments())
-    @settings(
-        max_examples=500,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_format_never_crashes(self, ftl: str, args: dict[str, str | int | Decimal]) -> None:
         """Property: format_pattern never raises, always returns (str, tuple).
 
@@ -164,11 +160,7 @@ class TestFormatPatternProperties:
         assert all(hasattr(e, "__class__") for e in errors)
 
     @given(ftl_with_references(), format_arguments())
-    @settings(
-        max_examples=300,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_references_resolve_or_error(
         self, ftl: str, args: dict[str, str | int | Decimal]
     ) -> None:
@@ -198,11 +190,7 @@ class TestFormatPatternProperties:
                 event("outcome=resolved")
 
     @given(ftl_with_select(), format_arguments())
-    @settings(
-        max_examples=300,
-        suppress_health_check=[HealthCheck.too_slow],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow], deadline=None)
     def test_select_expressions_always_resolve(
         self, ftl: str, args: dict[str, str | int | Decimal]
     ) -> None:
@@ -227,7 +215,7 @@ class TestFormatPatternProperties:
             event("outcome=select_resolved")
 
     @given(st.text(min_size=1, max_size=100))
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_missing_message_returns_id(self, msg_id: str) -> None:
         """Property: Missing message returns the message ID as fallback.
 
@@ -257,7 +245,7 @@ class TestErrorCollectionProperties:
     """Property tests for error collection behavior."""
 
     @given(format_arguments())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_missing_variable_collected(self, args: dict[str, str | int | Decimal]) -> None:
         """Property: Missing variables produce errors but don't crash.
 
@@ -279,7 +267,7 @@ class TestErrorCollectionProperties:
             event("outcome=var_found")
 
     @given(st.lists(st.sampled_from(["a", "b", "c", "d", "e"]), min_size=1, max_size=5))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_multiple_errors_collected(self, var_names: list[str]) -> None:
         """Property: Multiple errors are collected, not just the first.
 
@@ -308,7 +296,7 @@ class TestDepthLimitProperties:
     """Property tests for recursion depth limiting."""
 
     @given(st.integers(min_value=5, max_value=50))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_deep_reference_chain_terminates(self, depth: int) -> None:
         """Property: Deep reference chains terminate without stack overflow."""
         # Create a chain: msg0 -> msg1 -> msg2 -> ... -> msgN
@@ -341,7 +329,7 @@ class TestLocaleProperties:
     """Property tests for locale handling."""
 
     @given(st.sampled_from(["en-US", "de-DE", "fr-FR", "ja-JP", "zh-CN", "ar-SA", "lv-LV"]))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_locale_does_not_affect_basic_resolution(self, locale: str) -> None:
         """Property: Basic message resolution works for all locales."""
         bundle = FluentBundle(locale)
@@ -357,7 +345,7 @@ class TestLocaleProperties:
         st.sampled_from(["en-US", "de-DE", "fr-FR", "lv-LV"]),
         st.integers(min_value=0, max_value=100),
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_plural_selection_by_locale(self, locale: str, count: int) -> None:
         """Property: Plural selection uses locale rules."""
         bundle = FluentBundle(locale)

@@ -34,6 +34,8 @@ from ftllexengine.integrity import (
     ImmutabilityViolationError,
     IntegrityCheckFailedError,
     IntegrityContext,
+    LedgerInvariantError,
+    PersistenceIntegrityError,
     SyntaxIntegrityError,
     WriteConflictError,
 )
@@ -190,6 +192,7 @@ class TestDataIntegrityError:
     @settings(max_examples=50)
     def test_repr_without_context(self, message: str) -> None:
         """Property: __repr__ works without context."""
+        event(f"msg_len={len(message)}")
         error = DataIntegrityError(message)
         r = repr(error)
         assert "DataIntegrityError" in r
@@ -202,6 +205,8 @@ class TestDataIntegrityError:
         self, message: str, context: IntegrityContext
     ) -> None:
         """Property: __repr__ includes context when present."""
+        event(f"msg_len={len(message)}")
+        event(f"context_component_len={len(context.component)}")
         error = DataIntegrityError(message, context=context)
         r = repr(error)
         assert "DataIntegrityError" in r
@@ -250,6 +255,7 @@ class TestDataIntegrityError:
     @settings(max_examples=50)
     def test_can_be_raised_and_caught(self, message: str) -> None:
         """Property: DataIntegrityError can be raised and caught."""
+        event(f"msg_len={len(message)}")
         error = DataIntegrityError(message)
 
         with pytest.raises(DataIntegrityError) as exc_info:
@@ -296,6 +302,7 @@ class TestCacheCorruptionError:
     @settings(max_examples=50)
     def test_construction_and_inheritance(self, message: str) -> None:
         """Property: CacheCorruptionError is a DataIntegrityError."""
+        event(f"msg_len={len(message)}")
         error = CacheCorruptionError(message)
         assert isinstance(error, DataIntegrityError)
         assert isinstance(error, CacheCorruptionError)
@@ -305,6 +312,8 @@ class TestCacheCorruptionError:
     @settings(max_examples=50)
     def test_with_context(self, message: str, context: IntegrityContext) -> None:
         """Property: CacheCorruptionError supports context."""
+        event(f"msg_len={len(message)}")
+        event(f"context_key={context.key!r}")
         error = CacheCorruptionError(message, context=context)
         assert error.context is context
         assert error.context.component == context.component
@@ -322,6 +331,7 @@ class TestCacheCorruptionError:
     @settings(max_examples=50)
     def test_immutability_inherited(self, message: str) -> None:
         """Property: CacheCorruptionError inherits immutability."""
+        event(f"msg_len={len(message)}")
         error = CacheCorruptionError(message)
 
         with pytest.raises(ImmutabilityViolationError):
@@ -340,6 +350,7 @@ class TestImmutabilityViolationError:
     @settings(max_examples=50)
     def test_construction_and_inheritance(self, message: str) -> None:
         """Property: ImmutabilityViolationError is a DataIntegrityError."""
+        event(f"msg_len={len(message)}")
         error = ImmutabilityViolationError(message)
         assert isinstance(error, DataIntegrityError)
         assert isinstance(error, ImmutabilityViolationError)
@@ -370,6 +381,7 @@ class TestIntegrityCheckFailedError:
     @settings(max_examples=50)
     def test_construction_and_inheritance(self, message: str) -> None:
         """Property: IntegrityCheckFailedError is a DataIntegrityError."""
+        event(f"msg_len={len(message)}")
         error = IntegrityCheckFailedError(message)
         assert isinstance(error, DataIntegrityError)
         assert isinstance(error, IntegrityCheckFailedError)
@@ -379,6 +391,8 @@ class TestIntegrityCheckFailedError:
     @settings(max_examples=50)
     def test_with_context(self, message: str, context: IntegrityContext) -> None:
         """Property: IntegrityCheckFailedError supports context."""
+        event(f"msg_len={len(message)}")
+        event(f"context_key={context.key!r}")
         error = IntegrityCheckFailedError(message, context=context)
         assert error.context is context
 
@@ -399,6 +413,7 @@ class TestWriteConflictError:
     @settings(max_examples=50)
     def test_construction_default_sequences(self, message: str) -> None:
         """Property: WriteConflictError defaults sequence numbers to 0."""
+        event(f"msg_len={len(message)}")
         error = WriteConflictError(message)
         assert isinstance(error, DataIntegrityError)
         assert isinstance(error, WriteConflictError)
@@ -415,6 +430,7 @@ class TestWriteConflictError:
         self, message: str, existing_seq: int, new_seq: int
     ) -> None:
         """Property: WriteConflictError stores sequence numbers."""
+        event(f"seq_ordering={'existing_lt' if existing_seq < new_seq else 'existing_gte'}")
         error = WriteConflictError(
             message,
             existing_seq=existing_seq,
@@ -438,6 +454,8 @@ class TestWriteConflictError:
         new_seq: int,
     ) -> None:
         """Property: WriteConflictError supports context and sequences."""
+        event(f"context_key={context.key!r}")
+        event(f"seq_ordering={'existing_lt' if existing_seq < new_seq else 'existing_gte'}")
         error = WriteConflictError(
             message,
             context=context,
@@ -458,6 +476,7 @@ class TestWriteConflictError:
         self, message: str, existing_seq: int, new_seq: int
     ) -> None:
         """Property: __repr__ includes sequence numbers."""
+        event(f"seq_ordering={'existing_lt' if existing_seq < new_seq else 'existing_gte'}")
         error = WriteConflictError(
             message,
             existing_seq=existing_seq,
@@ -482,6 +501,7 @@ class TestWriteConflictError:
         self, message: str, existing_seq: int, new_seq: int
     ) -> None:
         """Property: Sequence numbers are immutable."""
+        event(f"seq_ordering={'existing_lt' if existing_seq < new_seq else 'existing_gte'}")
         error = WriteConflictError(
             message,
             existing_seq=existing_seq,
@@ -508,6 +528,7 @@ class TestFormattingIntegrityError:
     @settings(max_examples=50)
     def test_construction_defaults(self, message: str) -> None:
         """Property: FormattingIntegrityError has sensible defaults."""
+        event(f"msg_len={len(message)}")
         error = FormattingIntegrityError(message)
         assert isinstance(error, DataIntegrityError)
         assert isinstance(error, FormattingIntegrityError)
@@ -525,6 +546,8 @@ class TestFormattingIntegrityError:
         self, message: str, fallback: str, msg_id: str
     ) -> None:
         """Property: FormattingIntegrityError stores all fields."""
+        event(f"fallback_len={len(fallback)}")
+        event(f"msg_id_len={len(msg_id)}")
         # Create mock fluent errors (use simple objects for testing)
         mock_error1 = type("MockError", (), {"message": "error1"})()
         mock_error2 = type("MockError", (), {"message": "error2"})()
@@ -557,6 +580,8 @@ class TestFormattingIntegrityError:
         msg_id: str,
     ) -> None:
         """Property: FormattingIntegrityError supports context."""
+        event(f"context_key={context.key!r}")
+        event(f"fallback_len={len(fallback)}")
         error = FormattingIntegrityError(
             message,
             context=context,
@@ -577,6 +602,7 @@ class TestFormattingIntegrityError:
         self, message: str, msg_id: str
     ) -> None:
         """Property: __repr__ includes message_id and error count."""
+        event(f"msg_id_len={len(msg_id)}")
         mock_error = type("MockError", (), {})()
         error = FormattingIntegrityError(
             message,
@@ -597,6 +623,7 @@ class TestFormattingIntegrityError:
     @settings(max_examples=50)
     def test_immutability_with_special_fields(self, message: str) -> None:
         """Property: FormattingIntegrityError special fields are immutable."""
+        event(f"msg_len={len(message)}")
         error = FormattingIntegrityError(message)
 
         with pytest.raises(ImmutabilityViolationError):
@@ -942,3 +969,166 @@ class TestDataIntegrityErrorFinalEnforcement:
         instance = sub_cls("test")
         assert str(instance) == "test"
         assert isinstance(instance, DataIntegrityError)
+
+    def test_subclassing_ledger_invariant_error_raises(self) -> None:
+        """Subclassing LedgerInvariantError raises TypeError."""
+        with pytest.raises(TypeError, match="LedgerInvariantError is @final"):
+            type("Sub", (LedgerInvariantError,), {})
+
+    def test_subclassing_persistence_integrity_error_raises(self) -> None:
+        """Subclassing PersistenceIntegrityError raises TypeError."""
+        with pytest.raises(TypeError, match="PersistenceIntegrityError is @final"):
+            type("Sub", (PersistenceIntegrityError,), {})
+
+
+# =============================================================================
+# LedgerInvariantError Tests
+# =============================================================================
+
+
+class TestLedgerInvariantError:
+    """LedgerInvariantError: financial domain invariant violations in persisted data."""
+
+    def test_basic_construction(self) -> None:
+        """LedgerInvariantError stores invariant_code and message."""
+        err = LedgerInvariantError(
+            "Transaction does not balance",
+            invariant_code="BALANCE",
+        )
+        assert str(err) == "Transaction does not balance"
+        assert err.invariant_code == "BALANCE"
+        assert err.entity_ref is None
+
+    def test_with_entity_ref(self) -> None:
+        """LedgerInvariantError stores entity_ref when provided."""
+        err = LedgerInvariantError(
+            "Duplicate account code",
+            invariant_code="DUPLICATE_ACCOUNT",
+            entity_ref="ACCT-1001",
+        )
+        assert err.invariant_code == "DUPLICATE_ACCOUNT"
+        assert err.entity_ref == "ACCT-1001"
+
+    def test_with_integrity_context(self) -> None:
+        """LedgerInvariantError accepts an IntegrityContext."""
+        ctx = IntegrityContext(
+            component="ledger.store",
+            operation="load_book",
+            key="TXN-9999",
+        )
+        err = LedgerInvariantError(
+            "Posted transaction does not balance",
+            context=ctx,
+            invariant_code="BALANCE",
+            entity_ref="TXN-9999",
+        )
+        assert err.context is ctx
+        assert err.context.component == "ledger.store"
+
+    def test_is_data_integrity_error_subclass(self) -> None:
+        """LedgerInvariantError is a DataIntegrityError subclass."""
+        err = LedgerInvariantError("test", invariant_code="TEST")
+        assert isinstance(err, DataIntegrityError)
+
+    def test_is_final(self) -> None:
+        """LedgerInvariantError is @final."""
+        assert getattr(LedgerInvariantError, "__final__", False) is True
+
+    def test_immutability_enforced(self) -> None:
+        """LedgerInvariantError fields are immutable after construction."""
+        err = LedgerInvariantError("test", invariant_code="BALANCE")
+        with pytest.raises(ImmutabilityViolationError):
+            err._invariant_code = "MODIFIED"
+        with pytest.raises(ImmutabilityViolationError):
+            err._entity_ref = "modified"
+
+    def test_repr_contains_fields(self) -> None:
+        """LedgerInvariantError repr includes key fields."""
+        err = LedgerInvariantError(
+            "Period overlap",
+            invariant_code="PERIOD_OVERLAP",
+            entity_ref="FY2025-Q1",
+        )
+        r = repr(err)
+        assert "LedgerInvariantError" in r
+        assert "PERIOD_OVERLAP" in r
+        assert "FY2025-Q1" in r
+
+    def test_can_be_caught_as_data_integrity_error(self) -> None:
+        """LedgerInvariantError propagates as DataIntegrityError."""
+        msg = "test"
+        with pytest.raises(DataIntegrityError):
+            raise LedgerInvariantError(msg, invariant_code="BALANCE")
+
+    @given(
+        message=st.text(min_size=1, max_size=200),
+        code=st.text(min_size=1, max_size=30).filter(str.isupper),
+        entity=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
+    )
+    def test_property_construction(
+        self,
+        message: str,
+        code: str,
+        entity: str | None,
+    ) -> None:
+        """LedgerInvariantError preserves all fields across arbitrary inputs."""
+        event(f"entity={'none' if entity is None else 'set'}")
+        err = LedgerInvariantError(message, invariant_code=code, entity_ref=entity)
+        assert str(err) == message
+        assert err.invariant_code == code
+        assert err.entity_ref == entity
+
+
+# =============================================================================
+# PersistenceIntegrityError Tests
+# =============================================================================
+
+
+class TestPersistenceIntegrityError:
+    """PersistenceIntegrityError: storage boundary structural violations."""
+
+    def test_basic_construction(self) -> None:
+        """PersistenceIntegrityError stores the error message."""
+        err = PersistenceIntegrityError("Unknown currency code in stored entry")
+        assert str(err) == "Unknown currency code in stored entry"
+
+    def test_with_integrity_context(self) -> None:
+        """PersistenceIntegrityError accepts an IntegrityContext."""
+        ctx = IntegrityContext(
+            component="ledger.store",
+            operation="deserialize_entry",
+            key="ENTRY-42",
+        )
+        err = PersistenceIntegrityError(
+            "Decimal out of ISO 4217 precision bounds",
+            context=ctx,
+        )
+        assert err.context is ctx
+        assert err.context.key == "ENTRY-42"
+
+    def test_is_data_integrity_error_subclass(self) -> None:
+        """PersistenceIntegrityError is a DataIntegrityError subclass."""
+        err = PersistenceIntegrityError("test")
+        assert isinstance(err, DataIntegrityError)
+
+    def test_is_final(self) -> None:
+        """PersistenceIntegrityError is @final."""
+        assert getattr(PersistenceIntegrityError, "__final__", False) is True
+
+    def test_is_not_ledger_invariant_error(self) -> None:
+        """PersistenceIntegrityError is distinct from LedgerInvariantError."""
+        err = PersistenceIntegrityError("storage fault")
+        assert not isinstance(err, LedgerInvariantError)  # type: ignore[unreachable]
+
+    def test_can_be_caught_as_data_integrity_error(self) -> None:
+        """PersistenceIntegrityError propagates as DataIntegrityError."""
+        msg = "test"
+        with pytest.raises(DataIntegrityError):
+            raise PersistenceIntegrityError(msg)
+
+    @given(message=st.text(min_size=1, max_size=200))
+    def test_property_construction(self, message: str) -> None:
+        """PersistenceIntegrityError preserves message across arbitrary inputs."""
+        event(f"msg_len={min(len(message), 50)}")
+        err = PersistenceIntegrityError(message)
+        assert str(err) == message

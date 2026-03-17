@@ -424,7 +424,7 @@ done
 exit_code_val=0
 if [[ "$FAILED" == "true" ]]; then exit_code_val=1; fi
 
-python3 -c "$PYTHON_JSON_SCRIPT" "$RESULTS_FILE" "$FAILED_ITEMS_FILE" "$exit_code_val"
+python -c "$PYTHON_JSON_SCRIPT" "$RESULTS_FILE" "$FAILED_ITEMS_FILE" "$exit_code_val"
 rm -f "$RESULTS_FILE"
 rm -f "$FAILED_ITEMS_FILE"
 echo "[SUMMARY-JSON-END]"

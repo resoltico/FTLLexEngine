@@ -35,6 +35,8 @@ from ftllexengine import (
     DataIntegrityError,
     FormattingIntegrityError,
     ImmutabilityViolationError,
+    LedgerInvariantError,
+    PersistenceIntegrityError,
     SyntaxIntegrityError,
     CacheCorruptionError,
     WriteConflictError,
@@ -162,7 +164,7 @@ from ftllexengine.core.babel_compat import (
 ```python
 from ftllexengine.runtime import (
     CacheAuditLogEntry, FluentBundle, FluentNumber, FluentResolver,
-    FunctionRegistry, ResolutionContext, RWLock, WriteLogEntry, fluent_function,
+    FunctionRegistry, InterpreterPool, ResolutionContext, RWLock, WriteLogEntry, fluent_function,
     create_default_registry, get_shared_registry,
     number_format, datetime_format, currency_format, make_fluent_number,
     select_plural_category,
@@ -210,8 +212,8 @@ from ftllexengine.parsing import (
 | Message, Term, Pattern, Resource, AST, Identifier, FTLLiteral, NamedArgument, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, parse_date, parse_currency | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
 | FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
-| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, RWLock, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
-| FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
+| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, RWLock, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry, InterpreterPool, subinterpreter, clear_module_caches | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
+| FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode, LedgerInvariantError, PersistenceIntegrityError, financial | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, entry_dependency_set, make_cycle_key, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_variables, extract_references, extract_references_by_attribute, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
 | TerritoryInfo, CurrencyInfo, get_territory, get_currency, ISO 3166, ISO 4217 | [DOC_02_Types.md](DOC_02_Types.md) | ISO Introspection |
@@ -225,7 +227,7 @@ ftllexengine/
   __init__.py              # Public API exports
   constants.py             # MAX_DEPTH, MAX_IDENTIFIER_LENGTH, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
   enums.py                 # CommentType, VariableContext, ReferenceKind, LoadStatus
-  integrity.py             # DataIntegrityError hierarchy, IntegrityContext
+  integrity.py             # DataIntegrityError hierarchy (8 sealed subclasses), IntegrityContext
   localization/
     __init__.py            # FluentLocalization, LocalizationBootConfig, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
     types.py               # PEP 695 type aliases: MessageId, LocaleCode, ResourceId, FTLSource
@@ -273,6 +275,7 @@ ftllexengine/
     plural_rules.py        # select_plural_category
     resolution_context.py  # GlobalDepthGuard, ResolutionContext
     resolver.py            # FluentResolver
+    interpreter_pool.py    # InterpreterPool, _PooledInterpreter (subinterpreter pool)
     rwlock.py              # RWLock (readers-writer lock)
     value_types.py         # FluentNumber, make_fluent_number, FluentValue, FluentFunction, FunctionSignature
   parsing/
@@ -325,7 +328,7 @@ ftllexengine/
 | [README.md](../README.md) | Entry point, installation, quick start | Humans |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet, common patterns | Humans |
 | [PARSING_GUIDE.md](PARSING_GUIDE.md) | Bi-directional parsing tutorial | Humans |
-| [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md) | Python 3.13 type patterns | Humans |
+| [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md) | Python 3.14 type patterns | Humans |
 | [TERMINOLOGY.md](TERMINOLOGY.md) | Glossary, disambiguation | Both |
 | [MIGRATION.md](MIGRATION.md) | fluent.runtime migration guide | Humans |
 | [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md) | Custom function tutorial | Humans |

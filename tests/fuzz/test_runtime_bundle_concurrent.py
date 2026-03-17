@@ -179,7 +179,7 @@ class TestConcurrentConsistency:
     """
 
     @given(st.integers(min_value=10, max_value=50))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_deterministic_results(self, thread_count: int) -> None:
         """Property: Same input produces same output across threads."""
         bundle = FluentBundle("en-US", use_isolating=False)
@@ -211,7 +211,7 @@ class TestConcurrentConsistency:
         worker_count=st.integers(min_value=5, max_value=30),
         iter_count=st.integers(min_value=10, max_value=50),
     )
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_no_data_corruption(
         self, worker_count: int, iter_count: int
     ) -> None:
@@ -257,7 +257,7 @@ class TestConcurrentWithReferences:
     """
 
     @given(worker_count=st.integers(min_value=3, max_value=20))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_concurrent_reference_chains(
         self, worker_count: int
     ) -> None:
@@ -296,7 +296,7 @@ welcome = { greeting } Welcome!
         event("outcome=reference_chains_consistent")
 
     @given(thread_count=st.integers(min_value=5, max_value=30))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_concurrent_term_resolution(
         self, thread_count: int
     ) -> None:
@@ -350,7 +350,7 @@ class TestConcurrentErrorHandling:
     """
 
     @given(worker_count=st.integers(min_value=3, max_value=15))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_concurrent_missing_messages(
         self, worker_count: int
     ) -> None:
@@ -394,7 +394,7 @@ class TestConcurrentErrorHandling:
         event("outcome=error_handling_consistent")
 
     @given(worker_count=st.integers(min_value=3, max_value=15))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_concurrent_missing_variables(
         self, worker_count: int
     ) -> None:
@@ -451,7 +451,7 @@ class TestConcurrentMutation:
         reader_count=st.integers(min_value=2, max_value=8),
         writer_count=st.integers(min_value=1, max_value=5),
     )
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_concurrent_add_resource_while_formatting(
         self, reader_count: int, writer_count: int
     ) -> None:
@@ -523,7 +523,7 @@ class TestConcurrentMutation:
         event("outcome=concurrent_mutation_safe")
 
     @given(thread_count=st.integers(min_value=2, max_value=8))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_overwrite_message_while_formatting(
         self, thread_count: int
     ) -> None:

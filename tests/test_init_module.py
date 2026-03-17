@@ -95,6 +95,15 @@ class TestBabelOptionalSymbolAccess:
         assert fn("EUR") == 2
         assert fn("JPY") == 0
 
+    def test_interpreter_pool_is_accessible(self) -> None:
+        """InterpreterPool resolves to the class in runtime.interpreter_pool."""
+        import ftllexengine
+
+        assert hasattr(ftllexengine, "InterpreterPool")
+        from ftllexengine.runtime.interpreter_pool import InterpreterPool as Direct
+
+        assert ftllexengine.InterpreterPool is Direct
+
 
 class TestParseResultBabelIndependent:
     """ParseResult is defined in diagnostics and importable without Babel."""
@@ -145,6 +154,7 @@ class TestBabelOptionalAttrsSet:
             "FluentNumber",
             "FluentLocalization",
             "FluentValue",
+            "InterpreterPool",
             "fluent_function",
             "make_fluent_number",
             "get_cldr_version",
@@ -369,7 +379,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 41
+        assert len(ftllexengine.__all__) == 44
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
@@ -404,6 +414,8 @@ class TestInitModuleExports:
             "ImmutabilityViolationError",
             "IntegrityCheckFailedError",
             "IntegrityContext",
+            "LedgerInvariantError",
+            "PersistenceIntegrityError",
             "SyntaxIntegrityError",
             "WriteConflictError",
         ):
@@ -423,3 +435,90 @@ class TestInitModuleExports:
         for name in ("__version__", "__fluent_spec_version__", "__spec_url__",
                      "__recommended_encoding__"):
             assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+
+class TestClearModuleCaches:
+    """clear_module_caches() with and without component filters."""
+
+    def test_clear_all_caches_no_args(self) -> None:
+        """clear_module_caches() with no arguments clears all caches without error."""
+        import ftllexengine
+
+        # Should not raise; caches may or may not be populated
+        ftllexengine.clear_module_caches()
+
+    def test_clear_all_caches_none_explicit(self) -> None:
+        """clear_module_caches(None) is identical to the no-argument form."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(None)
+
+    def test_clear_single_component_parsing_currency(self) -> None:
+        """Passing frozenset({'parsing.currency'}) clears only that cache."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"parsing.currency"}))
+
+    def test_clear_single_component_parsing_dates(self) -> None:
+        """Passing frozenset({'parsing.dates'}) clears only that cache."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"parsing.dates"}))
+
+    def test_clear_single_component_locale(self) -> None:
+        """Passing frozenset({'locale'}) clears only the locale cache."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"locale"}))
+
+    def test_clear_single_component_runtime_locale_context(self) -> None:
+        """Passing frozenset({'runtime.locale_context'}) clears only that cache."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"runtime.locale_context"}))
+
+    def test_clear_single_component_introspection_message(self) -> None:
+        """Passing frozenset({'introspection.message'}) clears only that cache."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"introspection.message"}))
+
+    def test_clear_single_component_introspection_iso(self) -> None:
+        """Passing frozenset({'introspection.iso'}) clears only that cache."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"introspection.iso"}))
+
+    def test_clear_multiple_components(self) -> None:
+        """Passing a frozenset with multiple components clears exactly those caches."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(
+            frozenset({"introspection.iso", "introspection.message"})
+        )
+
+    def test_clear_empty_frozenset_clears_nothing(self) -> None:
+        """An empty frozenset clears no caches (all _want() calls return False)."""
+        import ftllexengine
+
+        # Should not raise; just a no-op
+        ftllexengine.clear_module_caches(frozenset())
+
+    def test_clear_unknown_component_is_ignored(self) -> None:
+        """Unknown component names in the frozenset are silently ignored."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches(frozenset({"nonexistent.component"}))
+
+    def test_clear_module_caches_in_all(self) -> None:
+        """clear_module_caches is exported in ftllexengine.__all__."""
+        import ftllexengine
+
+        assert "clear_module_caches" in ftllexengine.__all__
+
+    def test_repeated_clear_is_idempotent(self) -> None:
+        """Calling clear_module_caches() twice in succession does not raise."""
+        import ftllexengine
+
+        ftllexengine.clear_module_caches()
+        ftllexengine.clear_module_caches()

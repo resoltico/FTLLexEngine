@@ -1,7 +1,7 @@
 <!--
 RETRIEVAL_HINTS:
-  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, numbers, dates, currency, thread-safe, fiscal, iso, territory, decimal-digits, infrastructure, boot-validation, strict-mode, LocalizationBootConfig, require_clean, compliance, audit, regulated, bidirectional, FluentBundle, FluentLocalization, FluentNumber]
-  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, number parsing, thread safety, fiscal calendar, iso introspection, territory currency, boot validation, production localization, strict mode, require_clean, LocalizationBootConfig, regulated deployments, audit trail, infrastructure library, bidirectional parsing, locale-aware formatting]
+  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, numbers, dates, currency, thread-safe, fiscal, iso, territory, decimal-digits, infrastructure, boot-validation, strict-mode, LocalizationBootConfig, require_clean, compliance, audit, regulated, bidirectional, FluentBundle, FluentLocalization, FluentNumber, InterpreterPool, subinterpreter, LedgerInvariantError, PersistenceIntegrityError, required_messages, clear_module_caches]
+  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, number parsing, thread safety, fiscal calendar, iso introspection, territory currency, boot validation, production localization, strict mode, require_clean, LocalizationBootConfig, regulated deployments, audit trail, infrastructure library, bidirectional parsing, locale-aware formatting, subinterpreter pool, financial integrity errors]
   related: [docs/QUICK_REFERENCE.md, docs/DOC_00_Index.md, docs/PARSING_GUIDE.md, docs/TERMINOLOGY.md]
 -->
 
@@ -102,7 +102,7 @@ Or with pip:
 pip install ftllexengine[babel]
 ```
 
-**Requirements**: Python >= 3.13 | Babel >= 2.18
+**Requirements**: Python >= 3.14 | Babel >= 2.18
 
 <details>
 <summary>Parser-only installation (no Babel dependency)</summary>
@@ -427,21 +427,25 @@ cfg = LocalizationBootConfig.from_path(
         "invoice-total": {"amount"},
         "shipment-line": {"bags", "origin"},
     },
+    # Enforce that critical messages exist in at least one locale
+    required_messages=frozenset({"invoice-total", "shipment-line"}),
 )
 
-l10n = cfg.boot()  # raises IntegrityCheckFailedError if any resource fails or schema mismatches
-# l10n is now safe to use for the lifetime of the application
-```
-
-**Boot with structured evidence** for audit logs or startup reporting:
-
-```python
-l10n, summary, schema_results = cfg.boot_with_summary()
+# Primary API: returns structured evidence for audit trails
+l10n, summary, schema_results = cfg.boot()
+# raises IntegrityCheckFailedError if any resource fails, required message is absent, or schema mismatches
 
 print(f"Loaded {summary.total_attempted} resources, {summary.errors} errors")
 # "Loaded 6 resources, 0 errors"
 
 # schema_results: tuple[MessageVariableValidationResult, ...] -- one per message_schemas entry
+```
+
+**When only the localization object is needed:**
+
+```python
+l10n = cfg.boot_simple()  # raises on failure, discards audit evidence
+# l10n is now safe to use for the lifetime of the application
 ```
 
 **Use cases:**
@@ -519,7 +523,7 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 | Component | What It Does | Requires Babel? |
 |:----------|:-------------|:----------------|
 | **Syntax** — `ftllexengine.syntax` | FTL parser, AST, serializer, visitor pattern | No |
-| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`) | Yes |
+| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`); `InterpreterPool` for reusable PEP 734 subinterpreter pools | Yes |
 | **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains; `LocalizationBootConfig` strict-mode production boot | Yes |
 | **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
 | **Fiscal** — `ftllexengine.core.fiscal` | Fiscal calendar arithmetic, quarter calculations | No |

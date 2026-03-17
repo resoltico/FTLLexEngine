@@ -4,12 +4,14 @@ Covers:
 - __post_init__ validation (empty locales, resource_ids, missing loader/base_path,
   both loader and base_path provided)
 - _resolve_loader (loader passthrough, base_path -> PathResourceLoader)
-- boot() success path with an in-memory loader
+- boot() primary API: returns (FluentLocalization, LoadSummary, schema_results)
+- boot_simple() convenience alias: returns FluentLocalization
 - boot() raises IntegrityCheckFailedError on load failures (require_clean)
+- boot() raises IntegrityCheckFailedError on required_messages violations
 - boot() raises IntegrityCheckFailedError on schema mismatches
-- boot_with_summary() returns (FluentLocalization, LoadSummary, schema_results)
 - from_path() factory with str and Path inputs
-- boot() with message_schemas=None skips schema validation
+- required_messages field: presence validation across the fallback chain
+- IntegrityContext carries component='localization.boot' for required_messages errors
 
 Python 3.13+.
 """
@@ -20,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from ftllexengine.integrity import IntegrityCheckFailedError
+from ftllexengine.integrity import IntegrityCheckFailedError, IntegrityContext
 from ftllexengine.localization import (
     FluentLocalization,
     LoadSummary,
@@ -141,6 +143,27 @@ class TestLocalizationBootConfigValidation:
         with pytest.raises((AttributeError, TypeError)):
             cfg.locales = ("fr",)  # type: ignore[misc]
 
+    def test_required_messages_field_stored(self) -> None:
+        """required_messages is stored on the config when provided."""
+        loader = DictLoader({})
+        cfg = LocalizationBootConfig(
+            locales=("en",),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+            required_messages=frozenset({"greeting", "farewell"}),
+        )
+        assert cfg.required_messages == frozenset({"greeting", "farewell"})
+
+    def test_required_messages_defaults_none(self) -> None:
+        """required_messages defaults to None when not provided."""
+        loader = DictLoader({})
+        cfg = LocalizationBootConfig(
+            locales=("en",),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+        )
+        assert cfg.required_messages is None
+
 
 # ===========================================================================
 # _resolve_loader
@@ -183,58 +206,15 @@ class TestResolveLoader:
 
 
 # ===========================================================================
-# boot() success path
+# boot() primary API (returns tuple)
 # ===========================================================================
 
 
 class TestLocalizationBootConfigBoot:
-    """boot() assembles and validates a FluentLocalization."""
+    """boot() returns (FluentLocalization, LoadSummary, schema_results)."""
 
-    def test_boot_returns_fluent_localization(self) -> None:
-        """boot() returns a FluentLocalization instance on success."""
-        locales = ("en",)
-        resource_ids = ("ui.ftl",)
-        loader = _make_loader(locales, resource_ids, "greeting = Hello")
-        cfg = LocalizationBootConfig(
-            locales=locales,
-            resource_ids=resource_ids,
-            loader=loader,
-        )
-        l10n = cfg.boot()
-        assert isinstance(l10n, FluentLocalization)
-
-    def test_boot_passes_strict_setting(self) -> None:
-        """boot() forwards the strict setting to FluentLocalization."""
-        locales = ("en",)
-        resource_ids = ("ui.ftl",)
-        loader = _make_loader(locales, resource_ids)
-        cfg = LocalizationBootConfig(
-            locales=locales,
-            resource_ids=resource_ids,
-            loader=loader,
-            strict=False,
-        )
-        l10n = cfg.boot()
-        assert l10n.strict is False
-
-    def test_boot_multi_locale(self) -> None:
-        """boot() supports multiple locales in fallback order."""
-        locales = ("lv", "en")
-        resource_ids = ("ui.ftl",)
-        resources = {
-            ("lv", "ui.ftl"): "greeting = Sveiki",
-            ("en", "ui.ftl"): "greeting = Hello",
-        }
-        cfg = LocalizationBootConfig(
-            locales=locales,
-            resource_ids=resource_ids,
-            loader=DictLoader(resources),
-        )
-        l10n = cfg.boot()
-        assert l10n.locales == ("lv", "en")
-
-    def test_boot_with_message_schemas_matching(self) -> None:
-        """boot() succeeds when declared schemas match the actual messages."""
+    def test_boot_returns_three_tuple(self) -> None:
+        """boot() returns a 3-tuple on success."""
         locales = ("en",)
         resource_ids = ("ui.ftl",)
         ftl = "greeting = Hello, { $name }!"
@@ -245,40 +225,46 @@ class TestLocalizationBootConfigBoot:
             loader=loader,
             message_schemas={"greeting": frozenset({"name"})},
         )
-        l10n = cfg.boot()
-        assert isinstance(l10n, FluentLocalization)
+        l10n, summary, schema_results = cfg.boot()
 
-    def test_boot_without_message_schemas_skips_validation(self) -> None:
-        """boot() with message_schemas=None does not call validate_message_schemas."""
+        assert isinstance(l10n, FluentLocalization)
+        assert isinstance(summary, LoadSummary)
+        assert isinstance(schema_results, tuple)
+        assert len(schema_results) == 1
+
+    def test_boot_no_schemas_returns_empty_schema_results(self) -> None:
+        """boot() returns empty schema_results when no schemas declared."""
         locales = ("en",)
         resource_ids = ("ui.ftl",)
-        loader = _make_loader(locales, resource_ids, "msg = No variables")
+        loader = _make_loader(locales, resource_ids)
         cfg = LocalizationBootConfig(
             locales=locales,
             resource_ids=resource_ids,
             loader=loader,
-            message_schemas=None,
         )
-        # Should not raise even if the message has no variables declared
-        l10n = cfg.boot()
-        assert isinstance(l10n, FluentLocalization)
+        _, _, schema_results = cfg.boot()
+        assert schema_results == ()
 
+    def test_boot_load_summary_is_clean(self) -> None:
+        """boot() returns a LoadSummary with no errors on clean boot."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "msg = OK")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        _, summary, _ = cfg.boot()
+        assert summary.errors == 0
+        assert summary.total_attempted > 0
 
-# ===========================================================================
-# boot() failure paths
-# ===========================================================================
-
-
-class TestLocalizationBootConfigBootFailures:
-    """boot() raises IntegrityCheckFailedError on load or schema failures."""
-
-    def test_boot_raises_on_missing_resource(self) -> None:
-        """boot() raises IntegrityCheckFailedError when a resource file is missing."""
-        loader = DictLoader({})  # no resources at all
+    def test_boot_raises_on_load_failure(self) -> None:
+        """boot() raises IntegrityCheckFailedError on load failure."""
         cfg = LocalizationBootConfig(
             locales=("en",),
-            resource_ids=("ui.ftl",),
-            loader=loader,
+            resource_ids=("missing.ftl",),
+            loader=DictLoader({}),
         )
         with pytest.raises(IntegrityCheckFailedError):
             cfg.boot()
@@ -298,8 +284,132 @@ class TestLocalizationBootConfigBootFailures:
         with pytest.raises(IntegrityCheckFailedError):
             cfg.boot()
 
-    def test_boot_raises_on_junk_syntax_error(self) -> None:
-        """boot() raises IntegrityCheckFailedError when FTL resource has syntax errors.
+    def test_boot_multi_locale_load_summary(self) -> None:
+        """boot() returns LoadSummary covering all locales."""
+        locales = ("lv", "en")
+        resource_ids = ("ui.ftl",)
+        resources = {
+            ("lv", "ui.ftl"): "greeting = Sveiki",
+            ("en", "ui.ftl"): "greeting = Hello",
+        }
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=DictLoader(resources),
+        )
+        l10n, summary, _ = cfg.boot()
+        assert l10n.locales == ("lv", "en")
+        assert summary.errors == 0
+
+
+# ===========================================================================
+# boot_simple() convenience alias
+# ===========================================================================
+
+
+class TestLocalizationBootConfigBootSimple:
+    """boot_simple() returns FluentLocalization directly."""
+
+    def test_boot_simple_returns_fluent_localization(self) -> None:
+        """boot_simple() returns a FluentLocalization instance on success."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        l10n = cfg.boot_simple()
+        assert isinstance(l10n, FluentLocalization)
+
+    def test_boot_simple_passes_strict_setting(self) -> None:
+        """boot_simple() forwards the strict setting to FluentLocalization."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids)
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            strict=False,
+        )
+        l10n = cfg.boot_simple()
+        assert l10n.strict is False
+
+    def test_boot_simple_multi_locale(self) -> None:
+        """boot_simple() supports multiple locales in fallback order."""
+        locales = ("lv", "en")
+        resource_ids = ("ui.ftl",)
+        resources = {
+            ("lv", "ui.ftl"): "greeting = Sveiki",
+            ("en", "ui.ftl"): "greeting = Hello",
+        }
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=DictLoader(resources),
+        )
+        l10n = cfg.boot_simple()
+        assert l10n.locales == ("lv", "en")
+
+    def test_boot_simple_with_matching_schemas(self) -> None:
+        """boot_simple() succeeds when declared schemas match the actual messages."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        ftl = "greeting = Hello, { $name }!"
+        loader = _make_loader(locales, resource_ids, ftl)
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            message_schemas={"greeting": frozenset({"name"})},
+        )
+        l10n = cfg.boot_simple()
+        assert isinstance(l10n, FluentLocalization)
+
+    def test_boot_simple_without_schemas_skips_validation(self) -> None:
+        """boot_simple() with message_schemas=None does not call validate_message_schemas."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "msg = No variables")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            message_schemas=None,
+        )
+        l10n = cfg.boot_simple()
+        assert isinstance(l10n, FluentLocalization)
+
+    def test_boot_simple_raises_on_missing_resource(self) -> None:
+        """boot_simple() raises IntegrityCheckFailedError when a resource file is missing."""
+        loader = DictLoader({})  # no resources at all
+        cfg = LocalizationBootConfig(
+            locales=("en",),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+        )
+        with pytest.raises(IntegrityCheckFailedError):
+            cfg.boot_simple()
+
+    def test_boot_simple_raises_on_schema_mismatch(self) -> None:
+        """boot_simple() raises IntegrityCheckFailedError when schemas do not match."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        ftl = "greeting = Hello"  # no $name variable
+        loader = _make_loader(locales, resource_ids, ftl)
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            message_schemas={"greeting": frozenset({"name"})},
+        )
+        with pytest.raises(IntegrityCheckFailedError):
+            cfg.boot_simple()
+
+    def test_boot_simple_raises_on_junk_syntax_error(self) -> None:
+        """boot_simple() raises IntegrityCheckFailedError when FTL resource has syntax errors.
 
         strict=False so syntax errors are captured as junk rather than raised as
         SyntaxIntegrityError during FluentLocalization.__init__(). require_clean()
@@ -316,72 +426,156 @@ class TestLocalizationBootConfigBootFailures:
             strict=False,
         )
         with pytest.raises(IntegrityCheckFailedError):
-            cfg.boot()
+            cfg.boot_simple()
 
 
 # ===========================================================================
-# boot_with_summary
+# required_messages validation
 # ===========================================================================
 
 
-class TestLocalizationBootConfigBootWithSummary:
-    """boot_with_summary() returns (FluentLocalization, LoadSummary, schema_results)."""
+class TestLocalizationBootConfigRequiredMessages:
+    """required_messages field enforces message existence across the fallback chain."""
 
-    def test_boot_with_summary_returns_three_tuple(self) -> None:
-        """boot_with_summary() returns a 3-tuple on success."""
+    def test_required_messages_all_present_passes(self) -> None:
+        """boot() succeeds when all required messages exist in the primary locale."""
         locales = ("en",)
         resource_ids = ("ui.ftl",)
-        ftl = "greeting = Hello, { $name }!"
+        ftl = "greeting = Hello\nfarewell = Goodbye"
         loader = _make_loader(locales, resource_ids, ftl)
         cfg = LocalizationBootConfig(
             locales=locales,
             resource_ids=resource_ids,
             loader=loader,
-            message_schemas={"greeting": frozenset({"name"})},
+            required_messages=frozenset({"greeting", "farewell"}),
         )
-        l10n, summary, schema_results = cfg.boot_with_summary()
-
+        l10n, _, _ = cfg.boot()
         assert isinstance(l10n, FluentLocalization)
-        assert isinstance(summary, LoadSummary)
-        assert isinstance(schema_results, tuple)
-        assert len(schema_results) == 1
 
-    def test_boot_with_summary_no_schemas_returns_empty_tuple(self) -> None:
-        """boot_with_summary() returns empty schema_results when no schemas declared."""
+    def test_required_messages_none_skips_check(self) -> None:
+        """boot() with required_messages=None does not check message existence."""
         locales = ("en",)
         resource_ids = ("ui.ftl",)
-        loader = _make_loader(locales, resource_ids)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
         cfg = LocalizationBootConfig(
             locales=locales,
             resource_ids=resource_ids,
             loader=loader,
+            required_messages=None,
         )
-        _, _, schema_results = cfg.boot_with_summary()
-        assert schema_results == ()
+        l10n, _, _ = cfg.boot()
+        assert isinstance(l10n, FluentLocalization)
 
-    def test_boot_with_summary_load_summary_is_clean(self) -> None:
-        """boot_with_summary() returns a LoadSummary with no errors on clean boot."""
+    def test_required_messages_absent_raises(self) -> None:
+        """boot() raises IntegrityCheckFailedError when a required message is missing."""
         locales = ("en",)
         resource_ids = ("ui.ftl",)
-        loader = _make_loader(locales, resource_ids, "msg = OK")
+        ftl = "greeting = Hello"  # 'farewell' is absent
+        loader = _make_loader(locales, resource_ids, ftl)
         cfg = LocalizationBootConfig(
             locales=locales,
             resource_ids=resource_ids,
             loader=loader,
+            required_messages=frozenset({"greeting", "farewell"}),
         )
-        _, summary, _ = cfg.boot_with_summary()
-        assert summary.errors == 0
-        assert summary.total_attempted > 0
+        with pytest.raises(IntegrityCheckFailedError, match="farewell"):
+            cfg.boot()
 
-    def test_boot_with_summary_raises_on_load_failure(self) -> None:
-        """boot_with_summary() raises IntegrityCheckFailedError on load failure."""
+    def test_required_messages_error_carries_localization_boot_context(self) -> None:
+        """IntegrityCheckFailedError for required_messages has the correct IntegrityContext."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        ftl = "greeting = Hello"  # 'farewell' is absent
+        loader = _make_loader(locales, resource_ids, ftl)
         cfg = LocalizationBootConfig(
-            locales=("en",),
-            resource_ids=("missing.ftl",),
-            loader=DictLoader({}),
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            required_messages=frozenset({"farewell"}),
         )
-        with pytest.raises(IntegrityCheckFailedError):
-            cfg.boot_with_summary()
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            cfg.boot()
+
+        err = exc_info.value
+        assert isinstance(err.context, IntegrityContext)
+        assert err.context.component == "localization.boot"
+        assert err.context.operation == "required_messages"
+        assert err.context.key == "farewell"
+
+    def test_required_messages_resolved_via_fallback_passes(self) -> None:
+        """A required message present in a fallback locale satisfies the requirement."""
+        # 'farewell' is only in 'en' (fallback), not in 'fr' (primary)
+        locales = ("fr", "en")
+        resource_ids = ("ui.ftl",)
+        resources = {
+            ("fr", "ui.ftl"): "greeting = Bonjour",
+            ("en", "ui.ftl"): "greeting = Hello\nfarewell = Goodbye",
+        }
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=DictLoader(resources),
+            required_messages=frozenset({"farewell"}),
+        )
+        l10n, _, _ = cfg.boot()
+        assert isinstance(l10n, FluentLocalization)
+
+    def test_required_messages_all_absent_lists_all_in_error(self) -> None:
+        """Error message includes all absent required messages, not just the first."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        ftl = "greeting = Hello"
+        loader = _make_loader(locales, resource_ids, ftl)
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            required_messages=frozenset({"alpha", "beta", "gamma"}),
+        )
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            cfg.boot()
+        # All absent messages should appear in the error message
+        msg = str(exc_info.value)
+        absent_in_msg = sum(1 for name in ("alpha", "beta", "gamma") if name in msg)
+        assert absent_in_msg == 3
+
+    def test_required_messages_checked_before_schema_validation(self) -> None:
+        """required_messages check runs before message_schemas validation."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        # 'required_msg' is present but 'also_required' is absent.
+        # message_schemas also has a mismatch for 'required_msg'.
+        # required_messages check should fire first.
+        ftl = "required_msg = Hello"
+        loader = _make_loader(locales, resource_ids, ftl)
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            required_messages=frozenset({"also_required"}),
+            message_schemas={"required_msg": frozenset({"name"})},  # mismatch
+        )
+        with pytest.raises(IntegrityCheckFailedError) as exc_info:
+            cfg.boot()
+        # Should fail on required_messages (localization.boot context)
+        err = exc_info.value
+        assert err.context is not None
+        assert err.context.component == "localization.boot"
+
+    def test_boot_simple_required_messages_absent_raises(self) -> None:
+        """boot_simple() also enforces required_messages."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        ftl = "greeting = Hello"
+        loader = _make_loader(locales, resource_ids, ftl)
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+            required_messages=frozenset({"missing_msg"}),
+        )
+        with pytest.raises(IntegrityCheckFailedError, match="missing_msg"):
+            cfg.boot_simple()
 
 
 # ===========================================================================
@@ -420,10 +614,12 @@ class TestLocalizationBootConfigFromPath:
             strict=False,
             use_isolating=False,
             message_schemas={"key": frozenset({"var"})},
+            required_messages=frozenset({"key"}),
         )
         assert cfg.strict is False
         assert cfg.use_isolating is False
         assert cfg.message_schemas == {"key": frozenset({"var"})}
+        assert cfg.required_messages == frozenset({"key"})
 
     def test_from_path_empty_locales_raises(self) -> None:
         """from_path() propagates ValueError for empty locales."""

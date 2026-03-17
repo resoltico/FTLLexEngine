@@ -16,7 +16,7 @@ class TestCycleDetectionProperties:
     """Property-based tests for cycle detection."""
 
     @given(st.integers(min_value=2, max_value=20))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_generated_cycle_detected(self, cycle_length: int) -> None:
         """Property: Generated cycles of any length are detected.
 
@@ -39,7 +39,7 @@ class TestCycleDetectionProperties:
         event("outcome=cycle_detected")
 
     @given(st.integers(min_value=2, max_value=10), st.integers(min_value=0, max_value=5))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_partial_cycle_detected(self, chain_length: int, cycle_entry: int) -> None:
         """Property: Cycles entered partway through resolution are detected.
 
@@ -73,7 +73,7 @@ class TestCycleDetectionProperties:
             unique=True,
         )
     )
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_non_cyclic_chain_resolves(self, ids: list[str]) -> None:
         """Property: Non-cyclic chains resolve without errors."""
         messages = []

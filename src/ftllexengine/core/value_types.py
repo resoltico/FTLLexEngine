@@ -111,6 +111,15 @@ class FluentNumber:
         - FluentNumber(Decimal("1.5"), "1.5", precision=1) - one visible fraction digit
         - FluentNumber(1, "1.00", precision=2) - two visible fraction digits
         - FluentNumber(1, "1", precision=0) - no visible fraction digits
+
+    Sign Semantics:
+        FluentNumber is sign-agnostic. Negative values are permitted for use
+        cases such as signed delta amounts, credit/debit display, and localized
+        formatting of losses (e.g., ``FluentNumber(Decimal("-42.50"), "-42.50",
+        precision=2)``). Applications requiring non-negative amounts (e.g.,
+        ledger entry principal amounts) must enforce non-negativity at their own
+        domain boundary. A dedicated subtype is not provided: domain constraints
+        belong with the domain model, not the formatting layer.
     """
 
     value: int | Decimal

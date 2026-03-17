@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import contextlib
 import gc
 import logging
 import pathlib
@@ -76,6 +77,7 @@ class ISOMetrics:
     cross_reference_checks: int = 0
     type_guard_checks: int = 0
     decimal_digits_checks: int = 0  # get_currency_decimal_digits oracle validations
+    module_cache_clears: int = 0  # clear_module_caches() call count
 
 
 # --- Global State ---
@@ -110,6 +112,7 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("cross_reference", 8),
     ("invalid_input_stress", 7),
     ("decimal_digits_convenience", 8),
+    ("clear_module_caches", 6),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -142,6 +145,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["cross_reference_checks"] = _domain.cross_reference_checks
     stats["type_guard_checks"] = _domain.type_guard_checks
     stats["decimal_digits_checks"] = _domain.decimal_digits_checks
+    stats["module_cache_clears"] = _domain.module_cache_clears
     return stats
 
 
@@ -163,6 +167,7 @@ atexit.register(_emit_report)
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 
 with atheris.instrument_imports(include=["ftllexengine"]):
+    import ftllexengine as _ftllexengine
     from ftllexengine.introspection.iso import (
         BabelImportError,
         CurrencyInfo,
@@ -560,6 +565,76 @@ def _pattern_decimal_digits_convenience(fdp: atheris.FuzzedDataProvider) -> None
         pass
 
 
+# clear_module_caches patterns
+
+_MODULE_CACHE_COMPONENTS: tuple[str, ...] = (
+    "parsing.currency",
+    "parsing.dates",
+    "locale",
+    "runtime.locale_context",
+    "introspection.message",
+    "introspection.iso",
+)
+
+
+def _check_clear_all(fdp: atheris.FuzzedDataProvider) -> None:
+    """clear_module_caches(): clear all caches without specifying components."""
+    _ftllexengine.clear_module_caches()
+    _domain.module_cache_clears += 1
+
+
+def _check_clear_single_component(fdp: atheris.FuzzedDataProvider) -> None:
+    """clear_module_caches(components=...): clear one known component."""
+    name = fdp.PickValueInList(list(_MODULE_CACHE_COMPONENTS))
+    _ftllexengine.clear_module_caches(components=frozenset({name}))
+    _domain.module_cache_clears += 1
+
+
+def _check_clear_multiple_components(fdp: atheris.FuzzedDataProvider) -> None:
+    """clear_module_caches(components=...): clear a subset of known components."""
+    count = fdp.ConsumeIntInRange(2, len(_MODULE_CACHE_COMPONENTS))
+    subset = set()
+    for _ in range(count):
+        subset.add(fdp.PickValueInList(list(_MODULE_CACHE_COMPONENTS)))
+    _ftllexengine.clear_module_caches(components=frozenset(subset))
+    _domain.module_cache_clears += 1
+
+
+def _check_clear_unknown_component(fdp: atheris.FuzzedDataProvider) -> None:
+    """clear_module_caches(components=...): unknown component names silently ignored."""
+    unknown = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 40)) or "bogus"
+    _ftllexengine.clear_module_caches(components=frozenset({unknown}))
+    # No exception must be raised for unknown component names
+    _domain.module_cache_clears += 1
+
+
+def _check_clear_then_lookup(fdp: atheris.FuzzedDataProvider) -> None:
+    """clear_module_caches + re-lookup: cache repopulates correctly after full clear."""
+    code = fdp.PickValueInList(list(SAMPLE_TERRITORIES[:5]))
+    locale = fdp.PickValueInList(list(SAMPLE_LOCALES[:5]))
+    t1 = get_territory(code, locale)
+    _ftllexengine.clear_module_caches()
+    t2 = get_territory(code, locale)
+    if t1 is not None and t2 is not None and t1.alpha2 != t2.alpha2:
+        msg = f"Post-clear territory mismatch: {t1.alpha2} != {t2.alpha2}"
+        raise ISOFuzzError(msg)
+    _domain.module_cache_clears += 1
+
+
+def _pattern_clear_module_caches(fdp: atheris.FuzzedDataProvider) -> None:
+    """clear_module_caches(): all-clear, selective, unknown component, and re-lookup."""
+    handlers = (
+        _check_clear_all,
+        _check_clear_single_component,
+        _check_clear_multiple_components,
+        _check_clear_unknown_component,
+        _check_clear_then_lookup,
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    with contextlib.suppress(*_ALLOWED):
+        handler(fdp)
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH: dict[str, Any] = {
@@ -573,6 +648,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "cross_reference": _pattern_cross_reference,
     "invalid_input_stress": _pattern_invalid_input_stress,
     "decimal_digits_convenience": _pattern_decimal_digits_convenience,
+    "clear_module_caches": _pattern_clear_module_caches,
 }
 
 
@@ -609,8 +685,10 @@ def test_one_input(data: bytes) -> None:
         _state.error_counts[error_key] = _state.error_counts.get(error_key, 0) + 1
 
     finally:
-        is_interesting = "stress" in pattern or "cross" in pattern or (
-            (time.perf_counter() - start_time) * 1000 > 50.0
+        is_interesting = (
+            "stress" in pattern or "cross" in pattern
+            or pattern == "clear_module_caches"
+            or (time.perf_counter() - start_time) * 1000 > 50.0
         )
         record_iteration_metrics(
             _state, pattern, start_time, data, is_interesting=is_interesting,

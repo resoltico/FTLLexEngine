@@ -267,6 +267,7 @@ class TestTransformerIdentity:
         self, msg_id: str, var_name: str
     ) -> None:
         """PROPERTY: Identity transform preserves placeable structure."""
+        event(f"var_name={var_name}")
         ftl_source = f"{msg_id} = Text {{ ${var_name} }} more"
         resource = parse(ftl_source)
 
@@ -300,6 +301,7 @@ class TestTransformerRemoval:
         self, msg_id: str, value: str
     ) -> None:
         """PROPERTY: Comment removal transformer removes all comments."""
+        event(f"msg_id={msg_id}")
         ftl_source = f"# Comment\n{msg_id} = {value}\n# Another comment"
         resource = parse(ftl_source)
 
@@ -331,6 +333,7 @@ class TestTransformerRemoval:
         self, msg_id: str, value: str, comment_text: str
     ) -> None:
         """PROPERTY: Comment removal preserves non-comment nodes."""
+        event(f"msg_id={msg_id}")
         # Create FTL with comment
         safe_comment = comment_text.replace("\n", " ").replace("\r", " ")
         ftl_source = f"# {safe_comment}\n{msg_id} = {value}"
@@ -369,6 +372,7 @@ class TestTransformerRenaming:
         self, msg_id: str, old_var: str, new_var: str
     ) -> None:
         """PROPERTY: Variable renaming updates all occurrences."""
+        event(f"old_var={old_var}")
         ftl_source = f"{msg_id} = Value: {{ ${old_var} }}"
         resource = parse(ftl_source)
 
@@ -403,6 +407,7 @@ class TestTransformerRenaming:
         """PROPERTY: Renaming one variable preserves others."""
         # Ensure var1 and var2 are different
         assume(var1 != var2)
+        event(f"var1={var1}")
 
         ftl_source = f"{msg_id} = {{ ${var1} }} and {{ ${var2} }}"
         resource = parse(ftl_source)
@@ -445,6 +450,7 @@ class TestTransformerImmutability:
         self, msg_id: str, value: str
     ) -> None:
         """PROPERTY: Transformation does not mutate original AST."""
+        event(f"msg_id={msg_id}")
         ftl_source = f"# Comment\n{msg_id} = {value}"
         resource = parse(ftl_source)
 
@@ -473,6 +479,7 @@ class TestTransformerImmutability:
         self, msg_id: str, var_name: str, new_name: str
     ) -> None:
         """PROPERTY: Variable renaming creates new nodes, preserves original."""
+        event(f"var_name={var_name}")
         ftl_source = f"{msg_id} = {{ ${var_name} }}"
         resource = parse(ftl_source)
 
@@ -518,6 +525,7 @@ class TestVisitorDispatch:
     @settings(max_examples=50)
     def test_dispatch_calls_correct_method(self, msg_id: str, value: str) -> None:
         """PROPERTY: Visitor dispatch calls visit_NodeType for each node."""
+        event(f"msg_id={msg_id}")
 
         class MethodTracker(ASTVisitor):
             """Track which visit methods are called."""
@@ -555,6 +563,7 @@ class TestVisitorDispatch:
         self, msg_id: str, func_name: str, arg_value: int
     ) -> None:
         """PROPERTY: Visitor dispatch reaches function call arguments."""
+        event(f"func_name={func_name}")
         ftl_source = f"{msg_id} = {{ {func_name}({arg_value}) }}"
         resource = parse(ftl_source)
 
@@ -585,6 +594,7 @@ class TestComplexTransformations:
         self, msg_id: str, term_id: str, var_name: str, new_var: str
     ) -> None:
         """PROPERTY: Transformation works on deeply nested structures."""
+        event(f"var_name={var_name}")
         ftl_source = (
             f"-{term_id} = Term {{ ${var_name} }}\n"
             f"{msg_id} = Message {{ -{term_id} }} and {{ ${var_name} }}"
@@ -623,6 +633,7 @@ class TestComplexTransformations:
         self, msg_id: str, var_name: str, key1: str, key2: str, new_var: str
     ) -> None:
         """PROPERTY: Transformation reaches variables in select variants."""
+        event(f"var_name={var_name}")
         ftl_source = (
             f"{msg_id} = {{ ${var_name} ->\n"
             f"        [{key1}] First {{ ${var_name} }}\n"

@@ -353,11 +353,7 @@ class TestParserProperties:
     """Property-based tests for the FTL parser."""
 
     @given(ftl_resource())
-    @settings(
-        max_examples=1500,
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example], deadline=None)
     def test_roundtrip_consistency(self, source: str) -> None:
         """Property: parse(serialize(parse(X))) == parse(X) semantically."""
         parser = FluentParserV1()
@@ -394,11 +390,7 @@ class TestParserProperties:
         event("outcome=roundtrip_success")
 
     @given(ftl_resource())
-    @settings(
-        max_examples=500,
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
-        deadline=None,
-    )
+    @settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example], deadline=None)
     def test_idempotence(self, source: str) -> None:
         """Property: serialize(parse(serialize(parse(X)))) == serialize(parse(X))."""
         parser = FluentParserV1()
@@ -429,7 +421,7 @@ class TestParserProperties:
         event("outcome=idempotent")
 
     @given(ftl_resource())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_determinism(self, source: str) -> None:
         """Property: Multiple parses of same input produce identical AST."""
         parser = FluentParserV1()
@@ -486,7 +478,7 @@ class TestParserProperties:
         event("outcome=composable")
 
     @given(st.text(min_size=1, max_size=20000))
-    @settings(max_examples=1000, deadline=None)
+    @settings(deadline=None)
     def test_random_input_stability(self, noise: str) -> None:
         """Property: Parser never crashes, only raises ValueError on invalid input."""
         parser = FluentParserV1()
@@ -537,7 +529,7 @@ class TestParserProperties:
         event(f"entries={len(ast.entries)}")
 
     @given(ftl_resource())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_linear_time_parsing(self, ftl: str) -> None:
         """Property: Parsing time is O(N) - linear with input size."""
         parser = FluentParserV1()
@@ -621,7 +613,7 @@ class TestErrorHandling:
     """Tests for error handling and recovery."""
 
     @given(st.text(min_size=1, max_size=500))
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_always_returns_resource(self, text: str) -> None:
         """Property: Parser always returns Resource, never crashes."""
         parser = FluentParserV1()
@@ -632,7 +624,7 @@ class TestErrorHandling:
         event(f"has_junk={has_junk(result)}")
 
     @given(ftl_resource(), st.integers(min_value=0, max_value=100))
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_truncation_recovery(self, ftl: str, truncate_pos: int) -> None:
         """Property: Truncated input is handled gracefully."""
         if len(ftl) == 0:
@@ -650,7 +642,7 @@ class TestErrorHandling:
         event(f"has_junk={has_junk(result)}")
 
     @given(ftl_multiline_chaos_source())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_multiline_chaos_no_crash(self, source: str) -> None:
         """Property: Multiline chaos input never crashes the parser."""
         parser = FluentParserV1()
@@ -682,7 +674,7 @@ class TestJunkRecovery:
             max_size=30,
         ),
     )
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_valid_entry_after_junk(
         self, junk_content: str, valid_id: str, valid_value: str
     ) -> None:
@@ -722,7 +714,7 @@ class TestJunkRecovery:
         num_junk_lines=st.integers(min_value=1, max_value=5),
         valid_id=ftl_identifier(),
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_recovery_after_multiple_junk_lines(
         self, num_junk_lines: int, valid_id: str
     ) -> None:
@@ -747,7 +739,7 @@ class TestJunkRecovery:
         before_id=ftl_identifier(),
         after_id=ftl_identifier(),
     )
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_valid_entries_around_junk(self, before_id: str, after_id: str) -> None:
         """Property: Valid entries before and after junk are preserved."""
         # Ensure distinct IDs

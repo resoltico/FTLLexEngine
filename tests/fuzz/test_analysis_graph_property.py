@@ -33,7 +33,7 @@ class TestDetectCyclesAdversarial:
     """Fuzz tests verifying bounded behaviour on adversarial graph inputs."""
 
     @given(graph=complete_graphs(max_nodes=15))
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_complete_graph_cycle_count_bounded(
         self, graph: dict[str, set[str]]
     ) -> None:
@@ -47,7 +47,7 @@ class TestDetectCyclesAdversarial:
         assert len(cycles) <= MAX_DETECTED_CYCLES
 
     @given(graph=dependency_graphs(max_nodes=20))
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_any_graph_cycle_count_bounded(
         self, graph: dict[str, set[str]]
     ) -> None:
@@ -61,7 +61,7 @@ class TestDetectCyclesAdversarial:
         assert len(cycles) <= MAX_DETECTED_CYCLES
 
     @given(graph=dependency_graphs(allow_cycles=False))
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_acyclic_graph_produces_no_cycles(
         self, graph: dict[str, set[str]]
     ) -> None:
@@ -73,7 +73,7 @@ class TestDetectCyclesAdversarial:
         assert len(cycles) == 0
 
     @given(graph=dependency_graphs())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_detect_cycles_always_terminates(
         self, graph: dict[str, set[str]]
     ) -> None:
@@ -87,7 +87,7 @@ class TestDetectCyclesAdversarial:
             assert len(cycle) >= 2
 
     @given(graph=dependency_graphs())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_detect_cycles_deterministic(
         self, graph: dict[str, set[str]]
     ) -> None:
@@ -98,7 +98,7 @@ class TestDetectCyclesAdversarial:
         assert len(result1) == len(result2)
 
     @given(graph=dependency_graphs())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_cycle_nodes_exist_in_graph(
         self, graph: dict[str, set[str]]
     ) -> None:
@@ -118,7 +118,7 @@ class TestEntryDependencySetProperties:
     """Property tests for entry_dependency_set()."""
 
     @given(refs=namespace_ref_pairs())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_dependency_set_size(
         self, refs: tuple[frozenset[str], frozenset[str]]
     ) -> None:
@@ -131,7 +131,7 @@ class TestEntryDependencySetProperties:
         assert len(result) == total
 
     @given(refs=namespace_ref_pairs())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_dependency_set_prefixes(
         self, refs: tuple[frozenset[str], frozenset[str]]
     ) -> None:
@@ -145,7 +145,7 @@ class TestEntryDependencySetProperties:
             assert f"term:{ref}" in result
 
     @given(refs=namespace_ref_pairs())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_dependency_set_no_unprefixed_entries(
         self, refs: tuple[frozenset[str], frozenset[str]]
     ) -> None:
@@ -161,7 +161,7 @@ class TestMakeCycleKeyProperties:
     """Property tests for make_cycle_key()."""
 
     @given(path=cycle_paths())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_cycle_key_non_empty(self, path: list[str]) -> None:
         """Property: make_cycle_key() returns a non-empty string."""
         key = make_cycle_key(path)
@@ -171,7 +171,7 @@ class TestMakeCycleKeyProperties:
         assert len(key) > 0
 
     @given(path=cycle_paths())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_cycle_key_arrow_separator(self, path: list[str]) -> None:
         """Property: make_cycle_key() uses arrow separator format."""
         key = make_cycle_key(path)
@@ -179,7 +179,7 @@ class TestMakeCycleKeyProperties:
         assert " -> " in key
 
     @given(path=cycle_paths())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_cycle_key_contains_nodes(self, path: list[str]) -> None:
         """Property: make_cycle_key() contains all unique path nodes."""
         key = make_cycle_key(path)

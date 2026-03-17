@@ -321,7 +321,7 @@ for item in "${FAILED_TEST_LIST[@]:-}"; do
     [[ -n "$item" ]] && echo "$item" >> "$FAILED_TESTS_FILE"
 done
 
-python3 -c "$PYTHON_JSON_SCRIPT" \
+python -c "$PYTHON_JSON_SCRIPT" \
     "$FAILED_TESTS_FILE" \
     "$EXIT_CODE" \
     "$DURATION" \

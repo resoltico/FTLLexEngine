@@ -15,6 +15,8 @@ Hierarchy:
     ├─ FormattingIntegrityError (strict mode formatting failure)
     ├─ ImmutabilityViolationError (mutation attempt on frozen object)
     ├─ IntegrityCheckFailedError (generic verification failure)
+    ├─ LedgerInvariantError (financial domain invariant violated in persisted data)
+    ├─ PersistenceIntegrityError (storage-layer read produced structurally invalid data)
     ├─ SyntaxIntegrityError (strict mode syntax error during resource loading)
     └─ WriteConflictError (write-once violation)
 
@@ -37,6 +39,8 @@ __all__ = [
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "LedgerInvariantError",
+    "PersistenceIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
 ]
@@ -215,6 +219,93 @@ class IntegrityCheckFailedError(DataIntegrityError):
         - Newly created cache entry fails immediate verification
         - Write log integrity check fails
         - Error verification fails
+    """
+
+    __slots__ = ()
+
+
+@final
+class LedgerInvariantError(DataIntegrityError):
+    """Financial domain invariant violated in persisted data.
+
+    Raised when data read from storage fails an accounting invariant
+    (e.g., a posted transaction does not balance, duplicate account code
+    in stored chart of accounts, fiscal period overlap). This indicates
+    storage corruption or a bug in the write path, NOT a user input error.
+
+    Distinguished from ``IntegrityCheckFailedError`` by domain: this
+    exception specifically models financial accounting invariant violations
+    in persisted records, carrying machine-readable ``invariant_code`` and
+    ``entity_ref`` fields for structured audit logging and monitoring.
+
+    Attributes:
+        invariant_code: Short machine-readable code identifying the violated
+            invariant (e.g., 'BALANCE', 'DUPLICATE_ACCOUNT', 'PERIOD_OVERLAP').
+        entity_ref: Reference to the failing entity (transaction reference,
+            account code, period identifier). None when the entity cannot be
+            identified from the available context.
+    """
+
+    __slots__ = ("_entity_ref", "_invariant_code")
+
+    # Type annotations for __slots__ attributes (mypy requirement)
+    _invariant_code: str
+    _entity_ref: str | None
+
+    def __init__(
+        self,
+        message: str,
+        context: IntegrityContext | None = None,
+        *,
+        invariant_code: str,
+        entity_ref: str | None = None,
+    ) -> None:
+        """Initialize LedgerInvariantError.
+
+        Args:
+            message: Human-readable error description.
+            context: Structured diagnostic context (optional).
+            invariant_code: Short machine-readable invariant code.
+            entity_ref: Reference to the failing entity (optional).
+        """
+        # Must set these before calling super().__init__ which freezes
+        object.__setattr__(self, "_invariant_code", invariant_code)
+        object.__setattr__(self, "_entity_ref", entity_ref)
+        super().__init__(message, context)
+
+    @property
+    def invariant_code(self) -> str:
+        """Short machine-readable code identifying the violated invariant."""
+        return self._invariant_code
+
+    @property
+    def entity_ref(self) -> str | None:
+        """Reference to the failing entity, or None if not identifiable."""
+        return self._entity_ref
+
+    def __repr__(self) -> str:
+        """Return detailed representation for debugging."""
+        return (
+            f"LedgerInvariantError({self.args[0]!r}, "
+            f"invariant_code={self._invariant_code!r}, "
+            f"entity_ref={self._entity_ref!r})"
+        )
+
+
+@final
+class PersistenceIntegrityError(DataIntegrityError):
+    """Storage-layer read produced structurally invalid data.
+
+    Raised when deserialization produces a value that cannot satisfy domain
+    model invariants (e.g., a ``Decimal`` outside ISO 4217 precision bounds,
+    an unknown currency code in a stored ledger entry, a date outside the
+    permitted fiscal calendar range). This indicates a schema migration gap,
+    storage tampering, or a mismatch between the write and read paths.
+
+    Distinguished from ``LedgerInvariantError`` by cause: this exception
+    models failures at the storage boundary (invalid wire format), whereas
+    ``LedgerInvariantError`` models domain-logic failures on otherwise
+    structurally valid data.
     """
 
     __slots__ = ()

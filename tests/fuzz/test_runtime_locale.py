@@ -72,7 +72,7 @@ class TestPluralRuleProperties:
         st.sampled_from(COMMON_LOCALES),
         st.integers(min_value=0, max_value=1000000),
     )
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_plural_category_valid(self, locale: str, n: int) -> None:
         """Property: Plural category is always a valid CLDR category."""
         # Emit semantic events for HypoFuzz guidance
@@ -104,7 +104,7 @@ class TestPluralRuleProperties:
             allow_nan=False, allow_infinity=False,
         ),
     )
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_plural_category_decimal(self, locale: str, n: Decimal) -> None:
         """Property: Plural category works for Decimals."""
         category = select_plural_category(n, locale)
@@ -115,7 +115,7 @@ class TestPluralRuleProperties:
         event(f"category={category}")
 
     @given(st.sampled_from(COMMON_LOCALES))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_plural_edge_values(self, locale: str) -> None:
         """Property: Plural works for edge values (0, 1, 2)."""
         for n in [0, 1, 2]:
@@ -124,7 +124,7 @@ class TestPluralRuleProperties:
             event(f"edge_{n}={category}")
 
     @given(st.integers(min_value=-1000, max_value=-1))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_plural_negative_numbers(self, n: int) -> None:
         """Property: Negative numbers don't crash plural rules."""
         # Negative numbers typically use absolute value for plural rules
@@ -140,7 +140,7 @@ class TestPluralIntegrationProperties:
         st.sampled_from(COMMON_LOCALES),
         st.integers(min_value=0, max_value=100),
     )
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_plural_select_in_message(self, locale: str, count: int) -> None:
         """Property: Plural selection works in messages."""
         bundle = FluentBundle(locale)
@@ -180,7 +180,7 @@ class TestNumberFormattingProperties:
         st.sampled_from(COMMON_LOCALES),
         st.integers(min_value=-1000000, max_value=1000000),
     )
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_integer_formatting(self, locale: str, n: int) -> None:
         """Property: INTEGER formatting never crashes."""
         bundle = FluentBundle(locale)
@@ -198,7 +198,7 @@ class TestNumberFormattingProperties:
         st.sampled_from(COMMON_LOCALES),
         ftl_financial_numbers(),
     )
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_financial_number_formatting(
         self, locale: str, n: Decimal
     ) -> None:
@@ -220,7 +220,7 @@ class TestNumberFormattingProperties:
             allow_infinity=False,
         ),
     )
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_decimal_formatting(self, locale: str, n: Decimal) -> None:
         """Property: Decimal formatting never crashes."""
         bundle = FluentBundle(locale)
@@ -232,7 +232,7 @@ class TestNumberFormattingProperties:
         event(f"locale_lang={locale.split('-', maxsplit=1)[0]}")
 
     @given(st.sampled_from(COMMON_LOCALES))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_large_number_formatting(self, locale: str) -> None:
         """Property: Very large numbers format without crash."""
         bundle = FluentBundle(locale)
@@ -262,7 +262,7 @@ class TestLocaleContextProperties:
     """Property tests for locale context handling."""
 
     @given(st.sampled_from(COMMON_LOCALES))
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     def test_bundle_creation_all_locales(self, locale: str) -> None:
         """Property: Bundle creation canonicalizes all accepted locale boundaries."""
         bundle = FluentBundle(locale)
@@ -270,7 +270,7 @@ class TestLocaleContextProperties:
         event(f"locale={locale}")
 
     @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyz-_", min_size=2, max_size=10))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_unknown_locale_handling(self, locale: str) -> None:
         """Property: Unknown locales don't crash, fall back gracefully."""
         # Filter to plausible locale-like strings
@@ -287,7 +287,7 @@ class TestLocaleContextProperties:
             event("outcome=locale_rejected")
 
     @given(st.sampled_from(COMMON_LOCALES), st.sampled_from(COMMON_LOCALES))
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     def test_locale_isolation(self, locale1: str, locale2: str) -> None:
         """Property: Different bundles maintain locale isolation."""
         bundle1 = FluentBundle(locale1)
@@ -313,7 +313,7 @@ class TestLocaleFallbackProperties:
     """Property tests for locale fallback behavior."""
 
     @given(st.sampled_from(["en-US", "en-GB", "en-AU", "en-CA"]))
-    @settings(max_examples=20, deadline=None)
+    @settings(deadline=None)
     def test_english_variant_consistency(self, locale: str) -> None:
         """Property: English variants behave consistently for basic messages."""
         bundle = FluentBundle(locale)
@@ -329,7 +329,7 @@ class TestLocaleFallbackProperties:
         st.sampled_from(COMMON_LOCALES),
         st.integers(min_value=0, max_value=10),
     )
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_plural_consistency_per_locale(self, locale: str, count: int) -> None:
         """Property: Same locale always gives same plural for same count."""
         # Get plural category twice

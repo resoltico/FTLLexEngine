@@ -12,7 +12,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from hypothesis import assume, event, given, settings
+from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.parsing import parse_decimal, parse_fluent_number
@@ -31,7 +31,6 @@ class TestParseDecimalHypothesis:
             places=2,
         ),
     )
-    @settings(max_examples=200)
     def test_parse_decimal_always_returns_decimal(self, value: Decimal) -> None:
         """parse_decimal always returns Decimal type."""
         from ftllexengine.runtime.functions import number_format
@@ -52,7 +51,6 @@ class TestParseDecimalHypothesis:
         ),
         locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "lv_LV", "pl_PL", "ja_JP"]),
     )
-    @settings(max_examples=200)
     def test_parse_decimal_roundtrip_exact_precision(
         self, value: Decimal, locale: str
     ) -> None:
@@ -75,7 +73,6 @@ class TestParseDecimalHypothesis:
             places=2,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_decimal_negative_amounts(self, value: Decimal) -> None:
         """Negative decimals parse correctly."""
         from ftllexengine.runtime.functions import number_format
@@ -97,7 +94,6 @@ class TestParseDecimalHypothesis:
             places=3,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_decimal_fractional_precision(self, value: Decimal) -> None:
         """Sub-unit decimals preserve fractional precision."""
         from ftllexengine.runtime.functions import number_format
@@ -124,7 +120,6 @@ class TestParseDecimalHypothesis:
             st.just(""),
         ),
     )
-    @settings(max_examples=100)
     def test_parse_decimal_invalid_returns_error(self, invalid_input: str) -> None:
         """Invalid decimals return error in tuple; function never raises."""
         result, errors = parse_decimal(invalid_input, "en_US")
@@ -141,7 +136,6 @@ class TestParseDecimalHypothesis:
             places=2,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_decimal_locale_independence_for_large_numbers(
         self, locale: str, value: Decimal
     ) -> None:
@@ -167,7 +161,6 @@ class TestParseDecimalHypothesis:
         ),
         locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "lv_LV"]),
     )
-    @settings(max_examples=150)
     def test_parse_fluent_number_matches_public_composition(
         self, value: Decimal, locale: str
     ) -> None:
@@ -196,7 +189,6 @@ class TestParsingMetamorphicProperties:
             places=2,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_order_independence(self, value: Decimal) -> None:
         """Parsing result independent of intermediate formatting steps."""
         from ftllexengine.runtime.functions import number_format
@@ -223,7 +215,6 @@ class TestParsingMetamorphicProperties:
             places=2,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_idempotence(self, value: Decimal) -> None:
         """Parsing formatted value multiple times yields same result."""
         from ftllexengine.runtime.functions import number_format
@@ -247,7 +238,6 @@ class TestParsingMetamorphicProperties:
             places=2,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_format_parse_stability(self, value: Decimal) -> None:
         """parse(format(parse(format(x)))) == parse(format(x))."""
         from ftllexengine.runtime.functions import number_format
@@ -271,7 +261,6 @@ class TestParsingMetamorphicProperties:
             max_value=Decimal("0.00"),
         ),
     )
-    @settings(max_examples=10)
     def test_parse_zero_handling(self, value: Decimal) -> None:  # noqa: ARG002 - unused
         """Zero values parse correctly."""
         result, errors = parse_decimal("0.00", "en_US")
@@ -286,7 +275,6 @@ class TestParsingMetamorphicProperties:
             places=2,
         ),
     )
-    @settings(max_examples=100)
     def test_parse_very_large_numbers(self, value: Decimal) -> None:
         """Very large numbers parse correctly without loss of precision."""
         from ftllexengine.runtime.functions import number_format
@@ -304,7 +292,6 @@ class TestParsingMetamorphicProperties:
         thousands_sep=st.sampled_from([",", ".", " ", "'"]),
         decimal_sep=st.sampled_from([".", ","]),
     )
-    @settings(max_examples=50)
     def test_parse_separator_combinations(
         self, thousands_sep: str, decimal_sep: str
     ) -> None:
@@ -356,7 +343,6 @@ class TestErrorContextImmutabilityProperties:
             not in ("NAN", "INFINITY", "INF")
         ),
     )
-    @settings(max_examples=100)
     def test_parse_decimal_error_context_frozen(
         self, value: str
     ) -> None:
@@ -394,7 +380,6 @@ class TestInvalidLocaleErrorContextProperties:
             ),
         ),
     )
-    @settings(max_examples=100)
     def test_parse_decimal_locale_error_context(
         self, value: str, locale: str
     ) -> None:

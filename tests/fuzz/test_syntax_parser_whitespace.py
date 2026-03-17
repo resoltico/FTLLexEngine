@@ -89,7 +89,7 @@ class TestVariantMarkerWhitespace:
     @example("[one ]")  # Spaces before closing bracket
     @example("[ one ]")  # Spaces on both sides
     @example("[ \n one \n ]")  # SPEC-VARIANT-WHITESPACE-001: newlines allowed
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_variant_key_whitespace_parses(self, variant_key: str) -> None:
         """Variant keys with internal whitespace should parse correctly.
 
@@ -123,11 +123,7 @@ class TestVariantMarkerWhitespace:
         event("outcome=parsed")
 
     @given(msg_source=ftl_select_with_whitespace_variants())
-    @settings(
-        max_examples=500,
-        deadline=None,
-        suppress_health_check=[HealthCheck.too_slow],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
     def test_select_with_whitespace_variants_roundtrip(self, msg_source: str) -> None:
         """Select expressions with whitespace in variants should roundtrip.
 
@@ -169,7 +165,7 @@ class TestBlankLineHandling:
     @example("\n\n    value")  # FTL-GRAMMAR-001: blank lines before content
     @example("\n    value")  # Single blank line
     @example("\n\n\n  x")  # Multiple blanks, small indent
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_leading_blank_lines_stripped(self, pattern: str) -> None:
         """Blank lines before content should not affect pattern value.
 
@@ -197,7 +193,7 @@ class TestBlankLineHandling:
             # (blank lines and common indent should be stripped)
 
     @given(blanks=blank_lines_sequence())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_blank_lines_between_entries(self, blanks: str) -> None:
         """Blank lines between entries should be handled correctly.
 
@@ -219,7 +215,7 @@ class TestBlankLineHandling:
         event(f"message_count={len(messages)}")
 
     @given(blank=blank_line())
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_blank_line_with_spaces_only(self, blank: str) -> None:
         """Blank lines with only spaces should be valid separators.
 
@@ -252,7 +248,7 @@ class TestPlaceableWhitespace:
     @example("{ \n $var }")  # Newline after opening brace
     @example("{ $var \n }")  # Newline before closing brace
     @example("{ \n $var \n }")  # Newlines on both sides
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_placeable_whitespace_parses(self, placeable: str) -> None:
         """Placeables with newlines around braces should parse correctly.
 
@@ -276,7 +272,7 @@ class TestPlaceableWhitespace:
         ws_before=st.sampled_from(["", " ", "  ", "\n", " \n "]),
         ws_after=st.sampled_from(["", " ", "  ", "\n", " \n "]),
     )
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_variable_reference_whitespace_combinations(
         self, var_name: str, ws_before: str, ws_after: str
     ) -> None:
@@ -312,7 +308,7 @@ class TestTabHandling:
     """
 
     @given(tabbed_text=text_with_tabs())
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_tabs_in_syntactic_positions_create_issues(
         self, tabbed_text: str
     ) -> None:
@@ -338,7 +334,7 @@ class TestTabHandling:
 
     @given(msg_id=ftl_identifiers())
     @example("hello")
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     def test_tab_indented_continuation_creates_junk(self, msg_id: str) -> None:
         """Tab-indented continuation lines should not be recognized.
 
@@ -374,7 +370,7 @@ class TestMixedLineEndings:
     """
 
     @given(text=mixed_line_endings_text())
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_mixed_line_endings_parse(self, text: str) -> None:
         """Files with mixed line endings should parse correctly.
 
@@ -402,7 +398,7 @@ class TestMixedLineEndings:
         assert isinstance(resource, Resource)
 
     @given(msg_id=ftl_identifiers(), value=ftl_simple_text())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_crlf_line_endings_roundtrip(self, msg_id: str, value: str) -> None:
         """Messages with CRLF line endings should roundtrip correctly.
 
@@ -442,11 +438,7 @@ class TestVariableIndentation:
     """
 
     @given(pattern=variable_indent_multiline_pattern())
-    @settings(
-        max_examples=500,
-        deadline=None,
-        suppress_health_check=[HealthCheck.too_slow],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
     def test_variable_indent_pattern_parses(self, pattern: str) -> None:
         """Patterns with varying indentation per line should parse correctly.
 
@@ -466,11 +458,7 @@ class TestVariableIndentation:
         assert len(resource.entries) >= 1
 
     @given(pattern=variable_indent_multiline_pattern())
-    @settings(
-        max_examples=300,
-        deadline=None,
-        suppress_health_check=[HealthCheck.too_slow],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
     def test_variable_indent_roundtrip(self, pattern: str) -> None:
         """Patterns with variable indentation should roundtrip consistently.
 
@@ -506,7 +494,7 @@ class TestTrailingWhitespace:
     """
 
     @given(text=text_with_trailing_whitespace())
-    @settings(max_examples=500, deadline=None)
+    @settings(deadline=None)
     def test_trailing_whitespace_parses(self, text: str) -> None:
         """Text with trailing whitespace should parse correctly.
 
@@ -526,7 +514,7 @@ class TestTrailingWhitespace:
         assert len(resource.entries) >= 1
 
     @given(text=text_with_trailing_whitespace())
-    @settings(max_examples=300, deadline=None)
+    @settings(deadline=None)
     def test_trailing_whitespace_roundtrip(self, text: str) -> None:
         """Trailing whitespace handling should be consistent on roundtrip.
 
@@ -562,11 +550,7 @@ class TestWhitespaceCrossContamination:
     """
 
     @given(source=ftl_resource_with_whitespace_chaos())
-    @settings(
-        max_examples=500,
-        deadline=None,
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example])
     def test_whitespace_chaos_parses(self, source: str) -> None:
         """Resources with mixed whitespace edge cases should parse.
 
@@ -585,11 +569,7 @@ class TestWhitespaceCrossContamination:
         assert hasattr(resource, "entries")
 
     @given(source=ftl_resource_with_whitespace_chaos())
-    @settings(
-        max_examples=300,
-        deadline=None,
-        suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example])
     def test_whitespace_chaos_roundtrip(self, source: str) -> None:
         """Resources with whitespace chaos should roundtrip without growth.
 
@@ -610,11 +590,7 @@ class TestWhitespaceCrossContamination:
         event("outcome=chaos_roundtrip_success")
 
     @given(msg=ftl_message_with_whitespace_edge_cases())
-    @settings(
-        max_examples=500,
-        deadline=None,
-        suppress_health_check=[HealthCheck.too_slow],
-    )
+    @settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
     def test_message_whitespace_edge_cases_roundtrip(self, msg: str) -> None:
         """Individual messages with whitespace edge cases should roundtrip.
 
