@@ -18,7 +18,10 @@ Exports (eager — no Babel dependency, no circular import risk):
     fiscal_month: Convenience function — fiscal month for a date
     fiscal_year_start: Convenience function — first day of a fiscal year
     fiscal_year_end: Convenience function — last day of a fiscal year
+    coerce_tuple: Coerce a non-str Sequence to an immutable tuple
+    require_int: Validate that a boundary value is an integer (no range check)
     require_non_empty_str: Validate that a boundary value is a non-blank string
+    require_non_negative_int: Validate that a boundary value is an int >= 0
     require_positive_int: Validate that a boundary value is a positive integer
 
 Exports (lazy — depth_guard is loaded on first access to break circular import):
@@ -48,7 +51,13 @@ from .fiscal import (
     fiscal_year_end,
     fiscal_year_start,
 )
-from .validators import require_non_empty_str, require_positive_int
+from .validators import (
+    coerce_tuple,
+    require_int,
+    require_non_empty_str,
+    require_non_negative_int,
+    require_positive_int,
+)
 from .value_types import FluentNumber, FluentValue, make_fluent_number
 
 if TYPE_CHECKING:
@@ -62,6 +71,7 @@ __all__ = [
     "FluentNumber",
     "FluentValue",
     "MonthEndPolicy",
+    "coerce_tuple",
     "depth_clamp",
     "fiscal_month",
     "fiscal_quarter",
@@ -69,7 +79,9 @@ __all__ = [
     "fiscal_year_end",
     "fiscal_year_start",
     "make_fluent_number",
+    "require_int",
     "require_non_empty_str",
+    "require_non_negative_int",
     "require_positive_int",
 ]
 

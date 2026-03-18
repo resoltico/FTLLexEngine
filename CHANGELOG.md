@@ -1,6 +1,6 @@
 ---
 afad: "3.3"
-version: "0.157.0"
+version: "0.158.0"
 domain: CHANGELOG
 updated: "2026-03-18"
 route:
@@ -14,6 +14,53 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.158.0] - 2026-03-18
+
+### Added
+
+- **`require_int(value, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Type-only boundary validator for integer fields with no range constraint. Rejects `bool`
+  (int subtype, semantically wrong for numeric fields) and all non-int types with `TypeError`.
+  Returns the validated int unchanged without any positivity or non-negativity check. Use at
+  deserialization boundaries where the domain model owns range validation — fiscal years,
+  quarters, months, offsets. Semantically more precise than `require_positive_int` when zero
+  or negative values are domain-valid. Available as `from ftllexengine import require_int` or
+  `from ftllexengine.core.validators import require_int`.
+
+- **`require_non_negative_int(value, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Boundary validator for zero-or-positive integer fields. Rejects `bool` and non-int types
+  with `TypeError`, rejects negative values with `ValueError "{field_name} must be non-negative"`,
+  accepts zero and all positive integers. Fills the gap between `require_positive_int` (which
+  rejects zero) and `require_int` (no range check): zero-based index fields, counts that are
+  valid at zero, and entry indices are typical use cases. Available as
+  `from ftllexengine import require_non_negative_int` or
+  `from ftllexengine.core.validators import require_non_negative_int`.
+
+- **`coerce_tuple[T](value, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Generic sequence coercion primitive for frozen dataclass `__post_init__` methods. Accepts
+  any non-str Sequence (list, tuple, range, bytes, etc.) and returns `tuple(value)`. Rejects
+  `str` (a Sequence but semantically a scalar at this boundary) with `TypeError "{field_name}
+  must be a non-str Sequence, got str"`, and rejects non-Sequence inputs (int, None, generator,
+  set) with `TypeError "{field_name} must be a Sequence, got {type}"`. The element type `T`
+  is caller-asserted — an unchecked coercion analogous to `cast()`. Eliminates the repeated
+  `isinstance / tuple()` pattern in every frozen model that accepts a sequence field.
+  Available as `from ftllexengine import coerce_tuple` or
+  `from ftllexengine.core.validators import coerce_tuple`.
+
+### Changed (Breaking)
+
+- **`CurrencyCode` and `TerritoryCode`** converted from PEP 695 `type` aliases to `NewType`
+  wrappers (`ftllexengine.introspection.iso`). Both were previously `type CurrencyCode = str`
+  (structural aliases), making `TypeIs[CurrencyCode]` identical to `TypeIs[str]` and causing
+  mypy to report the false-branch of `is_valid_currency_code()` / `is_valid_territory_code()`
+  as unreachable when applied to plain `str` inputs. With `NewType`, each is a distinct
+  nominal subtype of `str`: the false-branch is now correctly reachable for `str` inputs,
+  eliminating `# type: ignore[unreachable]` annotations at all downstream validation sites.
+  Runtime behavior is unchanged — `NewType` is the identity function at runtime, and
+  `isinstance(CurrencyCode("USD"), str)` remains True. Code that constructs `TerritoryInfo`
+  or `CurrencyInfo` directly (not via `get_territory`/`get_currency`) must now call
+  `TerritoryCode("XX")` / `CurrencyCode("XXX")` for field arguments typed as these newtypes.
 
 ## [0.157.0] - 2026-03-18
 

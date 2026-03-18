@@ -20,7 +20,7 @@ from functools import lru_cache
 # TypeIs (PEP 742) is available unconditionally on Python 3.13+, which is the
 # minimum supported version. The import is placed here at module level so that
 # typing.get_type_hints() callers resolve the name from this module's globals.
-from typing import TypeIs
+from typing import NewType, TypeIs
 
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
@@ -41,7 +41,7 @@ from ftllexengine.core.locale_utils import normalize_locale
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
-    # Type aliases
+    # NewType wrappers
     "TerritoryCode",
     "CurrencyCode",
     # Data classes
@@ -67,14 +67,24 @@ _BABEL_FEATURE = "ISO introspection"
 
 
 # ============================================================================
-# TYPE ALIASES (PEP 695)
+# NEWTYPES
 # ============================================================================
 
-type TerritoryCode = str
-"""ISO 3166-1 alpha-2 territory code (e.g., 'US', 'LV', 'DE')."""
+TerritoryCode = NewType("TerritoryCode", str)
+"""ISO 3166-1 alpha-2 territory code (e.g., 'US', 'LV', 'DE').
 
-type CurrencyCode = str
-"""ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')."""
+Nominal subtype of str. Use is_valid_territory_code() to narrow a plain str
+to TerritoryCode; both branches are then reachable, preventing false
+unreachable diagnostics at validation sites.
+"""
+
+CurrencyCode = NewType("CurrencyCode", str)
+"""ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP').
+
+Nominal subtype of str. Use is_valid_currency_code() to narrow a plain str
+to CurrencyCode; both branches are then reachable, preventing false
+unreachable diagnostics at validation sites.
+"""
 
 
 # ============================================================================
@@ -262,9 +272,9 @@ def _get_territory_impl(
     currencies = get_territory_currencies(code_upper)
 
     return TerritoryInfo(
-        alpha2=code_upper,
+        alpha2=TerritoryCode(code_upper),
         name=name,
-        currencies=tuple(currencies),
+        currencies=currencies,
     )
 
 
@@ -325,7 +335,7 @@ def _get_currency_impl(
     decimal_digits = ISO_4217_DECIMAL_DIGITS.get(code_upper, ISO_4217_DEFAULT_DECIMALS)
 
     return CurrencyInfo(
-        code=code_upper,
+        code=CurrencyCode(code_upper),
         name=name,
         symbol=symbol,
         decimal_digits=decimal_digits,
@@ -431,9 +441,9 @@ def _list_territories_impl(
             currencies = get_territory_currencies(code)
             result.add(
                 TerritoryInfo(
-                    alpha2=code,
+                    alpha2=TerritoryCode(code),
                     name=name,
-                    currencies=tuple(currencies),
+                    currencies=currencies,
                 )
             )
 
@@ -496,7 +506,7 @@ def _list_currencies_impl(
                 )
                 result.add(
                     CurrencyInfo(
-                        code=code,
+                        code=CurrencyCode(code),
                         name=english_name,
                         symbol=symbol,
                         decimal_digits=decimal_digits,
@@ -545,7 +555,7 @@ def _get_territory_currencies_impl(territory_upper: str) -> tuple[CurrencyCode, 
         Empty tuple if territory unknown or has no currency data.
     """
     currencies = _get_babel_territory_currencies(territory_upper)
-    return tuple(currencies)
+    return tuple(CurrencyCode(c) for c in currencies)
 
 
 def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:

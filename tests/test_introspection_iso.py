@@ -47,38 +47,56 @@ class TestTerritoryInfo:
 
     def test_immutable(self) -> None:
         """TerritoryInfo is immutable (frozen)."""
-        info = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("US"), name="United States",
+            currencies=(CurrencyCode("USD"),),
+        )
         with pytest.raises(AttributeError):
-            info.alpha2 = "CA"  # type: ignore[misc]
+            info.alpha2 = TerritoryCode("CA")  # type: ignore[misc]
 
     def test_hashable(self) -> None:
         """TerritoryInfo is hashable (can be used in sets/dicts)."""
-        info = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("US"), name="United States",
+            currencies=(CurrencyCode("USD"),),
+        )
         assert hash(info) is not None
         territories = {info}
         assert len(territories) == 1
 
     def test_equality(self) -> None:
         """TerritoryInfo instances with same values are equal."""
-        info1 = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
-        info2 = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
+        info1 = TerritoryInfo(
+            alpha2=TerritoryCode("US"), name="United States",
+            currencies=(CurrencyCode("USD"),),
+        )
+        info2 = TerritoryInfo(
+            alpha2=TerritoryCode("US"), name="United States",
+            currencies=(CurrencyCode("USD"),),
+        )
         assert info1 == info2
 
     def test_slots(self) -> None:
         """TerritoryInfo uses __slots__ for memory efficiency."""
-        info = TerritoryInfo(alpha2="US", name="United States", currencies=("USD",))
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("US"), name="United States",
+            currencies=(CurrencyCode("USD"),),
+        )
         assert not hasattr(info, "__dict__") or info.__dict__ == {}
 
     def test_multi_currency_territory(self) -> None:
         """TerritoryInfo supports multiple currencies for multi-currency territories."""
-        info = TerritoryInfo(alpha2="PA", name="Panama", currencies=("PAB", "USD"))
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("PA"), name="Panama",
+            currencies=(CurrencyCode("PAB"), CurrencyCode("USD")),
+        )
         assert len(info.currencies) == 2
-        assert "PAB" in info.currencies
-        assert "USD" in info.currencies
+        assert CurrencyCode("PAB") in info.currencies
+        assert CurrencyCode("USD") in info.currencies
 
     def test_empty_currencies_tuple(self) -> None:
         """TerritoryInfo supports empty currencies tuple for territories without currency data."""
-        info = TerritoryInfo(alpha2="AQ", name="Antarctica", currencies=())
+        info = TerritoryInfo(alpha2=TerritoryCode("AQ"), name="Antarctica", currencies=())
         assert info.currencies == ()
         assert len(info.currencies) == 0
 
@@ -88,26 +106,26 @@ class TestCurrencyInfo:
 
     def test_immutable(self) -> None:
         """CurrencyInfo is immutable (frozen)."""
-        info = CurrencyInfo(code="USD", name="US Dollar", symbol="$", decimal_digits=2)
+        info = CurrencyInfo(code=CurrencyCode("USD"), name="US Dollar", symbol="$", decimal_digits=2)
         with pytest.raises(AttributeError):
-            info.code = "EUR"  # type: ignore[misc]
+            info.code = CurrencyCode("EUR")  # type: ignore[misc]
 
     def test_hashable(self) -> None:
         """CurrencyInfo is hashable (can be used in sets/dicts)."""
-        info = CurrencyInfo(code="USD", name="US Dollar", symbol="$", decimal_digits=2)
+        info = CurrencyInfo(code=CurrencyCode("USD"), name="US Dollar", symbol="$", decimal_digits=2)
         assert hash(info) is not None
         currencies = {info}
         assert len(currencies) == 1
 
     def test_equality(self) -> None:
         """CurrencyInfo instances with same values are equal."""
-        info1 = CurrencyInfo(code="USD", name="US Dollar", symbol="$", decimal_digits=2)
-        info2 = CurrencyInfo(code="USD", name="US Dollar", symbol="$", decimal_digits=2)
+        info1 = CurrencyInfo(code=CurrencyCode("USD"), name="US Dollar", symbol="$", decimal_digits=2)
+        info2 = CurrencyInfo(code=CurrencyCode("USD"), name="US Dollar", symbol="$", decimal_digits=2)
         assert info1 == info2
 
     def test_slots(self) -> None:
         """CurrencyInfo uses __slots__ for memory efficiency."""
-        info = CurrencyInfo(code="USD", name="US Dollar", symbol="$", decimal_digits=2)
+        info = CurrencyInfo(code=CurrencyCode("USD"), name="US Dollar", symbol="$", decimal_digits=2)
         assert not hasattr(info, "__dict__") or info.__dict__ == {}
 
 
@@ -545,17 +563,29 @@ class TestCaching:
 
 
 class TestTypeAliases:
-    """Tests for type aliases."""
+    """Tests for TerritoryCode and CurrencyCode NewType wrappers."""
 
-    def test_territory_code_is_str(self) -> None:
-        """TerritoryCode is a string type alias."""
-        code: TerritoryCode = "US"
+    def test_territory_code_is_str_at_runtime(self) -> None:
+        """TerritoryCode is a NewType of str; transparent (identity) at runtime."""
+        code = TerritoryCode("US")
         assert isinstance(code, str)
+        assert code == "US"
 
-    def test_currency_code_is_str(self) -> None:
-        """CurrencyCode is a string type alias."""
-        code: CurrencyCode = "USD"
+    def test_currency_code_is_str_at_runtime(self) -> None:
+        """CurrencyCode is a NewType of str; transparent (identity) at runtime."""
+        code = CurrencyCode("USD")
         assert isinstance(code, str)
+        assert code == "USD"
+
+    def test_territory_code_newtype_constructor_is_identity(self) -> None:
+        """TerritoryCode(...) returns the string value unchanged at runtime."""
+        raw = "LV"
+        assert TerritoryCode(raw) == raw
+
+    def test_currency_code_newtype_constructor_is_identity(self) -> None:
+        """CurrencyCode(...) returns the string value unchanged at runtime."""
+        raw = "EUR"
+        assert CurrencyCode(raw) == raw
 
 
 class TestBabelImportError:

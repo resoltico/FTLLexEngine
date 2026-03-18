@@ -34,7 +34,10 @@ Locale Utilities (no Babel dependency):
     get_system_locale - Detect locale from OS environment variables
 
 Boundary Validators (no Babel dependency):
+    coerce_tuple - Coerce a non-str Sequence to an immutable tuple
+    require_int - Validate that a boundary value is an integer (no range check)
     require_non_empty_str - Validate that a boundary value is a non-blank string
+    require_non_negative_int - Validate that a boundary value is an int >= 0
     require_positive_int - Validate that a boundary value is a positive integer
     require_locale_code - Validate and canonicalize a locale code at a system boundary
 
@@ -118,7 +121,13 @@ from .core.fiscal import (
 from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
 
 # Boundary validators - no Babel dependency; pure stdlib, no circular import risk
-from .core.validators import require_non_empty_str, require_positive_int
+from .core.validators import (
+    coerce_tuple,
+    require_int,
+    require_non_empty_str,
+    require_non_negative_int,
+    require_positive_int,
+)
 
 # Error types must load before core to avoid circular import:
 # diagnostics -> validation -> syntax.ast -> syntax.__init__ -> serializer -> core.depth_guard
@@ -421,8 +430,11 @@ __all__ = [
     "get_system_locale",
     "normalize_locale",
     # Boundary validators (no Babel dependency)
+    "coerce_tuple",
+    "require_int",
     "require_locale_code",
     "require_non_empty_str",
+    "require_non_negative_int",
     "require_positive_int",
     # Fiscal calendar (no Babel dependency)
     "FiscalCalendar",

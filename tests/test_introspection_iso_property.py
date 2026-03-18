@@ -11,7 +11,9 @@ from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.introspection.iso import (
+    CurrencyCode,
     CurrencyInfo,
+    TerritoryCode,
     TerritoryInfo,
     get_currency,
     get_territory,
@@ -390,7 +392,7 @@ class TestImmutabilityProperties:
         result = get_territory(code)
         assert result is not None
         with pytest.raises(AttributeError):
-            result.alpha2 = "XX"  # type: ignore[misc]
+            result.alpha2 = TerritoryCode("XX")  # type: ignore[misc]
         event(f"code={code}")
 
     @given(code=currency_codes)
@@ -399,7 +401,7 @@ class TestImmutabilityProperties:
         result = get_currency(code)
         assert result is not None
         with pytest.raises(AttributeError):
-            result.code = "XXX"  # type: ignore[misc]
+            result.code = CurrencyCode("XXX")  # type: ignore[misc]
         event(f"code={code}")
 
     @given(code=territory_codes)

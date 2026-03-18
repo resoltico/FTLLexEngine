@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.157.0"
+version: "0.158.0"
 domain: CORE
 updated: "2026-03-18"
 route:
-  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
+  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, require_int, require_non_negative_int, coerce_tuple, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool, CurrencyCode, TerritoryCode, NewType]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?", "how do I coerce a list to tuple?", "how do I validate a non-negative int?", "how do I validate any int type?"]
 ---
 
 # Core API Reference
@@ -1626,6 +1626,84 @@ def require_positive_int(value: object, field_name: str) -> int:
 - Thread: Safe.
 - Babel: NOT required.
 - Import: `from ftllexengine import require_positive_int` or `from ftllexengine.core.validators import require_positive_int`.
+
+---
+
+## `require_int`
+
+Validate that a boundary value is an integer, with no range constraint.
+
+### Signature
+```python
+def require_int(value: object, field_name: str) -> int:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. Any Python object; non-int and bool always raise TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated integer, identical to the input value. No range check applied.
+- Raises: `TypeError` if `value` is not an `int` instance, or if it is `bool`.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_int` or `from ftllexengine.core.validators import require_int`.
+
+---
+
+## `require_non_negative_int`
+
+Validate that a boundary value is a non-negative integer (>= 0).
+
+### Signature
+```python
+def require_non_negative_int(value: object, field_name: str) -> int:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. Any Python object; non-int and bool always raise TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated non-negative integer, identical to the input value.
+- Raises: `TypeError` if `value` is not an `int` instance, or if it is `bool`.
+- Raises: `ValueError` if `value` is negative (`< 0`). Zero is valid.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_non_negative_int` or `from ftllexengine.core.validators import require_non_negative_int`.
+
+---
+
+## `coerce_tuple`
+
+Coerce a non-str Sequence to an immutable tuple. Generic over element type T.
+
+### Signature
+```python
+def coerce_tuple[T](value: object, field_name: str) -> tuple[T, ...]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to coerce. Any non-str Sequence accepted; str and non-Sequence raise TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: An immutable `tuple` containing the elements of `value`.
+- Raises: `TypeError` if `value` is `str` (str is a Sequence but is rejected as semantically a scalar at this boundary).
+- Raises: `TypeError` if `value` is not a `Sequence` (int, None, generator, set, etc.).
+- Element type T: Caller-asserted unchecked coercion. No runtime element type verification.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import coerce_tuple` or `from ftllexengine.core.validators import coerce_tuple`.
 
 ---
 

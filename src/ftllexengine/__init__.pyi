@@ -18,7 +18,10 @@ from .core.locale_utils import normalize_locale as normalize_locale
 from .core.locale_utils import require_locale_code as require_locale_code
 
 # Boundary validators (no Babel dependency)
+from .core.validators import coerce_tuple as coerce_tuple
+from .core.validators import require_int as require_int
 from .core.validators import require_non_empty_str as require_non_empty_str
+from .core.validators import require_non_negative_int as require_non_negative_int
 from .core.validators import require_positive_int as require_positive_int
 
 # Core API - Error types (immutable, sealed)
@@ -159,8 +162,11 @@ __all__: list[str] = [
     "get_system_locale",
     "normalize_locale",
     # Boundary validators (no Babel dependency)
+    "coerce_tuple",
+    "require_int",
     "require_locale_code",
     "require_non_empty_str",
+    "require_non_negative_int",
     "require_positive_int",
     # Fiscal calendar (no Babel dependency)
     "FiscalCalendar",

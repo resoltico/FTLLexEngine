@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.157.0"
+version: "0.158.0"
 domain: INDEX
 updated: "2026-03-18"
 route:
-  keywords: [api reference, documentation, exports, imports, AsyncFluentBundle, fluentbundle, fluentlocalization, cache-audit, boot-validation, LocalizationBootConfig, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, make_fluent_number, parse_fluent_number, FluentNumber, decimal_value, RWLock, fiscal, iso, currency, get_currency_decimal_digits, LocaleCode, normalize_locale, get_system_locale, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats, parse_stream, parse_stream_ftl, add_resource_stream, incremental, streaming, async, asyncio]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I import RWLock?", "how do I get the cache audit log?", "how to import ISO introspection?", "how do I boot FluentLocalization with strict validation?", "what is LocalizationBootConfig?"]
+  keywords: [api reference, documentation, exports, imports, AsyncFluentBundle, fluentbundle, fluentlocalization, cache-audit, boot-validation, LocalizationBootConfig, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, require_int, require_non_negative_int, coerce_tuple, make_fluent_number, parse_fluent_number, FluentNumber, decimal_value, RWLock, fiscal, iso, currency, get_currency_decimal_digits, LocaleCode, normalize_locale, get_system_locale, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats, parse_stream, parse_stream_ftl, add_resource_stream, incremental, streaming, async, asyncio, CurrencyCode, TerritoryCode, NewType]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I import RWLock?", "how do I get the cache audit log?", "how to import ISO introspection?", "how do I boot FluentLocalization with strict validation?", "what is LocalizationBootConfig?", "how do I coerce a sequence to tuple?", "how do I validate any integer type?", "how do I validate a non-negative integer?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -58,7 +58,10 @@ from ftllexengine import (
     normalize_locale,        # Convert BCP-47 to canonical lowercase POSIX form
     get_system_locale,       # Detect locale from OS environment variables
     # Boundary validators (no Babel required)
+    coerce_tuple,            # Coerce a non-str Sequence to an immutable tuple
+    require_int,             # Validate integer type only (no range check)
     require_non_empty_str,   # Validate non-blank string at a system boundary
+    require_non_negative_int, # Validate integer >= 0 at a system boundary
     require_positive_int,    # Validate positive integer at a system boundary
     require_locale_code,     # Validate and canonicalize a locale code
     # Fiscal calendar (no Babel required)
@@ -264,7 +267,7 @@ ftllexengine/
     errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
     fiscal.py              # FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy (no Babel)
     identifier_validation.py  # FTL identifier validation utilities
-    validators.py          # require_non_empty_str, require_positive_int (generic boundary validation)
+    validators.py          # coerce_tuple, require_int, require_non_empty_str, require_non_negative_int, require_positive_int
     locale_utils.py        # require_locale_code, get_system_locale, normalize_locale, get_babel_locale, clear_locale_cache
   analysis/
     __init__.py            # Analysis API exports
@@ -328,8 +331,8 @@ ftllexengine/
 | `LocaleCode` | `str` | localization.py |
 | `ResourceId` | `str` | localization.py |
 | `FTLSource` | `str` | localization.py |
-| `TerritoryCode` | `str` | introspection/iso.py |
-| `CurrencyCode` | `str` | introspection/iso.py |
+| `TerritoryCode` | `NewType("TerritoryCode", str)` | introspection/iso.py |
+| `CurrencyCode` | `NewType("CurrencyCode", str)` | introspection/iso.py |
 | `Entry` | `Message \| Term \| Comment \| Junk` | syntax/ast.py |
 | `PatternElement` | `TextElement \| Placeable` | syntax/ast.py |
 | `Expression` | `SelectExpression \| InlineExpression` | syntax/ast.py |
