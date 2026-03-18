@@ -1,5 +1,6 @@
 from ftllexengine.diagnostics import ValidationResult as ValidationResult
 
+from .async_bundle import AsyncFluentBundle as AsyncFluentBundle
 from .bundle import FluentBundle as FluentBundle
 from .cache import CacheAuditLogEntry as CacheAuditLogEntry
 from .cache import WriteLogEntry as WriteLogEntry
@@ -19,6 +20,7 @@ from .rwlock import RWLock as RWLock
 from .value_types import make_fluent_number as make_fluent_number
 
 __all__: list[str] = [
+    "AsyncFluentBundle",
     "CacheAuditLogEntry",
     "CacheConfig",
     "FluentBundle",

@@ -149,12 +149,20 @@ class TestBabelOptionalAttrsSet:
         import ftllexengine
 
         expected = {
+            "AsyncFluentBundle",
             "CacheConfig",
+            "FallbackInfo",
             "FluentBundle",
             "FluentNumber",
             "FluentLocalization",
             "FluentValue",
             "InterpreterPool",
+            "LoadSummary",
+            "LocalizationBootConfig",
+            "LocalizationCacheStats",
+            "PathResourceLoader",
+            "ResourceLoadResult",
+            "ResourceLoader",
             "fluent_function",
             "make_fluent_number",
             "get_cldr_version",
@@ -190,12 +198,22 @@ class TestBabelImportErrorPath:
             original_import = builtins.__import__
 
             def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
+                # Exempt Babel-free localization submodules (types, loading) that
+                # are always importable regardless of Babel availability.
+                is_babel_free_localization = (
+                    "localization.types" in name
+                    or "localization.loading" in name
+                    or (level > 0 and ("localization.types" in name or "localization.loading" in name))
+                )
                 is_runtime_import = (
-                    name == "ftllexengine.runtime"
-                    or (name.startswith("ftllexengine") and "runtime" in name)
-                    or (level > 0 and "runtime" in name)
-                    or (name.startswith("ftllexengine") and "localization" in name)
-                    or (level > 0 and "localization" in name)
+                    not is_babel_free_localization
+                    and (
+                        name == "ftllexengine.runtime"
+                        or (name.startswith("ftllexengine") and "runtime" in name)
+                        or (level > 0 and "runtime" in name)
+                        or (name.startswith("ftllexengine") and "localization" in name)
+                        or (level > 0 and "localization" in name)
+                    )
                 )
                 if is_runtime_import:
                     raise ImportError("No module named 'babel'")
@@ -207,7 +225,7 @@ class TestBabelImportErrorPath:
 
                 with pytest.raises(
                     ImportError,
-                    match=r"FluentBundle requires Babel.*pip install ftllexengine\[babel\]",
+                    match=r"FluentBundle requires the full runtime install.*pip install ftllexengine\[babel\]",
                 ):
                     _ = ftllexengine.FluentBundle
             finally:
@@ -240,12 +258,22 @@ class TestBabelImportErrorPath:
             original_import = builtins.__import__
 
             def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
+                # Exempt Babel-free localization submodules (types, loading) that
+                # are always importable regardless of Babel availability.
+                is_babel_free_localization = (
+                    "localization.types" in name
+                    or "localization.loading" in name
+                    or (level > 0 and ("localization.types" in name or "localization.loading" in name))
+                )
                 is_runtime_import = (
-                    name == "ftllexengine.runtime"
-                    or (name.startswith("ftllexengine") and "runtime" in name)
-                    or (level > 0 and "runtime" in name)
-                    or (name.startswith("ftllexengine") and "localization" in name)
-                    or (level > 0 and "localization" in name)
+                    not is_babel_free_localization
+                    and (
+                        name == "ftllexengine.runtime"
+                        or (name.startswith("ftllexengine") and "runtime" in name)
+                        or (level > 0 and "runtime" in name)
+                        or (name.startswith("ftllexengine") and "localization" in name)
+                        or (level > 0 and "localization" in name)
+                    )
                 )
                 if is_runtime_import:
                     raise ImportError("No module named 'babel'")
@@ -257,7 +285,7 @@ class TestBabelImportErrorPath:
 
                 with pytest.raises(
                     ImportError,
-                    match=r"CacheConfig requires Babel.*pip install ftllexengine\[babel\]",
+                    match=r"CacheConfig requires the full runtime install.*pip install ftllexengine\[babel\]",
                 ):
                     _ = ftllexengine.CacheConfig
             finally:
@@ -379,13 +407,14 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 44
+        assert len(ftllexengine.__all__) == 60
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
         import ftllexengine
 
         for name in (
+            "AsyncFluentBundle",
             "FluentBundle",
             "FluentNumber",
             "FluentLocalization",

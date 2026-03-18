@@ -18,6 +18,8 @@ Exports (eager — no Babel dependency, no circular import risk):
     fiscal_month: Convenience function — fiscal month for a date
     fiscal_year_start: Convenience function — first day of a fiscal year
     fiscal_year_end: Convenience function — last day of a fiscal year
+    require_non_empty_str: Validate that a boundary value is a non-blank string
+    require_positive_int: Validate that a boundary value is a positive integer
 
 Exports (lazy — depth_guard is loaded on first access to break circular import):
     DepthGuard: Context manager for recursion depth limiting
@@ -30,7 +32,7 @@ Exports (lazy — depth_guard is loaded on first access to break circular import
     Lazy loading via __getattr__ defers depth_guard until after all modules are
     initialized, at which point sys.modules contains the complete import graph.
 
-Python 3.13+. No external dependencies.
+Python 3.14+. No external dependencies.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -46,6 +48,7 @@ from .fiscal import (
     fiscal_year_end,
     fiscal_year_start,
 )
+from .validators import require_non_empty_str, require_positive_int
 from .value_types import FluentNumber, FluentValue, make_fluent_number
 
 if TYPE_CHECKING:
@@ -66,6 +69,8 @@ __all__ = [
     "fiscal_year_end",
     "fiscal_year_start",
     "make_fluent_number",
+    "require_non_empty_str",
+    "require_positive_int",
 ]
 
 _LAZY_DEPTH_GUARD = frozenset({"DepthGuard", "depth_clamp"})

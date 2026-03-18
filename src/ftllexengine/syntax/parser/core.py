@@ -28,9 +28,12 @@ See Also:
     - :mod:`ftllexengine.syntax.parser.rules` - Grammar rules (patterns, expressions, entries)
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import sys
+from typing import TYPE_CHECKING
 
 from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
 from ftllexengine.diagnostics import DiagnosticCode
@@ -38,6 +41,7 @@ from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
     Annotation,
     Comment,
+    Entry,
     Junk,
     Message,
     Resource,
@@ -53,6 +57,9 @@ from ftllexengine.syntax.parser.rules import (
     parse_term,
 )
 from ftllexengine.syntax.parser.whitespace import skip_blank
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 __all__ = ["FluentParserV1"]
 
@@ -542,6 +549,52 @@ class FluentParserV1:
             entries.append(pending_accumulator.finalize())
 
         return Resource(entries=tuple(entries))
+
+    def parse_stream(self, lines: Iterable[str]) -> Iterator[Entry]:
+        """Parse FTL entries incrementally from a line-oriented source stream.
+
+        Splits the stream at blank-line boundaries, which delimit top-level FTL
+        entries per the Fluent specification. Each chunk is parsed independently
+        and its entries yielded in document order. Memory usage is proportional
+        to the largest single entry, not the full source size.
+
+        Comment attachment follows FTL semantics: a comment immediately before
+        a message or term with no intervening blank line is attached to that
+        entry. Comments separated by blank lines are yielded as standalone
+        Comment entries.
+
+        Span positions in yielded entries are relative to the start of each
+        parsed chunk, not to the position within the original source stream.
+        This differs from parse(), where spans reference absolute source
+        positions. For use cases that require span fidelity (e.g., IDE tooling),
+        use parse() instead.
+
+        Args:
+            lines: Iterable of FTL source lines. Trailing newlines are stripped
+                   per line; the stream need not be pre-normalized.
+
+        Yields:
+            Message, Term, Comment, or Junk AST nodes in document order.
+
+        Example:
+            >>> parser = FluentParserV1()
+            >>> ftl_lines = ["greeting = Hello\\n", "\\n", "farewell = Bye\\n"]
+            >>> entries = list(parser.parse_stream(ftl_lines))
+            >>> len(entries)
+            2
+            >>> entries[0].id.name
+            'greeting'
+        """
+        chunk: list[str] = []
+        for line in lines:
+            stripped = line.rstrip("\n\r")
+            if stripped:
+                chunk.append(stripped)
+            elif chunk:
+                yield from self.parse("\n".join(chunk)).entries
+                chunk = []
+        if chunk:
+            yield from self.parse("\n".join(chunk)).entries
 
     def _junk_limit_exceeded(self, junk_count: int) -> bool:
         """Return True and log warning if the Junk entry limit has been reached.

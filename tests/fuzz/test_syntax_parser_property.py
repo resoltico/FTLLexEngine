@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import string
+
 import pytest
 from hypothesis import assume, event, example, given
 from hypothesis import strategies as st
@@ -28,6 +30,7 @@ from ftllexengine.syntax.parser.rules import (
     parse_term_reference,
     parse_variable_reference,
 )
+from tests.strategies.ftl import ftl_chaos_source, ftl_simple_messages, ftl_terms
 
 pytestmark = pytest.mark.fuzz
 
@@ -383,3 +386,182 @@ class TestExpressionsHypothesis:
         assert result is not None
         assert isinstance(result.value, TermReference)
         assert result.value.id.name == name
+
+
+# ============================================================================
+# parse_stream Property Tests
+# ============================================================================
+
+# Alphabet for generating valid FTL message identifiers.
+_ID_FIRST = string.ascii_letters
+_ID_REST = string.ascii_letters + string.digits + "-_"
+
+
+@st.composite
+def _valid_ftl_message_sources(draw: st.DrawFn) -> str:
+    """Generate a valid FTL message source string.
+
+    Events emitted:
+    - stream_msg_count=N
+    """
+    count = draw(st.integers(min_value=1, max_value=8))
+    event(f"stream_msg_count={count}")
+    lines: list[str] = []
+    seen: set[str] = set()
+    for _ in range(count):
+        first = draw(st.sampled_from(list(_ID_FIRST)))
+        rest = draw(st.text(alphabet=_ID_REST, min_size=0, max_size=12))
+        mid = first + rest
+        if mid in seen:
+            continue
+        seen.add(mid)
+        value = draw(st.text(
+            alphabet=st.characters(whitelist_categories=("L", "N", "Zs"),
+                                   blacklist_characters="\n\r{}"),
+            min_size=1, max_size=30,
+        ))
+        lines.append(f"{mid} = {value}\n")
+    if not lines:
+        lines = ["fallback = value\n"]
+    return "".join(lines)
+
+
+@st.composite
+def _ftl_line_sequences(draw: st.DrawFn) -> list[str]:
+    """Generate FTL line sequences with various blank line patterns.
+
+    Events emitted:
+    - stream_blank_pattern=leading|trailing|consecutive|none
+    """
+    source = draw(_valid_ftl_message_sources())
+    lines = source.splitlines(keepends=True)
+    pattern = draw(st.sampled_from(["leading", "trailing", "consecutive", "none"]))
+    event(f"stream_blank_pattern={pattern}")
+    match pattern:
+        case "leading":
+            return ["", *lines]
+        case "trailing":
+            return [*lines, ""]
+        case "consecutive":
+            # Insert an extra blank line after the first content line
+            if len(lines) >= 2:
+                return [lines[0], "\n", *lines[1:]]
+            return ["\n", *lines]
+        case _:
+            return lines
+
+
+class TestParseStreamOracle:
+    """Oracle: parse_stream must yield same message/term IDs as parse() for valid FTL."""
+
+    @given(source=_valid_ftl_message_sources())
+    def test_message_ids_match_parse_oracle(self, source: str) -> None:
+        """parse_stream message IDs equal parse() message IDs for valid FTL.
+
+        The oracle establishes that parse_stream is a streaming equivalent of
+        parse for well-formed FTL with no cross-chunk dependencies.
+        """
+        parser = FluentParserV1()
+        lines = source.splitlines(keepends=True)
+
+        stream_ids = {
+            e.id.name for e in parser.parse_stream(lines) if isinstance(e, Message)
+        }
+        parse_ids = {
+            e.id.name for e in parser.parse(source).entries if isinstance(e, Message)
+        }
+        event(f"outcome={'match' if stream_ids == parse_ids else 'mismatch'}")
+        assert stream_ids == parse_ids
+
+    @given(source=_valid_ftl_message_sources())
+    def test_junk_count_bounded_by_entry_count(self, source: str) -> None:
+        """Junk entries from parse_stream are a subset of total entries.
+
+        For valid FTL, junk count must be zero. The invariant also applies to
+        chaotic inputs: junk + non-junk <= total entries from any parse call.
+        """
+        parser = FluentParserV1()
+        lines = source.splitlines(keepends=True)
+        entries = list(parser.parse_stream(lines))
+        junk = [e for e in entries if isinstance(e, Junk)]
+        event(f"junk_count={len(junk)}")
+        assert len(junk) <= len(entries)
+        # Valid FTL must produce no junk
+        assert len(junk) == 0
+
+    @given(lines=_ftl_line_sequences())
+    def test_blank_line_patterns_never_crash(self, lines: list[str]) -> None:
+        """parse_stream is stable for any blank-line pattern around valid FTL."""
+        parser = FluentParserV1()
+        entries = list(parser.parse_stream(lines))
+        event(f"entry_count={len(entries)}")
+        # All entries are typed AST nodes — no raw exceptions
+        for entry in entries:
+            assert isinstance(entry, (Message, Term, Junk))
+
+    @given(source=ftl_chaos_source())
+    def test_chaos_input_never_raises(self, source: str) -> None:
+        """parse_stream never raises for any string input, even chaotic ones."""
+        parser = FluentParserV1()
+        lines = source.splitlines(keepends=True)
+        try:
+            entries = list(parser.parse_stream(lines))
+            event("outcome=completed")
+        except Exception:
+            event("outcome=raised")
+            raise
+        event(f"entry_count={len(entries)}")
+
+    @given(
+        names=st.lists(
+            st.text(alphabet=string.ascii_lowercase, min_size=1, max_size=10),
+            min_size=1,
+            max_size=6,
+            unique=True,
+        ),
+        blank_count=st.integers(min_value=2, max_value=5),
+    )
+    def test_multiple_consecutive_blanks_between_messages(
+        self, names: list[str], blank_count: int
+    ) -> None:
+        """Multiple consecutive blank lines between messages produce correct entries.
+
+        Exercises the elif chunk: False branch in parse_stream repeatedly per stream.
+        After the first blank line flushes the accumulator, subsequent blank lines
+        hit the empty-chunk path (593->589) for each additional blank.
+        """
+        event(f"blank_count={blank_count}")
+        event(f"msg_count={len(names)}")
+        parser = FluentParserV1()
+        blanks = ["\n"] * blank_count
+        lines: list[str] = []
+        for i, name in enumerate(names):
+            lines.append(f"{name} = v{i}\n")
+            if i < len(names) - 1:
+                lines.extend(blanks)
+        entries = list(parser.parse_stream(lines))
+        msg_ids = {e.id.name for e in entries if isinstance(e, Message)}
+        assert msg_ids == set(names)
+
+    @given(source=ftl_simple_messages())
+    def test_stream_entry_count_non_negative(self, source: str) -> None:
+        """parse_stream always yields zero or more entries, never negative."""
+        parser = FluentParserV1()
+        lines = source.splitlines(keepends=True)
+        entries = list(parser.parse_stream(lines))
+        event(f"entry_count={len(entries)}")
+        assert len(entries) >= 0
+
+    @given(source=ftl_terms())
+    def test_term_ids_preserved_through_stream(self, source: str) -> None:
+        """Terms parsed via parse_stream have the same IDs as via parse()."""
+        parser = FluentParserV1()
+        lines = source.splitlines(keepends=True)
+        stream_term_ids = {
+            e.id.name for e in parser.parse_stream(lines) if isinstance(e, Term)
+        }
+        parse_term_ids = {
+            e.id.name for e in parser.parse(source).entries if isinstance(e, Term)
+        }
+        event(f"term_count={len(stream_term_ids)}")
+        assert stream_term_ids == parse_term_ids

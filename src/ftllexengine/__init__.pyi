@@ -12,6 +12,15 @@ from .core.fiscal import fiscal_year as fiscal_year
 from .core.fiscal import fiscal_year_end as fiscal_year_end
 from .core.fiscal import fiscal_year_start as fiscal_year_start
 
+# Locale utilities (no Babel dependency)
+from .core.locale_utils import get_system_locale as get_system_locale
+from .core.locale_utils import normalize_locale as normalize_locale
+from .core.locale_utils import require_locale_code as require_locale_code
+
+# Boundary validators (no Babel dependency)
+from .core.validators import require_non_empty_str as require_non_empty_str
+from .core.validators import require_positive_int as require_positive_int
+
 # Core API - Error types (immutable, sealed)
 from .diagnostics import (
     ErrorCategory as ErrorCategory,
@@ -28,6 +37,9 @@ from .diagnostics import (
 from .diagnostics import (
     ParseTypeLiteral as ParseTypeLiteral,
 )
+
+# Localization status enum (no Babel dependency)
+from .enums import LoadStatus as LoadStatus
 
 # Data integrity exceptions
 from .integrity import (
@@ -69,7 +81,16 @@ from .introspection.message import (
 from .introspection.message import validate_message_variables as validate_message_variables
 
 # Localization and runtime (requires Babel)
+from .localization import FallbackInfo as FallbackInfo
 from .localization import FluentLocalization as FluentLocalization
+from .localization import LoadSummary as LoadSummary
+from .localization import LocalizationBootConfig as LocalizationBootConfig
+from .localization import LocalizationCacheStats as LocalizationCacheStats
+from .localization import PathResourceLoader as PathResourceLoader
+from .localization import ResourceLoader as ResourceLoader
+from .localization import ResourceLoadResult as ResourceLoadResult
+from .localization.types import LocaleCode as LocaleCode
+from .runtime import AsyncFluentBundle as AsyncFluentBundle
 from .runtime import FluentBundle as FluentBundle
 from .runtime import FluentNumber as FluentNumber
 from .runtime import fluent_function as fluent_function
@@ -80,6 +101,7 @@ from .runtime.value_types import FluentValue as FluentValue
 
 # Syntax API (no Babel required)
 from .syntax import parse as parse_ftl
+from .syntax import parse_stream as parse_stream_ftl
 from .syntax import serialize as serialize_ftl
 
 # Validation API
@@ -98,14 +120,24 @@ __recommended_encoding__: str
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__: list[str] = [
     # Bundle and Localization (Babel-optional; absent in parser-only installs)
+    "AsyncFluentBundle",
     "CacheConfig",
+    "FallbackInfo",
     "FluentBundle",
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
     "InterpreterPool",
+    "LoadSummary",
+    "LocalizationBootConfig",
+    "LocalizationCacheStats",
+    "PathResourceLoader",
+    "ResourceLoadResult",
+    "ResourceLoader",
     "fluent_function",
     "make_fluent_number",
+    # Localization status enum (no Babel dependency)
+    "LoadStatus",
     # Error types (immutable, sealed)
     "ErrorCategory",
     "FrozenErrorContext",
@@ -122,6 +154,14 @@ __all__: list[str] = [
     "PersistenceIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
+    # Locale utilities (no Babel dependency)
+    "LocaleCode",
+    "get_system_locale",
+    "normalize_locale",
+    # Boundary validators (no Babel dependency)
+    "require_locale_code",
+    "require_non_empty_str",
+    "require_positive_int",
     # Fiscal calendar (no Babel dependency)
     "FiscalCalendar",
     "FiscalDelta",
@@ -142,6 +182,7 @@ __all__: list[str] = [
     "get_currency_decimal_digits",
     # Parsing API
     "parse_ftl",
+    "parse_stream_ftl",
     "serialize_ftl",
     "validate_resource",
     # Utility

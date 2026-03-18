@@ -20,9 +20,9 @@ from ftllexengine import (
     FluentLocalization,
     FluentNumber,
     make_fluent_number,
+    require_locale_code,
     validate_resource,
 )
-from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.parsing import parse_fluent_number
 

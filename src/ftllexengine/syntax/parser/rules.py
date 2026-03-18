@@ -360,7 +360,10 @@ def _trim_pattern_blank_lines(
     """Trim leading and trailing blank lines from pattern elements.
 
     Per Fluent spec, patterns should not include leading or trailing blank lines.
-    A blank line is defined as a line containing only whitespace.
+    A blank line is defined as a line containing only ASCII spaces (U+0020),
+    matching blank_inline ::= "\u0020"+ — NOT arbitrary Unicode whitespace.
+    Characters like U+00A0 (NO-BREAK SPACE) are valid inline-char values and
+    must be preserved, not stripped.
 
     This function:
     1. Strips leading whitespace/blank lines from the first TextElement
@@ -379,10 +382,14 @@ def _trim_pattern_blank_lines(
 
     result = list(elements)
 
-    # Trim leading whitespace from first element if it's a TextElement
+    # Trim leading whitespace from first element if it's a TextElement.
+    # Per Fluent spec, blank_inline ::= "\u0020"+ (ASCII space only).
+    # Use lstrip(" \n") — not lstrip() — to avoid stripping valid Unicode
+    # space separators like U+00A0 (NO-BREAK SPACE) that are legal inline-char
+    # values per the FTL grammar.
     while result and isinstance(result[0], TextElement):
         first = result[0]
-        stripped = first.value.lstrip()
+        stripped = first.value.lstrip(" \n")
         if stripped:
             # Keep non-empty content
             result[0] = TextElement(value=stripped)
@@ -395,6 +402,8 @@ def _trim_pattern_blank_lines(
     # NOT trailing whitespace on content lines.
     # Example: "Firefox   " should preserve trailing spaces,
     # but "Firefox\n   \n" should become "Firefox".
+    # A "blank line" is a line containing only ASCII spaces (U+0020), not
+    # arbitrary Unicode whitespace — use strip(" ") not strip().
     while result and isinstance(result[-1], TextElement):
         last = result[-1]
         text = last.value
@@ -407,9 +416,10 @@ def _trim_pattern_blank_lines(
             # Do NOT strip trailing whitespace (it's significant per Fluent spec).
             break
 
-        # Check if everything after the last newline is whitespace (blank line)
+        # Check if everything after the last newline is ASCII spaces only (blank line).
+        # strip(" ") matches Fluent spec blank_inline ::= "\u0020"+ definition.
         after_newline = text[last_newline + 1 :]
-        if after_newline.strip():
+        if after_newline.strip(" "):
             # Content after last newline - preserve it all (including trailing spaces)
             break
 

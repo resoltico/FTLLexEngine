@@ -79,6 +79,8 @@ if not errors:
 - [Multi-Locale Formatting — Alice Ships to Every Port](#multi-locale-formatting--alice-ships-to-every-port)
 - [Bidirectional Parsing — Bob Parses Every Input](#bidirectional-parsing--bob-parses-every-input)
 - [Thread-Safe Concurrency — 100 Threads, Zero Race Conditions](#thread-safe-concurrency--100-threads-zero-race-conditions)
+- [Streaming Resource Loading — Large Files Without Peak Memory](#streaming-resource-loading--large-files-without-peak-memory)
+- [Async Applications — Non-Blocking Formatting](#async-applications--non-blocking-formatting)
 - [Message Introspection — Pre-Flight Checks](#message-introspection--pre-flight-checks)
 - [Production Boot Validation — Systems That Accept Traffic Safely](#production-boot-validation--systems-that-accept-traffic-safely)
 - [Currency and Fiscal Data — Operations Across Borders](#currency-and-fiscal-data--operations-across-borders)
@@ -369,6 +371,79 @@ with ThreadPoolExecutor(max_workers=100) as executor:
 
 ---
 
+## Streaming Resource Loading — Large Files Without Peak Memory
+
+Bob's colony manifest system loads `.ftl` files that grow as new message templates accumulate. Loading the entire file into a string before parsing wastes memory on large resources — and for pipelines reading from network streams, full-string loading isn't possible.
+
+`add_resource_stream` and `parse_stream_ftl` accept any line iterator. Memory stays proportional to the largest single FTL entry, not the full file:
+
+```python
+from ftllexengine import FluentBundle, parse_stream_ftl
+
+# Load directly from a file object — no full-file read
+bundle = FluentBundle("en_US")
+with open("colony_messages.ftl", encoding="utf-8") as f:
+    junk = bundle.add_resource_stream(f, source_path="colony_messages.ftl")
+
+# Or iterate entries without a bundle (parser-only install works too)
+with open("colony_messages.ftl", encoding="utf-8") as f:
+    for entry in parse_stream_ftl(f):
+        print(type(entry).__name__, getattr(entry.id, "name", ""))
+```
+
+**Same guarantees as `add_resource`:**
+- Strict mode: raises `SyntaxIntegrityError` on junk entries (default `strict=True`)
+- Thread-safe: entries collected outside the lock, committed atomically
+- Soft mode: `add_resource_stream` returns `tuple[Junk, ...]` when `strict=False`
+
+`FluentLocalization.add_resource_stream` works identically for multi-locale setups:
+
+```python
+from ftllexengine import FluentLocalization
+from ftllexengine.localization import PathResourceLoader
+
+l10n = FluentLocalization(["de_DE", "en_US"], ["messages"], PathResourceLoader("locales/"))
+with open("extra_de.ftl", encoding="utf-8") as f:
+    l10n.add_resource_stream("de_DE", f, source_path="extra_de.ftl")
+```
+
+---
+
+## Async Applications — Non-Blocking Formatting
+
+Alice's trading platform runs on asyncio. `FluentBundle` is thread-safe, but calling it from an async handler blocks the event loop for the duration of each format call. `AsyncFluentBundle` eliminates this: every mutation and formatting operation runs in a thread pool via `asyncio.to_thread()`, leaving the event loop free.
+
+```python
+import asyncio
+from ftllexengine import AsyncFluentBundle
+
+async def handle_request(name: str, bags: int) -> str:
+    async with AsyncFluentBundle("en_US") as bundle:
+        await bundle.add_resource("""
+coffee-order = { $bags ->
+    [one]   1 bag for { $name }
+   *[other] { $bags } bags for { $name }
+}
+""")
+        result, _ = await bundle.format_pattern(
+            "coffee-order", {"name": name, "bags": bags}
+        )
+        return result
+
+# Shared bundle across requests (create once, reuse):
+_bundle = AsyncFluentBundle("en_US")
+
+async def startup() -> None:
+    with open("messages.ftl", encoding="utf-8") as f:
+        await _bundle.add_resource_stream(f, source_path="messages.ftl")
+```
+
+**Same strict-mode guarantees as `FluentBundle`:**
+- `strict=True` (default): raises `FormattingIntegrityError` on any resolution error
+- Fast read operations (`has_message`, `get_message`, `introspect_message`) remain synchronous — O(1) dict lookups too short to block the event loop
+
+---
+
 ## Message Introspection — Pre-Flight Checks
 
 Bob's systems generate cargo manifests. Before calling `format_pattern()`, they verify: *what variables does this message require? Are all of them available?*
@@ -416,7 +491,7 @@ Alice's trading platform and Bob's colony manifest system can't discover a bad `
 `LocalizationBootConfig` is the production boot sequence: load all resources, run `require_clean()` to assert every locale loaded without errors, and validate all message schemas before the first request arrives. If anything is wrong, it raises before traffic starts -- not during it.
 
 ```python
-from ftllexengine.localization import LocalizationBootConfig
+from ftllexengine import LocalizationBootConfig
 
 # Load .ftl files from disk, validate schemas, raise before accepting traffic
 cfg = LocalizationBootConfig.from_path(

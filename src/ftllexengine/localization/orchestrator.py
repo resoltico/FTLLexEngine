@@ -696,6 +696,47 @@ class FluentLocalization:
                 self._create_bundle(normalized_locale)
             return self._bundles[normalized_locale].add_resource(ftl_source)
 
+    def add_resource_stream(
+        self, locale: LocaleCode, lines: Iterable[str], *, source_path: str | None = None
+    ) -> tuple[Junk, ...]:
+        """Add FTL resource to specific locale bundle from a line-oriented stream.
+
+        Semantically identical to add_resource() but accepts any iterable of
+        lines rather than a pre-assembled source string. Memory usage is
+        proportional to the largest single FTL entry in the stream, not the
+        total resource size.
+
+        Thread-safe via internal RWLock.
+
+        Args:
+            locale: Locale code (must resolve to an entry in the fallback chain)
+            lines: Iterable of FTL source lines. Trailing newlines are stripped
+                   per line.
+            source_path: Optional path to source file for better error messages
+                         (e.g., "locales/lv/ui.ftl"). Defaults to "<string>".
+
+        Returns:
+            Tuple of Junk entries encountered during parsing. Empty tuple if
+            parsing succeeded without errors.
+
+        Raises:
+            ValueError: If locale does not resolve to a locale in the fallback chain.
+        """
+        normalized_locale = require_locale_code(locale, "locale")
+
+        with self._lock.write():
+            if normalized_locale not in self._locales:
+                msg = (
+                    f"Locale '{normalized_locale}' not in fallback chain {self._locales}"
+                )
+                raise ValueError(msg)
+
+            if normalized_locale not in self._bundles:
+                self._create_bundle(normalized_locale)
+            return self._bundles[normalized_locale].add_resource_stream(
+                lines, source_path=source_path
+            )
+
     def _handle_message_not_found(
         self,
         message_id: MessageId,

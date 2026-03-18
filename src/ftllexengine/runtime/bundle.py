@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, NoReturn, assert_never
 
@@ -40,7 +40,7 @@ from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.runtime.rwlock import RWLock
-from ftllexengine.syntax import Comment, Junk, Message, Resource, Term
+from ftllexengine.syntax import Comment, Entry, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
@@ -609,6 +609,47 @@ class FluentBundle:
         resource = self._parser.parse(source)
 
         # Only hold lock for registration (fast, O(N) where N is entry count)
+        with self._rwlock.write():
+            return self._register_resource(resource, source_path)
+
+    def add_resource_stream(
+        self, lines: Iterable[str], /, *, source_path: str | None = None
+    ) -> tuple[Junk, ...]:
+        """Add FTL resource to bundle from a line-oriented source stream.
+
+        Semantically identical to add_resource() but accepts any iterable of
+        lines rather than a pre-assembled source string. Memory usage is
+        proportional to the largest single FTL entry in the stream, not the
+        total resource size.
+
+        The stream is split at blank-line boundaries (which delimit top-level
+        FTL entries). Each chunk is parsed independently, then all entries are
+        committed together via the same two-phase protocol used by add_resource().
+        Strict mode, overwrite warnings, cache invalidation, and thread safety
+        are identical.
+
+        Args:
+            lines: Iterable of FTL source lines [positional-only]. Trailing
+                   newlines are stripped per line.
+            source_path: Optional path to source file for better error messages
+                         (e.g., "locales/lv/ui.ftl"). Defaults to "<string>".
+
+        Returns:
+            Tuple of Junk entries encountered during parsing. Empty tuple if
+            parsing succeeded without errors.
+
+        Raises:
+            SyntaxIntegrityError: In strict mode, if any Junk entries are parsed.
+
+        Example:
+            >>> bundle = FluentBundle("en")
+            >>> with open("locales/en/ui.ftl") as f:
+            ...     bundle.add_resource_stream(f, source_path="locales/en/ui.ftl")
+        """
+        # Collect parsed entries outside lock (stateless parse, immutable input)
+        collected: list[Entry] = list(self._parser.parse_stream(lines))
+        resource = Resource(entries=tuple(collected))
+
         with self._rwlock.write():
             return self._register_resource(resource, source_path)
 

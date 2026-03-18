@@ -5,7 +5,7 @@ parameters. Replaces seven individual constructor parameters with one
 typed object, reducing API surface and eliminating parameter duplication
 between FluentBundle and IntegrityCache.
 
-Python 3.13+. Zero external dependencies.
+Python 3.14+. Zero external dependencies.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
+from ftllexengine.core.validators import require_positive_int
 
 __all__ = ["CacheConfig"]
 
@@ -76,18 +77,11 @@ class CacheConfig:
         """Validate configuration values at construction time.
 
         Raises:
-            ValueError: If size, max_entry_weight, or max_errors_per_entry
-                is not positive, or if max_audit_entries is not positive.
+            TypeError: If any integer field receives a non-int value.
+            ValueError: If size, max_entry_weight, max_errors_per_entry,
+                or max_audit_entries is zero or negative.
         """
-        if self.size <= 0:
-            msg = "size must be positive"
-            raise ValueError(msg)
-        if self.max_entry_weight <= 0:
-            msg = "max_entry_weight must be positive"
-            raise ValueError(msg)
-        if self.max_errors_per_entry <= 0:
-            msg = "max_errors_per_entry must be positive"
-            raise ValueError(msg)
-        if self.max_audit_entries <= 0:
-            msg = "max_audit_entries must be positive"
-            raise ValueError(msg)
+        require_positive_int(self.size, "size")
+        require_positive_int(self.max_entry_weight, "max_entry_weight")
+        require_positive_int(self.max_errors_per_entry, "max_errors_per_entry")
+        require_positive_int(self.max_audit_entries, "max_audit_entries")

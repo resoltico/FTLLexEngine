@@ -11,13 +11,18 @@ Submodules:
     orchestrator - FluentLocalization (multi-locale orchestration)
     boot         - LocalizationBootConfig (one-call boot-validated assembly)
 
-Python 3.13+. Zero external dependencies.
+Babel Optionality:
+    loading, types: Zero external dependencies; always importable.
+    orchestrator, boot, CacheAuditLogEntry: Require Babel (via FluentBundle).
+    On parser-only installs the Babel-dependent names are absent; accessing
+    them raises ImportError via the root ftllexengine.__getattr__ guard.
+
+Python 3.14+.
 """
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 
 from ftllexengine.enums import LoadStatus
-from ftllexengine.localization.boot import LocalizationBootConfig
 from ftllexengine.localization.loading import (
     FallbackInfo,
     LoadSummary,
@@ -25,30 +30,47 @@ from ftllexengine.localization.loading import (
     ResourceLoader,
     ResourceLoadResult,
 )
-from ftllexengine.localization.orchestrator import FluentLocalization, LocalizationCacheStats
 from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
-from ftllexengine.runtime.cache import CacheAuditLogEntry
+
+# Babel-optional: orchestrator and boot depend on FluentBundle (runtime → Babel).
+# On parser-only installs these imports fail; the names are absent from this
+# package's namespace. The root ftllexengine.__getattr__ provides the hint.
+try:
+    from ftllexengine.localization.boot import (
+        LocalizationBootConfig as LocalizationBootConfig,
+    )
+    from ftllexengine.localization.orchestrator import (
+        FluentLocalization as FluentLocalization,
+    )
+    from ftllexengine.localization.orchestrator import (
+        LocalizationCacheStats as LocalizationCacheStats,
+    )
+    from ftllexengine.runtime.cache import (
+        CacheAuditLogEntry as CacheAuditLogEntry,
+    )
+except ImportError:
+    pass  # Parser-only install; Babel-dependent localization types unavailable
 
 __all__ = [
-    # Main orchestrator
+    # Main orchestrator (Babel-optional; absent in parser-only installs)
     "FluentLocalization",
     "LocalizationCacheStats",
-    # Boot configuration (one-call strict assembly)
+    # Boot configuration (Babel-optional; absent in parser-only installs)
     "LocalizationBootConfig",
-    # Loader protocol and implementations
+    # Loader protocol and implementations (no Babel dependency)
     "ResourceLoader",
     "PathResourceLoader",
-    # Load tracking (eager loading diagnostics)
+    # Load tracking (no Babel dependency)
     "LoadStatus",
     "LoadSummary",
     "ResourceLoadResult",
-    # Fallback observability
+    # Fallback observability (no Babel dependency)
     "FallbackInfo",
-    # Type aliases for user code type annotations
+    # Type aliases for user code type annotations (no Babel dependency)
     "FTLSource",
     "LocaleCode",
     "MessageId",
     "ResourceId",
-    # Public cache audit-log entry type used by localization cache APIs
+    # Public cache audit-log entry type (Babel-optional; absent in parser-only installs)
     "CacheAuditLogEntry",
 ]

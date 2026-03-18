@@ -1723,7 +1723,7 @@ Static factory. `base_path` accepts `str` or `pathlib.Path` (converted to POSIX 
 - State: Immutable (frozen dataclass).
 - Thread: Safe. Each `boot()` call creates a new `FluentLocalization` instance.
 - Version: `required_messages` field added in v0.155.0; `boot()` returns 3-tuple as of v0.155.0 (was `FluentLocalization`).
-- Import: `from ftllexengine.localization import LocalizationBootConfig`
+- Import: `from ftllexengine import LocalizationBootConfig` or `from ftllexengine.localization import LocalizationBootConfig`.
 
 ---
 

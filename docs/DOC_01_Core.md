@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.157.0"
 domain: CORE
-updated: "2026-03-14"
+updated: "2026-03-18"
 route:
-  keywords: [FluentBundle, FluentLocalization, add_resource, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry]
+  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool]
   questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?"]
 ---
 
@@ -153,6 +153,121 @@ def add_resource(
 - Raises: `TypeError` if source is not a str. `SyntaxIntegrityError` in strict mode if parsing produces any Junk.
 - State: Mutates internal message/term registries. Clears cache.
 - Thread: Safe (RWLock). Parse occurs outside write lock; only registration requires exclusive access.
+
+---
+
+## `FluentBundle.add_resource_stream`
+
+### Signature
+```python
+def add_resource_stream(
+    self,
+    lines: Iterable[str],
+    /,
+    *,
+    source_path: str | None = None
+) -> tuple[Junk, ...]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `lines` | `Iterable[str]` | Y | FTL source as a line iterator (positional-only). |
+| `source_path` | `str \| None` | N | Path for error messages. |
+
+### Constraints
+- Return: Tuple of Junk entries. Empty if parse succeeded.
+- Purpose: Identical semantics to `add_resource()` but accepts a line iterator instead of a full string. Memory usage is proportional to the largest single FTL entry in the stream, not the total resource size.
+- Raises: `SyntaxIntegrityError` in strict mode if parsing produces any Junk.
+- State: Mutates internal message/term registries. Clears cache.
+- Thread: Safe (RWLock). Stream is consumed and parsed outside write lock.
+- Import: `from ftllexengine.runtime import FluentBundle` (method on `FluentBundle`).
+
+---
+
+## `AsyncFluentBundle`
+
+`AsyncFluentBundle` is an asyncio-native wrapper around `FluentBundle` that offloads all CPU-bound operations to a thread pool via `asyncio.to_thread()`, keeping the event loop unblocked.
+
+### Signature
+```python
+class AsyncFluentBundle:
+    def __init__(
+        self,
+        locale: str,
+        /,
+        *,
+        use_isolating: bool = True,
+        cache: CacheConfig | None = None,
+        functions: FunctionRegistry | None = None,
+        max_source_size: int | None = None,
+        max_nesting_depth: int | None = None,
+        max_expansion_size: int | None = None,
+        strict: bool = True,
+    ) -> None: ...
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `locale` | `str` | Y | BCP 47 locale code (positional-only). |
+| `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
+| `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables (default). |
+| `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
+| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters. |
+| `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth. |
+| `max_expansion_size` | `int \| None` | N | Maximum total characters during resolution. |
+| `strict` | `bool` | N | Fail-fast mode (default `True`). |
+
+### Constraints
+- Return: `AsyncFluentBundle` instance. Supports `async with` (no cleanup required on exit).
+- Async: `add_resource`, `add_resource_stream`, `format_pattern`, `add_function` are `async def`; offload to `asyncio.to_thread()`.
+- Sync: `has_message`, `has_attribute`, `get_message_ids`, `get_message`, `get_term`, `introspect_message`, `clear_cache`, `get_cache_stats`, `get_cache_audit_log` are synchronous (O(1) dict lookups, hold read lock for nanoseconds).
+- Concurrency: Underlying `FluentBundle` handles all thread safety via `RWLock`. No additional locking in `AsyncFluentBundle`.
+- Strict: Same strict/soft-error semantics as `FluentBundle`. `strict=True` raises `FormattingIntegrityError`/`SyntaxIntegrityError`; `strict=False` returns `(fallback, errors)`.
+- Import: `from ftllexengine import AsyncFluentBundle` or `from ftllexengine.runtime import AsyncFluentBundle`.
+
+```python
+async with AsyncFluentBundle("en_US") as bundle:
+    await bundle.add_resource("greeting = Hello, { $name }!")
+    result, errors = await bundle.format_pattern("greeting", {"name": "Alice"})
+```
+
+---
+
+## `AsyncFluentBundle.for_system_locale`
+
+### Signature
+```python
+@classmethod
+def for_system_locale(
+    cls,
+    *,
+    use_isolating: bool = True,
+    cache: CacheConfig | None = None,
+    functions: FunctionRegistry | None = None,
+    max_source_size: int | None = None,
+    max_nesting_depth: int | None = None,
+    max_expansion_size: int | None = None,
+    strict: bool = True,
+) -> AsyncFluentBundle:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `use_isolating` | `bool` | N | Wrap interpolated values in Unicode bidi marks. |
+| `cache` | `CacheConfig \| None` | N | Cache configuration. `None` disables (default). |
+| `functions` | `FunctionRegistry \| None` | N | Custom function registry. |
+| `max_source_size` | `int \| None` | N | Maximum FTL source length in characters. |
+| `max_nesting_depth` | `int \| None` | N | Maximum placeable nesting depth. |
+| `max_expansion_size` | `int \| None` | N | Maximum total characters during resolution. |
+| `strict` | `bool` | N | Fail-fast mode (default `True`). |
+
+### Constraints
+- Return: `AsyncFluentBundle` for the detected system locale.
+- Raises: `RuntimeError` if locale cannot be determined from OS environment.
+- State: Reads locale from `LANG`, `LC_ALL`, `LC_MESSAGES` environment variables.
 
 ---
 
@@ -682,6 +797,35 @@ def add_resource(self, locale: LocaleCode, ftl_source: FTLSource) -> tuple[Junk,
 
 ---
 
+## `FluentLocalization.add_resource_stream`
+
+### Signature
+```python
+def add_resource_stream(
+    self,
+    locale: LocaleCode,
+    lines: Iterable[str],
+    *,
+    source_path: str | None = None
+) -> tuple[Junk, ...]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `locale` | `LocaleCode` | Y | Target locale; canonicalized before fallback-chain lookup. |
+| `lines` | `Iterable[str]` | Y | FTL source as a line iterator. |
+| `source_path` | `str \| None` | N | Path for error messages. |
+
+### Constraints
+- Return: Tuple of Junk entries. Empty if parse succeeded.
+- Purpose: Identical semantics to `add_resource()` but accepts a line iterator instead of a full string.
+- Raises: `ValueError` if locale is not in the fallback chain.
+- State: Mutates target bundle.
+- Thread: Safe (RWLock write lock).
+
+---
+
 ## `FluentLocalization.format_value`
 
 ### Signature
@@ -1032,7 +1176,7 @@ class FallbackInfo:
 - State: Immutable.
 - Thread: Safe.
 - Usage: Passed to `on_fallback` callback in FluentLocalization.
-- Import: `from ftllexengine.localization import FallbackInfo`
+- Import: `from ftllexengine import FallbackInfo` or `from ftllexengine.localization import FallbackInfo`.
 
 ---
 
@@ -1055,7 +1199,8 @@ class LoadStatus(StrEnum):
 
 ### Constraints
 - StrEnum: Members ARE strings.
-- Import: `from ftllexengine.localization import LoadStatus`
+- Babel: NOT required. Defined in `ftllexengine.enums`; no Babel import chain.
+- Import: `from ftllexengine import LoadStatus` or `from ftllexengine.localization import LoadStatus`.
 
 ---
 
@@ -1096,7 +1241,7 @@ class ResourceLoadResult:
 - Return: Immutable load result record.
 - State: Frozen dataclass.
 - Junk: `has_junk` property returns True if any Junk entries present.
-- Import: `from ftllexengine.localization import ResourceLoadResult`
+- Import: `from ftllexengine import ResourceLoadResult` or `from ftllexengine.localization import ResourceLoadResult`.
 
 ---
 
@@ -1144,7 +1289,7 @@ class LoadSummary:
 - Return: Immutable summary record.
 - State: Frozen dataclass. Statistics (`total_attempted`, `successful`, `not_found`, `errors`, `junk_count`) are `@property` methods computed from `results`; not constructor parameters.
 - Junk: `get_with_junk()` returns results with Junk; `get_all_junk()` aggregates all Junk.
-- Import: `from ftllexengine.localization import LoadSummary`
+- Import: `from ftllexengine import LoadSummary` or `from ftllexengine.localization import LoadSummary`.
 
 ---
 
@@ -1271,7 +1416,7 @@ def get_cache_stats(self) -> LocalizationCacheStats | None:
 - Return: `LocalizationCacheStats` TypedDict with 20 aggregated fields, or `None` if caching disabled. Extends `CacheStats` with `bundle_count`. See `LocalizationCacheStats` for all fields.
 - Note: Numeric fields summed across all bundles; boolean fields reflect first bundle's `CacheConfig`.
 - Note: `bundle_count` reflects only initialized bundles, not total locales.
-- Import: `from ftllexengine.localization import LocalizationCacheStats`
+- Import: `from ftllexengine import LocalizationCacheStats` or `from ftllexengine.localization import LocalizationCacheStats`.
 - Raises: None.
 - State: Reads cache statistics from all initialized bundles.
 - Thread: Safe.
@@ -1313,7 +1458,7 @@ class LocalizationCacheStats(CacheStats, total=True):
 ### Constraints
 - Purpose: Extends `CacheStats` with `bundle_count` for multi-bundle monitoring. All 19 `CacheStats` fields are inherited with the same semantics; numeric fields are summed across all bundles.
 - `bundle_count`: number of initialized bundles contributing to the aggregated statistics.
-- Import: `from ftllexengine.localization import LocalizationCacheStats`
+- Import: `from ftllexengine import LocalizationCacheStats` or `from ftllexengine.localization import LocalizationCacheStats`.
 - Boolean fields: `write_once`, `strict`, `audit_enabled` reflect the first bundle's `CacheConfig` (all bundles share one config).
 
 ---
@@ -1366,6 +1511,7 @@ class PathResourceLoader:
   - Validates `resource_id` against directory traversal attacks (rejects "..", absolute paths).
   - Empty locale codes are rejected.
   - `root_dir` provides fixed anchor unaffected by locale parameter.
+- Import: `from ftllexengine import PathResourceLoader` or `from ftllexengine.localization import PathResourceLoader`.
 
 ---
 
@@ -1390,6 +1536,7 @@ class ResourceLoader(Protocol):
 - Raises: Implementation-dependent.
 - State: Protocol. No implementation.
 - Thread: Implementation-dependent.
+- Import: `from ftllexengine import ResourceLoader` or `from ftllexengine.localization import ResourceLoader`.
 
 ---
 
@@ -1410,7 +1557,75 @@ def normalize_locale(locale_code: str) -> str:
 - State: None. Pure function.
 - Thread: Safe.
 - Babel: NOT required. Pure string manipulation.
-- Import: `from ftllexengine.core.locale_utils import normalize_locale`
+- Import: `from ftllexengine import normalize_locale` or `from ftllexengine.core.locale_utils import normalize_locale`.
+
+---
+
+## `LocaleCode`
+
+Type alias for BCP-47 / POSIX locale codes.
+
+### Signature
+```python
+type LocaleCode = str
+```
+
+### Constraints
+- Value: Any `str`; narrowed by context to a BCP-47 or POSIX locale code (e.g., `"en_US"`, `"de"`).
+- Babel: NOT required. Defined in `ftllexengine.localization.types`; no Babel import chain.
+- Import: `from ftllexengine import LocaleCode` or `from ftllexengine.localization.types import LocaleCode`.
+
+---
+
+## `require_non_empty_str`
+
+Validate that a boundary value is a non-blank string, stripping surrounding whitespace.
+
+### Signature
+```python
+def require_non_empty_str(value: object, field_name: str) -> str:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. Any Python object; non-str always raises TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: Stripped, non-empty string. Whitespace at boundaries is removed; internal whitespace is preserved.
+- Raises: `TypeError` if `value` is not a `str` instance.
+- Raises: `ValueError` if `value` is empty or contains only whitespace after stripping.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_non_empty_str` or `from ftllexengine.core.validators import require_non_empty_str`.
+
+---
+
+## `require_positive_int`
+
+Validate that a boundary value is a positive integer, rejecting bool, non-int types, zero, and negative values.
+
+### Signature
+```python
+def require_positive_int(value: object, field_name: str) -> int:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. Any Python object; non-int and bool always raise TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated integer, identical to the input value.
+- Raises: `TypeError` if `value` is not an `int` instance, or if it is `bool` (bool is an int subtype but is rejected as semantically wrong for numeric-quantity fields).
+- Raises: `ValueError` if `value` is zero or negative.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_positive_int` or `from ftllexengine.core.validators import require_positive_int`.
 
 ---
 
@@ -1436,7 +1651,7 @@ def require_locale_code(value: object, field_name: str) -> LocaleCode:
 - State: Trims surrounding whitespace and normalizes the accepted locale.
 - Thread: Safe.
 - Babel: NOT required.
-- Import: `from ftllexengine.core.locale_utils import require_locale_code`
+- Import: `from ftllexengine import require_locale_code` or `from ftllexengine.core.locale_utils import require_locale_code`.
 
 ---
 
@@ -1482,7 +1697,7 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 - State: Reads OS locale via locale.getlocale() and env vars LC_ALL, LC_MESSAGES, LANG.
 - Thread: Safe.
 - Babel: NOT required. Uses only stdlib.
-- Import: `from ftllexengine.core.locale_utils import get_system_locale`
+- Import: `from ftllexengine import get_system_locale` or `from ftllexengine.core.locale_utils import get_system_locale`.
 
 ---
 

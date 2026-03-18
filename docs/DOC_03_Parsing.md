@@ -4,8 +4,8 @@ version: "0.153.0"
 domain: PARSING
 updated: "2026-03-13"
 route:
-  keywords: [parse, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position]
-  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how do I parse a FluentNumber?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?"]
+  keywords: [parse, parse_stream, parse_stream_ftl, serialize, validate_resource, FluentParserV1, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, syntax, validation, BabelImportError, FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal, line_offset, column_offset, format_position, get_line_content, get_error_context, position, incremental, streaming, line iterator]
+  questions: ["how to parse FTL?", "how to serialize AST?", "how to validate FTL?", "what parser options exist?", "what exceptions do parsing functions raise?", "how do I parse a FluentNumber?", "how to calculate fiscal quarter?", "how to do fiscal date arithmetic?", "how to get line and column from offset?", "how to format error position?", "how to get source context for errors?", "how to parse FTL incrementally?", "how to parse FTL from a line iterator?", "how to stream FTL parsing?"]
 ---
 
 # Parsing Reference
@@ -29,6 +29,29 @@ def parse(source: str) -> Resource:
 - Raises: Never (robustness principle: invalid syntax becomes Junk nodes).
 - State: None.
 - Thread: Safe.
+
+---
+
+## `parse_stream`
+
+### Signature
+```python
+def parse_stream(lines: Iterable[str]) -> Iterator[Entry]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `lines` | `Iterable[str]` | Y | FTL source lines. Trailing newlines stripped per line. |
+
+### Constraints
+- Return: Iterator of `Message | Term | Comment | Junk` nodes in document order.
+- Purpose: Incremental alternative to `parse()`. Splits at blank-line boundaries, yields entries as each chunk is parsed. Memory proportional to largest single entry, not full source.
+- Note: Span positions in yielded entries are chunk-relative, not stream-relative. Use `parse()` when absolute spans are required (e.g., IDE tooling).
+- Raises: Never (robustness: invalid syntax becomes Junk nodes).
+- State: None.
+- Thread: Safe.
+- Import: `from ftllexengine.syntax import parse_stream` or `from ftllexengine import parse_stream_ftl`.
 
 ---
 
@@ -167,6 +190,29 @@ def parse(self, source: str) -> Resource:
 - State: None.
 - Thread: Safe.
 - Security: Enforces input size limit.
+
+---
+
+## `FluentParserV1.parse_stream`
+
+### Signature
+```python
+def parse_stream(self, lines: Iterable[str]) -> Iterator[Entry]:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `lines` | `Iterable[str]` | Y | FTL source lines. Trailing newlines stripped per line. |
+
+### Constraints
+- Return: Iterator of `Message | Term | Comment | Junk` nodes in document order.
+- Purpose: Incremental parse. Splits stream at blank-line boundaries (top-level FTL entry delimiters per the Fluent spec); each chunk parsed independently. Memory proportional to largest single entry.
+- Note: Span positions are chunk-relative, not stream-relative. Comment attachment is semantics-correct — a comment on the line immediately before a message/term (no blank line between) is attached to that entry; comments separated by blank lines are yielded as standalone Comment entries.
+- Raises: `ValueError` if any single chunk exceeds max_source_size.
+- State: None.
+- Thread: Safe.
+- Import: `from ftllexengine.syntax.parser import FluentParserV1` (method on FluentParserV1).
 
 ---
 

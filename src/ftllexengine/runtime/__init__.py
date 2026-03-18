@@ -10,6 +10,7 @@ Python 3.14+.
 
 from ftllexengine.diagnostics import ValidationResult
 
+from .async_bundle import AsyncFluentBundle
 from .bundle import FluentBundle
 from .cache import CacheAuditLogEntry, WriteLogEntry
 from .cache_config import CacheConfig
@@ -29,6 +30,7 @@ from .rwlock import RWLock
 from .value_types import make_fluent_number
 
 __all__ = [
+    "AsyncFluentBundle",
     "CacheAuditLogEntry",
     "CacheConfig",
     "FluentBundle",

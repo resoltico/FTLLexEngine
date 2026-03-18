@@ -1,9 +1,10 @@
 """Comprehensive tests for locale_utils.py achieving 100% coverage.
 
-Covers normalize_locale, get_babel_locale, and get_system_locale functions.
+Covers normalize_locale, get_babel_locale, get_system_locale, and
+LocaleCode facade export functions.
 Includes property-based tests with Hypothesis for locale normalization.
 
-Python 3.13+.
+Python 3.14+.
 """
 
 import builtins
@@ -16,6 +17,7 @@ from babel import Locale
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+import ftllexengine
 from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
 from ftllexengine.core.locale_utils import (
     _get_babel_locale_normalized,
@@ -26,6 +28,7 @@ from ftllexengine.core.locale_utils import (
     normalize_locale,
     require_locale_code,
 )
+from ftllexengine.localization.types import LocaleCode
 
 
 class TestNormalizeLocale:
@@ -390,3 +393,33 @@ def test_property_normalize_locale_hyphen_to_underscore(
     bcp47 = f"{lang}-{region}"
     posix = f"{lang}_{region}".lower()
     assert normalize_locale(bcp47) == posix
+
+
+class TestLocaleUtilitiesFacadeExport:
+    """normalize_locale, get_system_locale, and LocaleCode are on the root facade."""
+
+    def test_normalize_locale_accessible_from_root_facade(self) -> None:
+        """normalize_locale is exported from ftllexengine root facade."""
+        assert callable(ftllexengine.normalize_locale)
+        assert ftllexengine.normalize_locale is normalize_locale
+
+    def test_get_system_locale_accessible_from_root_facade(self) -> None:
+        """get_system_locale is exported from ftllexengine root facade."""
+        assert callable(ftllexengine.get_system_locale)
+        assert ftllexengine.get_system_locale is get_system_locale
+
+    def test_local_code_type_alias_accessible_from_root_facade(self) -> None:
+        """LocaleCode type alias is exported from ftllexengine root facade."""
+        assert ftllexengine.LocaleCode is LocaleCode
+
+    def test_normalize_locale_in_root_all(self) -> None:
+        """normalize_locale is listed in ftllexengine.__all__."""
+        assert "normalize_locale" in ftllexengine.__all__
+
+    def test_get_system_locale_in_root_all(self) -> None:
+        """get_system_locale is listed in ftllexengine.__all__."""
+        assert "get_system_locale" in ftllexengine.__all__
+
+    def test_locale_code_in_root_all(self) -> None:
+        """LocaleCode is listed in ftllexengine.__all__."""
+        assert "LocaleCode" in ftllexengine.__all__

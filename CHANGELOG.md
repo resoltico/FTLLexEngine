@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.156.0"
+version: "0.157.0"
 domain: CHANGELOG
-updated: "2026-03-16"
+updated: "2026-03-18"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,135 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.157.0] - 2026-03-18
+
+### Added
+
+- **`require_positive_int(value, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Generic boundary validator for strictly positive integer fields. Rejects `bool` (which
+  is an `int` subtype but semantically wrong for numeric-quantity fields) with `TypeError`,
+  rejects non-int types with `TypeError`, and rejects zero or negative values with
+  `ValueError`. Returns the validated int unchanged. Replaces the per-class
+  `if self.x <= 0: raise ValueError(...)` pattern used in constructors. First applied to
+  `CacheConfig.__post_init__` (four identical checks consolidated). Available as
+  `from ftllexengine import require_positive_int` or
+  `from ftllexengine.core.validators import require_positive_int`.
+
+- **`require_non_empty_str(value, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Generic boundary validator for non-blank string fields. Strips surrounding whitespace,
+  raises `TypeError` for non-str inputs and `ValueError` for blank or whitespace-only strings,
+  returns the stripped canonical value. Pure function; no external dependencies. Replaces
+  per-caller trim/blank/type-check composition at system entry points (constructor arguments,
+  configuration fields, API parameters). Available as `from ftllexengine import require_non_empty_str`
+  or `from ftllexengine.core.validators import require_non_empty_str`.
+
+- **`require_locale_code`** promoted to root facade (`ftllexengine`):
+  Previously accessible only via `ftllexengine.core.locale_utils`. Now also available as
+  `from ftllexengine import require_locale_code`, consistent with its status as a primary
+  boundary validator for locale-aware system entry points.
+
+- **`LocalizationBootConfig`, `LoadSummary`, `ResourceLoadResult`, `FallbackInfo`, `LocalizationCacheStats`, `ResourceLoader`, `PathResourceLoader`** promoted to root facade (`ftllexengine`, Babel-optional):
+  Previously only accessible via `ftllexengine.localization`. Now available as
+  `from ftllexengine import LocalizationBootConfig, LoadSummary, ...`. Eliminates the need
+  for callers to know localization submodule paths to boot a production-grade localization
+  system. On parser-only installs these raise `ImportError` with an installation hint.
+
+- **`LoadStatus`** promoted to root facade (`ftllexengine`):
+  Previously only accessible via `ftllexengine.enums` or `ftllexengine.localization`.
+  `LoadStatus` is the core result status enum for resource loading; promoting it to the
+  root facade eliminates per-caller knowledge of internal enum module paths.
+  No Babel dependency; always available.
+
+- **`LocaleCode`, `normalize_locale`, `get_system_locale`** promoted to root facade (`ftllexengine`):
+  Previously only accessible via `ftllexengine.localization.types` (`LocaleCode`) and
+  `ftllexengine.core.locale_utils` (`normalize_locale`, `get_system_locale`). Now also
+  available as `from ftllexengine import LocaleCode, normalize_locale, get_system_locale`.
+  These are Babel-free utilities; promoting them to the root facade eliminates the need for
+  callers to know internal submodule paths for fundamental locale primitives.
+
+- **`AsyncFluentBundle`** (`ftllexengine`, `ftllexengine.runtime`):
+  Async-native wrapper around `FluentBundle` for asyncio applications. All CPU-bound
+  operations (`add_resource`, `add_resource_stream`, `format_pattern`, `add_function`) are
+  offloaded to a thread pool via `asyncio.to_thread()`, keeping the event loop unblocked.
+  The underlying `FluentBundle` handles all thread safety via its internal `RWLock`; no
+  additional locking is introduced. Fast read lookups (`has_message`, `get_message`,
+  `introspect_message`, etc.) are exposed as synchronous methods — the underlying dict
+  operations are O(1) and hold the read lock for nanoseconds, not long enough to block an
+  event loop iteration. Supports the async context manager protocol (`async with`). Same
+  strict/soft-error semantics as `FluentBundle`. `for_system_locale()` classmethod detects
+  locale from OS environment variables.
+  ```python
+  async with AsyncFluentBundle("en_US") as bundle:
+      await bundle.add_resource("greeting = Hello, { $name }!")
+      result, errors = await bundle.format_pattern("greeting", {"name": "Alice"})
+  ```
+  Available as `from ftllexengine import AsyncFluentBundle` or
+  `from ftllexengine.runtime import AsyncFluentBundle`. Requires Babel.
+
+- **`FluentParserV1.parse_stream(lines)`** (`ftllexengine.syntax`, `ftllexengine`):
+  New incremental parser method. Accepts any `Iterable[str]` of FTL source lines, splits
+  at blank-line boundaries (which delimit top-level FTL entries per the Fluent spec), and
+  yields `Message | Term | Comment | Junk` AST nodes in document order. Memory usage is
+  proportional to the largest single entry, not the full source size. Comment attachment
+  follows FTL semantics: a comment immediately before a message or term with no intervening
+  blank line is attached to that entry. Span positions in yielded entries are chunk-relative,
+  not stream-relative — use `parse()` when absolute spans are required (e.g., IDE tooling).
+  Available as `FluentParserV1().parse_stream(lines)` or via the convenience function
+  `from ftllexengine.syntax import parse_stream` or `from ftllexengine import parse_stream_ftl`.
+
+- **`parse_stream(lines)`** (`ftllexengine.syntax`): Convenience wrapper for
+  `FluentParserV1().parse_stream(lines)`. Parallel to the existing `parse()` function.
+  Available as `from ftllexengine.syntax import parse_stream`.
+
+- **`parse_stream_ftl(lines)`** promoted to root facade (`ftllexengine`):
+  `parse_stream` renamed `parse_stream_ftl` at the root facade (parallel to `parse_ftl`)
+  to avoid naming ambiguity. Available as `from ftllexengine import parse_stream_ftl`.
+  No Babel dependency; always available.
+
+- **`FluentBundle.add_resource_stream(lines, *, source_path)`** (`ftllexengine.runtime`):
+  New method accepting any `Iterable[str]` of FTL source lines. Uses `parse_stream`
+  internally; memory proportional to largest single entry. Semantically identical to
+  `add_resource()` — same strict-mode behavior (`SyntaxIntegrityError` on junk in strict
+  mode), same two-phase commit atomicity, same thread safety, same overwrite warnings.
+  Useful when the FTL source is available as a file object or line generator rather than
+  a fully buffered string.
+
+- **`FluentLocalization.add_resource_stream(locale, lines, *, source_path)`**
+  (`ftllexengine.localization`): Parallel to `add_resource()` but accepts an iterable of
+  lines. Delegates to `FluentBundle.add_resource_stream`. Raises `ValueError` if `locale`
+  is not in the fallback chain.
+
+### Fixed
+
+- **Junk serialization is not idempotent** (`ftllexengine.syntax`): The serializer
+  (`_serialize_resource`) unconditionally appended a blank-line separator `"\n"` after every
+  `Junk` entry. Because `_consume_junk_lines` absorbs trailing blank lines from the source
+  into `Junk.content`, each parse → serialize → parse cycle added one extra `"\n"`, causing
+  `ser_2 != ser_3` for any resource containing `Junk`. Fixed by counting trailing newlines
+  already present in `Junk.content` and emitting only enough additional newlines to bring the
+  trailing total to 2 (one blank-line separator). The fix is idempotent: a resource that has
+  passed through one roundtrip produces identical output on all subsequent roundtrips.
+  Affected: `serialize_ftl()`, `FluentSerializer.serialize()`, and any caller that serializes
+  a `Resource` containing `Junk` entries.
+
+- **Parser incorrectly rejects Unicode space-separator values** (`ftllexengine.syntax`):
+  FTL patterns whose value consisted solely of Unicode space-separator characters
+  (Unicode category `Zs`, e.g., U+00A0 NO-BREAK SPACE, U+202F NARROW NO-BREAK SPACE)
+  were silently stripped by `_trim_pattern_blank_lines`, leaving an empty pattern that
+  failed `validate_message_content` and caused the entire message to parse as `Junk`.
+  Per the Fluent spec, `blank_inline ::= "\u0020"+"` — only ASCII space (U+0020) is
+  structural whitespace; `Zs` characters are valid `inline-char` content and must be
+  preserved. Fixed by replacing `str.lstrip()` / `str.strip()` calls (which strip all
+  Unicode whitespace) with `lstrip(" \n")` / `strip(" ")` that match the spec definition.
+  Affected: all callers of `parse()`, `parse_stream()`, and `FluentBundle.add_resource()`.
+
+- **`__getattr__` error message accuracy** (`ftllexengine`): The `ImportError` raised when a
+  Babel-optional symbol is accessed on a parser-only install previously stated "requires Babel".
+  The message now reads "requires the full runtime install (Babel + CLDR locale data)" and
+  includes the exact install command (`pip install ftllexengine[babel]`) plus a parser-only
+  usage hint. This removes ambiguity about whether only Babel or the complete runtime stack
+  is required.
 
 ## [0.156.0] - 2026-03-17
 
@@ -35,8 +164,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     structured evidence returned)
   - Rationale: compliance-grade systems need audit evidence by default; returning only
     `FluentLocalization` was the wrong default for an infrastructure library
-
-### Changed
 
 - **`LedgerInvariantError`** (`ftllexengine.integrity`, `ftllexengine`):
   `@final` exception for financial domain invariants violated in persisted data; carries

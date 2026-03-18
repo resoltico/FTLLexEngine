@@ -2350,3 +2350,114 @@ class TestBundleLocaleValidationBeforeLoading:
         """Invalid locale raises ValueError immediately, before resource loading."""
         with pytest.raises(ValueError, match="must be ASCII alphanumeric"):
             FluentBundle("\xe9_FR")
+
+
+# ============================================================================
+# TestAddResourceStream
+# ============================================================================
+
+
+class TestAddResourceStream:
+    """FluentBundle.add_resource_stream incremental resource loading."""
+
+    def test_single_message_from_lines(self) -> None:
+        """add_resource_stream loads a single message from a line list."""
+        bundle = FluentBundle("en")
+        bundle.add_resource_stream(["greeting = Hello\n"])
+        assert bundle.has_message("greeting")
+
+    def test_multiple_messages_blank_separated(self) -> None:
+        """Multiple messages separated by blank lines are all registered."""
+        bundle = FluentBundle("en")
+        bundle.add_resource_stream(["msg1 = One\n", "\n", "msg2 = Two\n"])
+        assert bundle.has_message("msg1")
+        assert bundle.has_message("msg2")
+
+    def test_empty_stream_registers_nothing(self) -> None:
+        """Empty line iterable registers no messages."""
+        bundle = FluentBundle("en")
+        bundle.add_resource_stream([])
+        assert not bundle.has_message("anything")
+
+    def test_returns_empty_junk_tuple_on_clean_source(self) -> None:
+        """Clean FTL stream returns empty junk tuple."""
+        bundle = FluentBundle("en")
+        junk = bundle.add_resource_stream(["msg = Value\n"])
+        assert junk == ()
+
+    def test_returns_junk_on_parse_error(self) -> None:
+        """Junk entries from invalid FTL are returned (not raised) in non-strict mode."""
+        bundle = FluentBundle("en", strict=False)
+        junk = bundle.add_resource_stream(["    invalid = indented\n"])
+        assert len(junk) >= 1
+
+    def test_strict_mode_raises_on_junk(self) -> None:
+        """Strict mode raises SyntaxIntegrityError when the stream contains junk."""
+        bundle = FluentBundle("en", strict=True)
+        with pytest.raises(SyntaxIntegrityError):
+            bundle.add_resource_stream(["    invalid = indented\n"])
+
+    def test_source_path_threads_through(self) -> None:
+        """source_path kwarg is accepted without error."""
+        bundle = FluentBundle("en")
+        bundle.add_resource_stream(
+            ["greeting = Hello\n"], source_path="locales/en/ui.ftl"
+        )
+        assert bundle.has_message("greeting")
+
+    def test_format_works_after_stream_load(self) -> None:
+        """Messages loaded via add_resource_stream are formattable."""
+        bundle = FluentBundle("en")
+        bundle.add_resource_stream(["greeting = Hello, { $name }!\n"])
+        result, errors = bundle.format_pattern("greeting", {"name": "World"})
+        assert errors == ()
+        assert result == "Hello, \u2068World\u2069!"
+
+    def test_generator_input_accepted(self) -> None:
+        """Generator (not just list) is accepted as lines argument."""
+        bundle = FluentBundle("en")
+
+        def gen() -> object:
+            yield "msg = From generator\n"
+
+        bundle.add_resource_stream(gen())  # type: ignore[arg-type]
+        assert bundle.has_message("msg")
+
+    def test_equivalence_with_add_resource(self) -> None:
+        """add_resource_stream produces same messages as add_resource for same content."""
+        source = "msg1 = One\n\nmsg2 = Two\n"
+        b1 = FluentBundle("en")
+        b1.add_resource(source)
+        b2 = FluentBundle("en")
+        b2.add_resource_stream(source.splitlines(keepends=True))
+        assert b1.has_message("msg1") == b2.has_message("msg1")
+        assert b1.has_message("msg2") == b2.has_message("msg2")
+        r1, _ = b1.format_pattern("msg1")
+        r2, _ = b2.format_pattern("msg1")
+        assert r1 == r2
+
+    @given(
+        names=st.lists(
+            st.text(
+                min_size=1,
+                max_size=20,
+                alphabet=st.characters(
+                    min_codepoint=ord("a"),
+                    max_codepoint=ord("z"),
+                ),
+            ),
+            min_size=1,
+            max_size=10,
+        )
+    )
+    def test_all_messages_reachable_after_stream_load(
+        self, names: list[str]
+    ) -> None:
+        """All messages loaded via stream are reachable via has_message."""
+        event(f"msg_count={len(names)}")
+        unique_names = list(dict.fromkeys(names))
+        source = "\n\n".join(f"{name} = Value" for name in unique_names) + "\n"
+        bundle = FluentBundle("en")
+        bundle.add_resource_stream(source.splitlines(keepends=True))
+        for name in unique_names:
+            assert bundle.has_message(name), f"Missing: {name}"

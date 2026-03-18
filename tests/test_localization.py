@@ -1,7 +1,8 @@
 """Tests for FluentLocalization multi-locale orchestration.
 
-Tests the fallback chain logic, resource loading, and Mozilla architecture alignment.
-Uses Python 3.13 features for modern test patterns.
+Tests the fallback chain logic, resource loading, Mozilla architecture alignment,
+and root facade accessibility for boot evidence types.
+Uses Python 3.14 features for modern test patterns.
 """
 
 from __future__ import annotations
@@ -11,15 +12,22 @@ from pathlib import Path
 
 import pytest
 
+import ftllexengine
 from ftllexengine import FluentBundle
 from ftllexengine.core.locale_utils import normalize_locale
+from ftllexengine.enums import LoadStatus
 from ftllexengine.localization import (
     FallbackInfo,
     FluentLocalization,
+    LoadSummary,
+    LocalizationBootConfig,
+    LocalizationCacheStats,
     PathResourceLoader,
     ResourceLoader,
+    ResourceLoadResult,
 )
 from ftllexengine.runtime.cache_config import CacheConfig
+from ftllexengine.syntax.ast import Message
 
 
 class TestFluentLocalizationBasics:
@@ -1339,3 +1347,158 @@ class TestPathResourceLoaderLocaleValidation:
                     loader.load("en", "escape.ftl")
             except OSError:
                 pytest.skip("Symlink creation not supported on this system")
+
+
+class TestLocalizationBootTypesFacadeExport:
+    """Boot evidence types and loaders are accessible from the root facade."""
+
+    def test_load_status_accessible_from_root_facade(self) -> None:
+        """LoadStatus enum is exported from ftllexengine root facade."""
+        assert ftllexengine.LoadStatus is LoadStatus
+
+    def test_load_status_in_root_all(self) -> None:
+        """LoadStatus is listed in ftllexengine.__all__."""
+        assert "LoadStatus" in ftllexengine.__all__
+
+    def test_fallback_info_accessible_from_root_facade(self) -> None:
+        """FallbackInfo is exported from ftllexengine root facade."""
+        assert ftllexengine.FallbackInfo is FallbackInfo
+
+    def test_load_summary_accessible_from_root_facade(self) -> None:
+        """LoadSummary is exported from ftllexengine root facade."""
+        assert ftllexengine.LoadSummary is LoadSummary
+
+    def test_resource_load_result_accessible_from_root_facade(self) -> None:
+        """ResourceLoadResult is exported from ftllexengine root facade."""
+        assert ftllexengine.ResourceLoadResult is ResourceLoadResult
+
+    def test_resource_loader_accessible_from_root_facade(self) -> None:
+        """ResourceLoader Protocol is exported from ftllexengine root facade."""
+        assert ftllexengine.ResourceLoader is ResourceLoader
+
+    def test_path_resource_loader_accessible_from_root_facade(self) -> None:
+        """PathResourceLoader is exported from ftllexengine root facade."""
+        assert ftllexengine.PathResourceLoader is PathResourceLoader
+
+    def test_localization_boot_config_accessible_from_root_facade(self) -> None:
+        """LocalizationBootConfig is exported from ftllexengine root facade."""
+        assert ftllexengine.LocalizationBootConfig is LocalizationBootConfig
+
+    def test_localization_cache_stats_accessible_from_root_facade(self) -> None:
+        """LocalizationCacheStats is exported from ftllexengine root facade."""
+        assert ftllexengine.LocalizationCacheStats is LocalizationCacheStats
+
+    def test_boot_types_in_root_all(self) -> None:
+        """All boot evidence types are listed in ftllexengine.__all__."""
+        for name in (
+            "FallbackInfo",
+            "LoadSummary",
+            "LocalizationBootConfig",
+            "LocalizationCacheStats",
+            "PathResourceLoader",
+            "ResourceLoadResult",
+            "ResourceLoader",
+        ):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+# ============================================================================
+# TestFluentLocalizationAddResourceStream
+# ============================================================================
+
+
+class TestFluentLocalizationAddResourceStream:
+    """FluentLocalization.add_resource_stream incremental resource loading."""
+
+    def test_loads_message_from_line_list(self) -> None:
+        """add_resource_stream registers messages for a locale."""
+        l10n = FluentLocalization(
+            locales=("en",),
+            resource_ids=(),
+        )
+        l10n.add_resource_stream("en", ["greeting = Hello\n"])
+        result, errors = l10n.format_pattern("greeting")
+        assert errors == ()
+        assert result == "Hello"
+
+    def test_invalid_locale_raises(self) -> None:
+        """Locale not in fallback chain raises ValueError."""
+        l10n = FluentLocalization(locales=("en",), resource_ids=())
+        with pytest.raises(ValueError, match="not in fallback chain"):
+            l10n.add_resource_stream("de", ["msg = Value\n"])
+
+    def test_returns_empty_junk_on_clean_source(self) -> None:
+        """Clean stream returns empty junk tuple."""
+        l10n = FluentLocalization(locales=("en",), resource_ids=())
+        junk = l10n.add_resource_stream("en", ["msg = Value\n"])
+        assert junk == ()
+
+    def test_source_path_accepted(self) -> None:
+        """source_path kwarg threads through without error."""
+        l10n = FluentLocalization(locales=("en",), resource_ids=())
+        l10n.add_resource_stream(
+            "en", ["msg = Value\n"], source_path="locales/en/ui.ftl"
+        )
+        result, _ = l10n.format_pattern("msg")
+        assert result == "Value"
+
+    def test_multiple_messages_from_stream(self) -> None:
+        """Multiple messages from a stream are all registered."""
+        l10n = FluentLocalization(locales=("en",), resource_ids=())
+        l10n.add_resource_stream("en", ["msg1 = One\n", "\n", "msg2 = Two\n"])
+        r1, _ = l10n.format_pattern("msg1")
+        r2, _ = l10n.format_pattern("msg2")
+        assert r1 == "One"
+        assert r2 == "Two"
+
+    def test_equivalence_with_add_resource(self) -> None:
+        """add_resource_stream produces same result as add_resource for same content."""
+        source = "msg = Hello\n"
+        l1 = FluentLocalization(locales=("en",), resource_ids=())
+        l1.add_resource("en", source)
+        l2 = FluentLocalization(locales=("en",), resource_ids=())
+        l2.add_resource_stream("en", source.splitlines(keepends=True))
+        r1, e1 = l1.format_pattern("msg")
+        r2, e2 = l2.format_pattern("msg")
+        assert r1 == r2
+        assert e1 == e2
+
+    def test_second_call_reuses_existing_bundle(self) -> None:
+        """Second add_resource_stream call for same locale reuses the existing bundle.
+
+        The first call creates the bundle lazily; the second call must take the
+        branch where the bundle already exists in _bundles (line 734->736 coverage).
+        """
+        l10n = FluentLocalization(locales=("en",), resource_ids=())
+        l10n.add_resource_stream("en", ["msg1 = First\n"])
+        l10n.add_resource_stream("en", ["msg2 = Second\n"])
+        r1, e1 = l10n.format_pattern("msg1")
+        r2, e2 = l10n.format_pattern("msg2")
+        assert r1 == "First"
+        assert r2 == "Second"
+        assert e1 == ()
+        assert e2 == ()
+
+
+# ============================================================================
+# TestParseStreamFtlFacade
+# ============================================================================
+
+
+class TestParseStreamFtlFacade:
+    """parse_stream_ftl is accessible from root facade."""
+
+    def test_accessible_from_root(self) -> None:
+        """parse_stream_ftl is importable from ftllexengine."""
+        assert hasattr(ftllexengine, "parse_stream_ftl")
+        assert callable(ftllexengine.parse_stream_ftl)
+
+    def test_in_root_all(self) -> None:
+        """parse_stream_ftl is listed in ftllexengine.__all__."""
+        assert "parse_stream_ftl" in ftllexengine.__all__
+
+    def test_yields_entries_from_lines(self) -> None:
+        """parse_stream_ftl yields Message entries from line list."""
+        entries = list(ftllexengine.parse_stream_ftl(["greeting = Hello\n"]))
+        assert len(entries) == 1
+        assert isinstance(entries[0], Message)
+        assert entries[0].id.name == "greeting"

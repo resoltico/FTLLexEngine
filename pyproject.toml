@@ -36,7 +36,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.156.0"
+version = "0.157.0"
 description = "Fluent (FTL) i18n infrastructure library: bidirectional parsing, locale-aware numbers/dates/currency, strict-mode boot validation, and Decimal precision"
 readme = "README.md"
 requires-python = ">=3.14"

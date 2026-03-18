@@ -6,8 +6,10 @@ and declarative grammar logic via .ftl resources.
 
 Public API:
     FluentBundle - Single-locale message formatting (requires Babel)
+    AsyncFluentBundle - Async-native wrapper around FluentBundle (requires Babel)
     FluentLocalization - Multi-locale orchestration with fallback chains (requires Babel)
     parse_ftl - Parse FTL source to AST (no external dependencies)
+    parse_stream_ftl - Parse FTL source from a line iterator, yields entries incrementally
     serialize_ftl - Serialize AST to FTL source (no external dependencies)
     validate_resource - Validate FTL resource for semantic errors (no external dependencies)
     FluentNumber - Immutable formatted-number wrapper preserving numeric identity
@@ -15,6 +17,26 @@ Public API:
     make_fluent_number - Construct FluentNumber from int/Decimal with inferred precision
     fluent_function - Decorator for custom functions (locale injection support)
     clear_module_caches - Clear all module-level caches (memory management)
+
+Localization Boot (requires Babel):
+    LocalizationBootConfig - One-shot boot orchestrator for strict-mode assembly
+    LoadSummary - Aggregate of all resource load results from initialization
+    ResourceLoadResult - Immutable result of a single resource load attempt
+    FallbackInfo - Immutable record of a locale fallback event
+    ResourceLoader - Protocol for loading FTL resources (structural typing)
+    PathResourceLoader - Disk-based loader with path-traversal prevention
+    LocalizationCacheStats - Cache statistics for all locales in a FluentLocalization
+
+Locale Utilities (no Babel dependency):
+    LoadStatus - Enum of resource load statuses (SUCCESS, NOT_FOUND, ERROR, SKIPPED)
+    LocaleCode - Type alias for BCP-47 / POSIX locale codes (e.g. "en_US", "de")
+    normalize_locale - Convert BCP-47 to canonical lowercase POSIX form
+    get_system_locale - Detect locale from OS environment variables
+
+Boundary Validators (no Babel dependency):
+    require_non_empty_str - Validate that a boundary value is a non-blank string
+    require_positive_int - Validate that a boundary value is a positive integer
+    require_locale_code - Validate and canonicalize a locale code at a system boundary
 
 Fiscal Calendar (no Babel dependency):
     FiscalCalendar - Configuration for fiscal year boundaries
@@ -93,6 +115,10 @@ from .core.fiscal import (
     fiscal_year_end,
     fiscal_year_start,
 )
+from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
+
+# Boundary validators - no Babel dependency; pure stdlib, no circular import risk
+from .core.validators import require_non_empty_str, require_positive_int
 
 # Error types must load before core to avoid circular import:
 # diagnostics -> validation -> syntax.ast -> syntax.__init__ -> serializer -> core.depth_guard
@@ -104,6 +130,7 @@ from .diagnostics import (
     ParseResult,
     ParseTypeLiteral,
 )
+from .enums import LoadStatus
 from .integrity import (
     CacheCorruptionError,
     DataIntegrityError,
@@ -117,7 +144,9 @@ from .integrity import (
     WriteConflictError,
 )
 from .introspection.message import MessageVariableValidationResult, validate_message_variables
+from .localization.types import LocaleCode
 from .syntax import parse as parse_ftl
+from .syntax import parse_stream as parse_stream_ftl
 from .syntax import serialize as serialize_ftl
 from .validation import validate_resource
 
@@ -133,7 +162,31 @@ try:
         get_currency_decimal_digits as get_currency_decimal_digits,
     )
     from .localization import (
+        FallbackInfo as FallbackInfo,
+    )
+    from .localization import (
         FluentLocalization as FluentLocalization,
+    )
+    from .localization import (
+        LoadSummary as LoadSummary,
+    )
+    from .localization import (
+        LocalizationBootConfig as LocalizationBootConfig,
+    )
+    from .localization import (
+        LocalizationCacheStats as LocalizationCacheStats,
+    )
+    from .localization import (
+        PathResourceLoader as PathResourceLoader,
+    )
+    from .localization import (
+        ResourceLoader as ResourceLoader,
+    )
+    from .localization import (
+        ResourceLoadResult as ResourceLoadResult,
+    )
+    from .runtime import (
+        AsyncFluentBundle as AsyncFluentBundle,
     )
     from .runtime import (
         FluentBundle as FluentBundle,
@@ -165,12 +218,20 @@ except ImportError:
     pass  # Parser-only install; __getattr__ provides the installation hint on access
 
 _BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
+    "AsyncFluentBundle",
     "CacheConfig",
+    "FallbackInfo",
     "FluentBundle",
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
     "InterpreterPool",
+    "LoadSummary",
+    "LocalizationBootConfig",
+    "LocalizationCacheStats",
+    "PathResourceLoader",
+    "ResourceLoadResult",
+    "ResourceLoader",
     "fluent_function",
     "make_fluent_number",
     "get_cldr_version",
@@ -187,7 +248,7 @@ def __getattr__(name: str) -> object:
     """
     if name in _BABEL_OPTIONAL_ATTRS:
         msg = (
-            f"{name} requires Babel for CLDR locale data. "
+            f"{name} requires the full runtime install (Babel + CLDR locale data). "
             "Install with: pip install ftllexengine[babel]\n\n"
             "For parser-only usage (no Babel required), use:\n"
             "  from ftllexengine.syntax import parse, serialize\n"
@@ -321,14 +382,24 @@ __recommended_encoding__ = "UTF-8"  # Per spec: "The recommended encoding for Fl
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
     # Bundle and Localization (Babel-optional; absent in parser-only installs)
+    "AsyncFluentBundle",
     "CacheConfig",
+    "FallbackInfo",
     "FluentBundle",
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
     "InterpreterPool",
+    "LoadSummary",
+    "LocalizationBootConfig",
+    "LocalizationCacheStats",
+    "PathResourceLoader",
+    "ResourceLoadResult",
+    "ResourceLoader",
     "fluent_function",
     "make_fluent_number",
+    # Localization status enum (no Babel dependency)
+    "LoadStatus",
     # Error types (immutable, sealed)
     "ErrorCategory",
     "FrozenErrorContext",
@@ -345,6 +416,14 @@ __all__ = [
     "PersistenceIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
+    # Locale utilities (no Babel dependency)
+    "LocaleCode",
+    "get_system_locale",
+    "normalize_locale",
+    # Boundary validators (no Babel dependency)
+    "require_locale_code",
+    "require_non_empty_str",
+    "require_positive_int",
     # Fiscal calendar (no Babel dependency)
     "FiscalCalendar",
     "FiscalDelta",
@@ -365,6 +444,7 @@ __all__ = [
     "get_currency_decimal_digits",
     # Parsing API
     "parse_ftl",
+    "parse_stream_ftl",
     "serialize_ftl",
     "validate_resource",
     # Utility

@@ -195,8 +195,15 @@ def ftl_select_expr_str(draw: st.DrawFn, depth: int) -> str:
 
 @composite
 def ftl_text_element(draw: st.DrawFn, simple: bool = False) -> str:
-    """Generate plain text with parser-stressing special characters."""
-    alphabet = st.characters(blacklist_categories=["Cs", "Cc"], blacklist_characters="\n\r")
+    """Generate plain text with parser-stressing special characters.
+
+    simple=True produces syntactically valid FTL text (no braces, no noise).
+    simple=False adds brace and lookahead noise for parser stress testing.
+    """
+    # simple mode blacklists { and } since those are syntactically significant
+    # in FTL patterns (they delimit placeables) and must not appear as raw text.
+    blacklist = "\n\r{}" if simple else "\n\r"
+    alphabet = st.characters(blacklist_categories=["Cs", "Cc"], blacklist_characters=blacklist)
     text = draw(st.text(alphabet=alphabet, min_size=1, max_size=200))
 
     if simple:
@@ -283,6 +290,59 @@ def ftl_resource(draw: st.DrawFn) -> str:
     return "\n\n".join(entries).replace("\t", " ")
 
 
+@composite
+def ftl_resource_valid(draw: st.DrawFn) -> str:
+    """Generate complete FTL resource with only syntactically valid entries.
+
+    Equivalent to ftl_resource() but never emits junk entries. Use this
+    strategy for round-trip and idempotence tests where assume(not has_junk)
+    would otherwise cause a high-rejection-rate filter: ftl_resource() emits
+    junk entries 20% of the time per slot, so for a 10-entry resource ~89%
+    of generated examples contain at least one junk entry and get discarded.
+    Eliminating junk at the strategy level removes that rejection overhead
+    entirely without sacrificing structural coverage.
+    """
+    entries: list[str] = []
+    num_entries = draw(st.integers(1, 20))
+
+    for _ in range(num_entries):
+        choice = draw(st.sampled_from(["msg", "term", "comment", "blank"]))
+        id_ = draw(ftl_identifier())
+
+        if choice == "msg":
+            comment = (
+                f"### {draw(ftl_text_element(simple=True))}\n"
+                if draw(st.booleans())
+                else ""
+            )
+            has_value = draw(st.booleans())
+            num_attrs = draw(st.integers(0, 5))
+            if not has_value and num_attrs == 0:
+                has_value = True
+            # simple=True: no brace/noise injection — produces syntactically valid FTL.
+            # Attribute-only messages (has_value=False) still require "=" per FTL spec:
+            #   Message ::= Identifier blank_inline? "=" blank_inline? ...
+            val = f" = {draw(ftl_pattern(simple=True))}" if has_value else " ="
+            attrs: list[str] = []
+            for _ in range(num_attrs):
+                attrs.append(
+                    f"\n    .{draw(ftl_identifier())} = {draw(ftl_pattern(simple=True))}"
+                )
+            entries.append(f"{comment}{id_}{val}{''.join(attrs)}")
+
+        elif choice == "term":
+            entries.append(f"-{id_} = {draw(ftl_pattern(simple=True))}")
+
+        elif choice == "comment":
+            lvl = draw(st.sampled_from(["#", "##", "###"]))
+            entries.append(f"{lvl} {draw(ftl_text_element(simple=True))}")
+
+        else:  # blank
+            entries.append("\n")
+
+    return "\n\n".join(entries).replace("\t", " ")
+
+
 # -----------------------------------------------------------------------------
 # Boundary Testing Strategies
 # -----------------------------------------------------------------------------
@@ -352,10 +412,17 @@ def get_entry_keys(resource: Resource) -> list[str]:
 class TestParserProperties:
     """Property-based tests for the FTL parser."""
 
-    @given(ftl_resource())
+    @given(ftl_resource_valid())
     @settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example], deadline=None)
     def test_roundtrip_consistency(self, source: str) -> None:
-        """Property: parse(serialize(parse(X))) == parse(X) semantically."""
+        """Property: parse(serialize(parse(X))) == parse(X) semantically.
+
+        Uses ftl_resource_valid() (no junk entries) so that no assume() filter
+        is needed. ftl_resource() emits junk ~20% per entry; at 10 entries,
+        ~89% of examples would be discarded, making assume(not has_junk) a
+        high-rejection-rate filter. Strategy-level exclusion avoids that overhead
+        entirely. Junk recovery is covered by TestJunkRecovery.
+        """
         parser = FluentParserV1()
         serializer = FluentSerializer()
 
@@ -366,18 +433,6 @@ class TestParserProperties:
         event(f"entries={len(ast_1.entries)}")
         for entry in ast_1.entries[:3]:
             event(f"entry_type={type(entry).__name__}")
-        if has_junk(ast_1):
-            event("has_junk=true")
-        else:
-            event("has_junk=false")
-
-        # Junk entries cannot be meaningfully round-tripped since their content
-        # represents unparseable source. This assume() is necessary because:
-        # 1. Junk serialization differs from original input (normalized)
-        # 2. Semantic comparison is impossible for invalid syntax
-        # 3. Junk recovery is tested separately in TestJunkRecovery
-        # (MAINT-FUZZ-SHRINKING-EFFICIENCY-001 acknowledged)
-        assume(not has_junk(ast_1))
 
         ser_1 = serializer.serialize(ast_1)
         ast_2 = parser.parse(ser_1)
@@ -389,17 +444,19 @@ class TestParserProperties:
         assert ser_1 == ser_2
         event("outcome=roundtrip_success")
 
-    @given(ftl_resource())
+    @given(ftl_resource_valid())
     @settings(suppress_health_check=[HealthCheck.too_slow, HealthCheck.large_base_example], deadline=None)
     def test_idempotence(self, source: str) -> None:
-        """Property: serialize(parse(serialize(parse(X)))) == serialize(parse(X))."""
+        """Property: serialize(parse(serialize(parse(X)))) == serialize(parse(X)).
+
+        Uses ftl_resource_valid() for the same reason as test_roundtrip_consistency:
+        eliminating the assume(not has_junk) high-rejection-rate filter at the
+        strategy level. Junk testing is covered by TestJunkRecovery.
+        """
         parser = FluentParserV1()
         serializer = FluentSerializer()
 
         ast_1 = parser.parse(source)
-        # Same rationale as test_roundtrip_consistency - junk entries cannot
-        # participate in idempotence testing. See TestJunkRecovery for junk tests.
-        assume(not has_junk(ast_1))
 
         # First roundtrip
         ser_1 = serializer.serialize(ast_1)
@@ -653,6 +710,25 @@ class TestErrorHandling:
         event(f"has_junk={has_junk(result)}")
 
 
+@composite
+def _junk_resource_source(draw: st.DrawFn) -> str:
+    """Generate FTL source that always contains at least one Junk entry.
+
+    Events emitted:
+    - junk_blank_lines=N: blank lines between junk block and following message
+    """
+    valid_before = draw(ftl_identifier())
+    valid_after = draw(ftl_identifier())
+    if valid_before == valid_after:
+        valid_after = valid_after + "2"
+    junk_id = draw(ftl_identifier())
+    junk_line = f"!{junk_id}"
+    blank_lines = draw(st.integers(min_value=0, max_value=3))
+    event(f"junk_blank_lines={blank_lines}")
+    separator = "\n" * blank_lines
+    return f"{valid_before} = before\n{junk_line}\n{separator}{valid_after} = after\n"
+
+
 class TestJunkRecovery:
     """Tests for parser junk recovery behavior.
 
@@ -679,6 +755,11 @@ class TestJunkRecovery:
         self, junk_content: str, valid_id: str, valid_value: str
     ) -> None:
         """Property: Valid entries after junk are correctly parsed."""
+        # Whitespace-only strings are blank_line in FTL (blank_inline? line_end),
+        # not junk. The parser silently discards them as syntactic filler.
+        # Reject them here so the test only exercises genuine junk recovery.
+        assume(junk_content.strip())
+
         # Ensure junk_content doesn't accidentally become valid FTL
         # Note: '#' is blacklisted since it starts valid FTL comments
         if "=" in junk_content:
@@ -759,6 +840,36 @@ class TestJunkRecovery:
         assert before_id in message_ids, f"Missing before message {before_id}"
         assert after_id in message_ids, f"Missing after message {after_id}"
         event(f"total_entries={len(result.entries)}")
+
+    @example(source="!invalid-entry\n\nvalid = ok\n")
+    @example(source="-NUMBER = {")
+    @example(source="# 0\n\na\n    .a = { a }\n\na = { a }")
+    @given(source=_junk_resource_source())
+    @settings(deadline=None)
+    def test_junk_serialization_idempotent(self, source: str) -> None:
+        """Property: Junk serialization is idempotent after the first roundtrip.
+
+        Invariant: serialize(parse(ser_1)) == ser_1, where ser_1 = serialize(parse(source)).
+
+        _consume_junk_lines absorbs trailing blank-line separators into Junk.content.
+        Without the trailing-newline cap in _serialize_resource, each cycle appended
+        one extra blank line indefinitely. Regression guard for that fix.
+        """
+        parser = FluentParserV1()
+        serializer = FluentSerializer()
+
+        ast_1 = parser.parse(source)
+        event(f"junk_count={sum(1 for e in ast_1.entries if isinstance(e, Junk))}")
+        event(f"entry_count={len(ast_1.entries)}")
+
+        ser_1 = serializer.serialize(ast_1)
+        ser_2 = serializer.serialize(parser.parse(ser_1))
+        ser_3 = serializer.serialize(parser.parse(ser_2))
+
+        assert ser_2 == ser_3, (
+            f"Junk serialization not idempotent!\nAfter 2: {ser_2!r}\nAfter 3: {ser_3!r}"
+        )
+        event("outcome=idempotent")
 
 
 if __name__ == "__main__":

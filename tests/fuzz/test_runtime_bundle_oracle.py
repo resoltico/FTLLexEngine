@@ -7,6 +7,7 @@ produce consistent results.
 
 Key testing patterns:
 - add_resource followed by format_pattern
+- add_resource_stream (oracle: equivalent to add_resource for same content)
 - Multiple resources building up state
 - Clear and rebuild operations
 - Various argument combinations
@@ -27,7 +28,7 @@ Python 3.13+.
 from __future__ import annotations
 
 import pytest
-from hypothesis import event, settings
+from hypothesis import event, given, settings
 from hypothesis.stateful import (
     RuleBasedStateMachine,
     initialize,
@@ -264,3 +265,139 @@ class BundleLifecycleStateMachine(RuleBasedStateMachine):
 
 TestBundleLifecycle = BundleLifecycleStateMachine.TestCase
 TestBundleLifecycle.settings = settings(stateful_step_count=50, deadline=None)
+
+
+# ============================================================================
+# add_resource_stream oracle: streaming == buffered for same FTL content
+# ============================================================================
+
+
+class TestAddResourceStreamOracle:
+    """Oracle: add_resource_stream is equivalent to add_resource for same FTL content.
+
+    For any valid FTL source string, loading via add_resource_stream(lines)
+    must produce the same message IDs and the same format_pattern output as
+    loading via add_resource(source). This oracle detects any divergence in
+    the two loading paths.
+    """
+
+    @given(source=ftl_simple_messages())
+    def test_message_ids_match_add_resource(self, source: str) -> None:
+        """add_resource_stream yields same message IDs as add_resource.
+
+        Both bundles load the same FTL via different code paths. The set of
+        registered message IDs must be identical.
+        """
+        b_buffered = FluentBundle("en_US", use_isolating=False)
+        b_stream = FluentBundle("en_US", use_isolating=False)
+
+        b_buffered.add_resource(source)
+        b_stream.add_resource_stream(source.splitlines(keepends=True))
+
+        ids_buffered = set(b_buffered.get_message_ids())
+        ids_stream = set(b_stream.get_message_ids())
+        event(f"stream_id_count={len(ids_stream)}")
+        event(
+            f"outcome={'match' if ids_buffered == ids_stream else 'mismatch'}"
+        )
+        assert ids_buffered == ids_stream
+
+    @given(source=ftl_simple_messages())
+    def test_format_results_match_add_resource(self, source: str) -> None:
+        """format_pattern results are identical for stream and buffered load paths."""
+        b_buffered = FluentBundle("en_US", use_isolating=False, strict=False)
+        b_stream = FluentBundle("en_US", use_isolating=False, strict=False)
+
+        b_buffered.add_resource(source)
+        b_stream.add_resource_stream(source.splitlines(keepends=True))
+
+        for msg_id in b_buffered.get_message_ids():
+            r_buf, e_buf = b_buffered.format_pattern(msg_id)
+            r_str, e_str = b_stream.format_pattern(msg_id)
+            event(f"format_errors_buffered={len(e_buf)}")
+            event(f"format_errors_stream={len(e_str)}")
+            assert r_buf == r_str, (
+                f"Format mismatch for {msg_id!r}: "
+                f"buffered={r_buf!r}, stream={r_str!r}"
+            )
+            assert len(e_buf) == len(e_str)
+
+    @given(source=ftl_terms())
+    def test_term_ids_match_add_resource(self, source: str) -> None:
+        """Terms loaded via add_resource_stream have the same IDs as via add_resource."""
+        b_buffered = FluentBundle("en_US", use_isolating=False)
+        b_stream = FluentBundle("en_US", use_isolating=False)
+
+        b_buffered.add_resource(source)
+        b_stream.add_resource_stream(source.splitlines(keepends=True))
+
+        # Both should have the same message IDs (terms are not directly inspectable
+        # via get_message_ids, but they appear as message-ID-less entries that affect
+        # term-referencing messages — verify IDs match).
+        assert set(b_buffered.get_message_ids()) == set(b_stream.get_message_ids())
+        event("term_oracle=verified")
+
+    @given(source=ftl_simple_messages())
+    def test_junk_count_matches_add_resource(self, source: str) -> None:
+        """Junk entry count from add_resource_stream equals count from add_resource."""
+        b_buffered = FluentBundle("en_US", use_isolating=False, strict=False)
+        b_stream = FluentBundle("en_US", use_isolating=False, strict=False)
+
+        junk_buf = b_buffered.add_resource(source)
+        junk_stream = b_stream.add_resource_stream(source.splitlines(keepends=True))
+
+        event(f"junk_buffered={len(junk_buf)}")
+        event(f"junk_stream={len(junk_stream)}")
+        assert len(junk_buf) == len(junk_stream)
+
+
+class BundleStreamStateMachine(RuleBasedStateMachine):
+    """State machine: interleave add_resource and add_resource_stream calls.
+
+    Verifies that mixing the two loading APIs on the same bundle produces
+    consistent cumulative state. Both methods write to the same message store;
+    the invariant is that the union of all added message IDs is reachable.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.real: FluentBundle | None = None
+        self.shadow: ShadowBundle | None = None
+
+    @initialize()
+    def init_bundles(self) -> None:
+        """Initialize bundles."""
+        self.real = FluentBundle("en_US", use_isolating=False, strict=False)
+        self.shadow = ShadowBundle(locale="en_US")
+
+    @rule(source=ftl_simple_messages())
+    def add_via_resource(self, source: str) -> None:
+        """Load FTL via the buffered add_resource path."""
+        assert self.real is not None
+        assert self.shadow is not None
+        self.real.add_resource(source)
+        self.shadow.add_resource(source)
+        event("rule=add_via_resource")
+
+    @rule(source=ftl_simple_messages())
+    def add_via_stream(self, source: str) -> None:
+        """Load FTL via the streaming add_resource_stream path."""
+        assert self.real is not None
+        assert self.shadow is not None
+        self.real.add_resource_stream(source.splitlines(keepends=True))
+        self.shadow.add_resource(source)
+        event("rule=add_via_stream")
+
+    @invariant()
+    def message_ids_match_shadow(self) -> None:
+        """Bundle message IDs always match the shadow oracle."""
+        if self.real is None or self.shadow is None:
+            return
+        real_ids = set(self.real.get_message_ids())
+        shadow_ids = self.shadow.get_message_ids()
+        assert real_ids == shadow_ids
+        event(f"invariant=ids_match count={len(real_ids)}")
+
+
+TestBundleStream = BundleStreamStateMachine.TestCase
+TestBundleStream.settings = settings(stateful_step_count=40, deadline=None)

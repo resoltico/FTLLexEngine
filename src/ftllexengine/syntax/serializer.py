@@ -479,6 +479,9 @@ class FluentSerializer(ASTVisitor):
         - Consecutive standalone comments of the same type require a blank
           line between them to prevent merging during re-parse.
         - Messages and terms get standard single newline separation.
+        - Junk separator is capped so that parse/serialize cycles are idempotent:
+          _consume_junk_lines absorbs trailing blank lines into Junk.content;
+          without compensation, each cycle appends one extra blank line.
         """
         prev_entry: Message | Term | Comment | Junk | None = None
 
@@ -515,6 +518,19 @@ class FluentSerializer(ASTVisitor):
                     ):
                         # Message/Term already end with \n; no extra separator for compact output
                         pass
+                    elif isinstance(prev_entry, Junk):
+                        # _consume_junk_lines absorbs trailing blank lines into
+                        # Junk.content, so prev_entry.content may already supply
+                        # the blank-line separator. Only emit enough additional
+                        # newlines to reach exactly 2 trailing newlines total
+                        # (Junk's own line-end "\n" + one blank-line "\n").
+                        # Adding an unconditional "\n" would grow the blank count
+                        # by one on every parse/serialize cycle.
+                        trailing_n = len(prev_entry.content) - len(
+                            prev_entry.content.rstrip("\n")
+                        )
+                        if trailing_n < 2:
+                            output.append("\n" * (2 - trailing_n))
                     else:
                         output.append("\n")
 
