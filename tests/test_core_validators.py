@@ -24,9 +24,27 @@ Tests cover:
 - coerce_tuple: raises TypeError for str input
 - coerce_tuple: raises TypeError for non-Sequence input (int, None, generator)
 - coerce_tuple: accessible from core package and root facade
+- normalize_optional_str: returns None for None input
+- normalize_optional_str: delegates to require_non_empty_str for non-None
+- normalize_optional_str: accessible from core package and root facade
+- require_decimal_range: returns validated Decimal within range
+- require_decimal_range: raises TypeError for bool and non-Decimal types
+- require_decimal_range: raises ValueError for non-finite and out-of-range values
+- require_decimal_range: field_name appears in error messages
+- require_decimal_range: accessible from core package and root facade
+- normalize_optional_decimal_range: returns None for None input
+- normalize_optional_decimal_range: delegates to require_decimal_range for non-None
+- normalize_optional_decimal_range: accessible from core package and root facade
+- require_int_in_range: returns validated int within range
+- require_int_in_range: raises TypeError for bool and non-int types
+- require_int_in_range: raises ValueError for out-of-range values
+- require_int_in_range: field_name appears in error messages
+- require_int_in_range: accessible from core package and root facade
 """
 
 from __future__ import annotations
+
+from decimal import Decimal
 
 import pytest
 
@@ -34,7 +52,11 @@ import ftllexengine
 import ftllexengine.core as core_module
 from ftllexengine.core.validators import (
     coerce_tuple,
+    normalize_optional_decimal_range,
+    normalize_optional_str,
+    require_decimal_range,
     require_int,
+    require_int_in_range,
     require_non_empty_str,
     require_non_negative_int,
     require_positive_int,
@@ -487,3 +509,436 @@ class TestCoerceTupleFacadeExport:
     def test_in_root_all(self) -> None:
         """coerce_tuple is listed in ftllexengine.__all__."""
         assert "coerce_tuple" in ftllexengine.__all__
+
+
+# ---------------------------------------------------------------------------
+# normalize_optional_str
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeOptionalStr:
+    """Tests for normalize_optional_str None-passthrough validator."""
+
+    def test_returns_none_for_none(self) -> None:
+        """None input returns None."""
+        assert normalize_optional_str(None, "description") is None
+
+    def test_returns_stripped_string_for_non_none(self) -> None:
+        """Non-None str delegates to require_non_empty_str (strips whitespace)."""
+        assert normalize_optional_str("  hello  ", "description") == "hello"
+
+    def test_returns_clean_string_unchanged(self) -> None:
+        """A clean string with no surrounding whitespace is returned as-is."""
+        assert normalize_optional_str("hello", "description") == "hello"
+
+    def test_raises_value_error_for_empty_string(self) -> None:
+        """Empty string raises ValueError (delegated to require_non_empty_str)."""
+        with pytest.raises(ValueError, match="description cannot be blank"):
+            normalize_optional_str("", "description")
+
+    def test_raises_value_error_for_whitespace_only(self) -> None:
+        """Whitespace-only string raises ValueError."""
+        with pytest.raises(ValueError, match="description cannot be blank"):
+            normalize_optional_str("   ", "description")
+
+    def test_raises_type_error_for_int(self) -> None:
+        """Non-str, non-None value raises TypeError."""
+        with pytest.raises(TypeError, match="description must be str, got int"):
+            normalize_optional_str(42, "description")
+
+    def test_raises_type_error_for_list(self) -> None:
+        """List raises TypeError."""
+        with pytest.raises(TypeError, match="field must be str, got list"):
+            normalize_optional_str([], "field")
+
+    def test_raises_type_error_for_bytes(self) -> None:
+        """Bytes raises TypeError (bytes is not str)."""
+        with pytest.raises(TypeError, match="field must be str, got bytes"):
+            normalize_optional_str(b"hello", "field")
+
+    def test_field_name_in_type_error(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_field must be str"):
+            normalize_optional_str(3.14, "my_field")
+
+    def test_field_name_in_value_error(self) -> None:
+        """field_name appears in ValueError message."""
+        with pytest.raises(ValueError, match="my_field cannot be blank"):
+            normalize_optional_str("", "my_field")
+
+    def test_return_type_is_none_for_none(self) -> None:
+        """Return type is NoneType when value is None."""
+        result = normalize_optional_str(None, "f")
+        assert result is None
+
+    def test_return_type_is_str_for_valid_input(self) -> None:
+        """Return type is str for valid string input."""
+        result = normalize_optional_str("hello", "f")
+        assert type(result) is str
+
+
+class TestNormalizeOptionalStrFacadeExport:
+    """normalize_optional_str is reachable from both the core package and root facade."""
+
+    def test_accessible_from_core_package(self) -> None:
+        """normalize_optional_str is exported from ftllexengine.core."""
+        assert callable(core_module.normalize_optional_str)
+        assert core_module.normalize_optional_str is normalize_optional_str
+
+    def test_accessible_from_root_facade(self) -> None:
+        """normalize_optional_str is exported from the ftllexengine root facade."""
+        assert callable(ftllexengine.normalize_optional_str)
+        assert ftllexengine.normalize_optional_str is normalize_optional_str
+
+    def test_in_core_all(self) -> None:
+        """normalize_optional_str is listed in ftllexengine.core.__all__."""
+        assert "normalize_optional_str" in core_module.__all__
+
+    def test_in_root_all(self) -> None:
+        """normalize_optional_str is listed in ftllexengine.__all__."""
+        assert "normalize_optional_str" in ftllexengine.__all__
+
+
+# ---------------------------------------------------------------------------
+# require_decimal_range
+# ---------------------------------------------------------------------------
+
+_LO = Decimal(0)
+_HI = Decimal(1)
+_HALF = Decimal("0.5")
+
+
+class TestRequireDecimalRange:
+    """Tests for require_decimal_range boundary validator."""
+
+    def test_returns_value_within_range(self) -> None:
+        """A Decimal within [lo, hi] is returned unchanged."""
+        assert require_decimal_range(_HALF, _LO, _HI, "rate") == _HALF
+
+    def test_returns_lo_boundary(self) -> None:
+        """The lower boundary itself is valid and returned unchanged."""
+        assert require_decimal_range(_LO, _LO, _HI, "rate") == _LO
+
+    def test_returns_hi_boundary(self) -> None:
+        """The upper boundary itself is valid and returned unchanged."""
+        assert require_decimal_range(_HI, _LO, _HI, "rate") == _HI
+
+    def test_returns_value_unchanged_identity(self) -> None:
+        """The exact input Decimal object is returned (identity, not a copy)."""
+        val = Decimal("0.25")
+        result = require_decimal_range(val, _LO, _HI, "rate")
+        assert result is val
+
+    def test_raises_value_error_for_below_range(self) -> None:
+        """Value below lo raises ValueError."""
+        with pytest.raises(ValueError, match="rate must be in range"):
+            require_decimal_range(Decimal("-0.01"), _LO, _HI, "rate")
+
+    def test_raises_value_error_for_above_range(self) -> None:
+        """Value above hi raises ValueError."""
+        with pytest.raises(ValueError, match="rate must be in range"):
+            require_decimal_range(Decimal("1.01"), _LO, _HI, "rate")
+
+    def test_raises_value_error_for_infinity(self) -> None:
+        """Positive infinity raises ValueError."""
+        with pytest.raises(ValueError, match="rate must be finite"):
+            require_decimal_range(Decimal("Infinity"), _LO, _HI, "rate")
+
+    def test_raises_value_error_for_negative_infinity(self) -> None:
+        """Negative infinity raises ValueError."""
+        with pytest.raises(ValueError, match="rate must be finite"):
+            require_decimal_range(Decimal("-Infinity"), _LO, _HI, "rate")
+
+    def test_raises_value_error_for_nan(self) -> None:
+        """NaN raises ValueError."""
+        with pytest.raises(ValueError, match="rate must be finite"):
+            require_decimal_range(Decimal("NaN"), _LO, _HI, "rate")
+
+    def test_raises_type_error_for_int(self) -> None:
+        """int raises TypeError even if value would be in range."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got int"):
+            require_decimal_range(0, _LO, _HI, "rate")
+
+    def test_raises_type_error_for_float(self) -> None:
+        """float raises TypeError."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got float"):
+            require_decimal_range(0.5, _LO, _HI, "rate")
+
+    def test_raises_type_error_for_str(self) -> None:
+        """str raises TypeError."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got str"):
+            require_decimal_range("0.5", _LO, _HI, "rate")
+
+    def test_raises_type_error_for_none(self) -> None:
+        """None raises TypeError."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got NoneType"):
+            require_decimal_range(None, _LO, _HI, "rate")
+
+    def test_raises_type_error_for_bool_true(self) -> None:
+        """True raises TypeError — bool is rejected explicitly."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got bool"):
+            require_decimal_range(True, _LO, _HI, "rate")
+
+    def test_raises_type_error_for_bool_false(self) -> None:
+        """False raises TypeError — bool is rejected before Decimal check."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got bool"):
+            require_decimal_range(False, _LO, _HI, "rate")
+
+    def test_field_name_in_type_error(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_rate must be Decimal"):
+            require_decimal_range(0.5, _LO, _HI, "my_rate")
+
+    def test_field_name_in_range_error(self) -> None:
+        """field_name appears in range ValueError message."""
+        with pytest.raises(ValueError, match="my_rate must be in range"):
+            require_decimal_range(Decimal(2), _LO, _HI, "my_rate")
+
+    def test_field_name_in_finite_error(self) -> None:
+        """field_name appears in finiteness ValueError message."""
+        with pytest.raises(ValueError, match="my_rate must be finite"):
+            require_decimal_range(Decimal("Inf"), _LO, _HI, "my_rate")
+
+    def test_range_message_includes_bounds(self) -> None:
+        """Error message includes the lo and hi bounds."""
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            require_decimal_range(Decimal(5), _LO, _HI, "rate")
+
+    def test_arbitrary_range(self) -> None:
+        """Works correctly with arbitrary lo/hi bounds."""
+        lo = Decimal(-10)
+        hi = Decimal(10)
+        val = Decimal(-5)
+        assert require_decimal_range(val, lo, hi, "offset") == val
+
+    def test_single_point_range(self) -> None:
+        """When lo == hi, only that exact value is valid."""
+        mid = Decimal("0.5")
+        assert require_decimal_range(mid, mid, mid, "exact") == mid
+        with pytest.raises(ValueError, match="exact must be in range"):
+            require_decimal_range(Decimal("0.4"), mid, mid, "exact")
+
+
+class TestRequireDecimalRangeFacadeExport:
+    """require_decimal_range is reachable from both the core package and root facade."""
+
+    def test_accessible_from_core_package(self) -> None:
+        """require_decimal_range is exported from ftllexengine.core."""
+        assert callable(core_module.require_decimal_range)
+        assert core_module.require_decimal_range is require_decimal_range
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_decimal_range is exported from the ftllexengine root facade."""
+        assert callable(ftllexengine.require_decimal_range)
+        assert ftllexengine.require_decimal_range is require_decimal_range
+
+    def test_in_core_all(self) -> None:
+        """require_decimal_range is listed in ftllexengine.core.__all__."""
+        assert "require_decimal_range" in core_module.__all__
+
+    def test_in_root_all(self) -> None:
+        """require_decimal_range is listed in ftllexengine.__all__."""
+        assert "require_decimal_range" in ftllexengine.__all__
+
+
+# ---------------------------------------------------------------------------
+# normalize_optional_decimal_range
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeOptionalDecimalRange:
+    """Tests for normalize_optional_decimal_range None-passthrough validator."""
+
+    def test_returns_none_for_none(self) -> None:
+        """None input returns None."""
+        assert normalize_optional_decimal_range(None, _LO, _HI, "rate") is None
+
+    def test_returns_valid_decimal_unchanged(self) -> None:
+        """Valid Decimal in range is returned unchanged."""
+        val = Decimal("0.25")
+        result = normalize_optional_decimal_range(val, _LO, _HI, "rate")
+        assert result == val
+        assert result is val
+
+    def test_returns_lo_boundary(self) -> None:
+        """Lower boundary is valid."""
+        assert normalize_optional_decimal_range(_LO, _LO, _HI, "rate") == _LO
+
+    def test_returns_hi_boundary(self) -> None:
+        """Upper boundary is valid."""
+        assert normalize_optional_decimal_range(_HI, _LO, _HI, "rate") == _HI
+
+    def test_raises_value_error_for_out_of_range(self) -> None:
+        """Out-of-range Decimal raises ValueError (delegated)."""
+        with pytest.raises(ValueError, match="rate must be in range"):
+            normalize_optional_decimal_range(Decimal(2), _LO, _HI, "rate")
+
+    def test_raises_value_error_for_nan(self) -> None:
+        """NaN raises ValueError (delegated)."""
+        with pytest.raises(ValueError, match="rate must be finite"):
+            normalize_optional_decimal_range(Decimal("NaN"), _LO, _HI, "rate")
+
+    def test_raises_type_error_for_int(self) -> None:
+        """int raises TypeError (delegated)."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got int"):
+            normalize_optional_decimal_range(0, _LO, _HI, "rate")
+
+    def test_raises_type_error_for_bool(self) -> None:
+        """bool raises TypeError (delegated)."""
+        with pytest.raises(TypeError, match="rate must be Decimal, got bool"):
+            normalize_optional_decimal_range(True, _LO, _HI, "rate")
+
+    def test_return_type_is_none_for_none(self) -> None:
+        """Return type is NoneType when value is None."""
+        result = normalize_optional_decimal_range(None, _LO, _HI, "f")
+        assert result is None
+
+    def test_return_type_is_decimal_for_valid_input(self) -> None:
+        """Return type is Decimal for valid Decimal input."""
+        result = normalize_optional_decimal_range(_HALF, _LO, _HI, "f")
+        assert isinstance(result, Decimal)
+
+
+class TestNormalizeOptionalDecimalRangeFacadeExport:
+    """normalize_optional_decimal_range reachable from core package and root facade."""
+
+    def test_accessible_from_core_package(self) -> None:
+        """normalize_optional_decimal_range is exported from ftllexengine.core."""
+        assert callable(core_module.normalize_optional_decimal_range)
+        assert (
+            core_module.normalize_optional_decimal_range
+            is normalize_optional_decimal_range
+        )
+
+    def test_accessible_from_root_facade(self) -> None:
+        """normalize_optional_decimal_range is exported from the root facade."""
+        assert callable(ftllexengine.normalize_optional_decimal_range)
+        assert (
+            ftllexengine.normalize_optional_decimal_range
+            is normalize_optional_decimal_range
+        )
+
+    def test_in_core_all(self) -> None:
+        """normalize_optional_decimal_range is in ftllexengine.core.__all__."""
+        assert "normalize_optional_decimal_range" in core_module.__all__
+
+    def test_in_root_all(self) -> None:
+        """normalize_optional_decimal_range is in ftllexengine.__all__."""
+        assert "normalize_optional_decimal_range" in ftllexengine.__all__
+
+
+# ---------------------------------------------------------------------------
+# require_int_in_range
+# ---------------------------------------------------------------------------
+
+
+class TestRequireIntInRange:
+    """Tests for require_int_in_range boundary validator."""
+
+    def test_returns_value_within_range(self) -> None:
+        """An int within [lo, hi] is returned unchanged."""
+        assert require_int_in_range(5, 1, 10, "page_size") == 5
+
+    def test_returns_lo_boundary(self) -> None:
+        """The lower boundary itself is valid."""
+        assert require_int_in_range(1, 1, 10, "page_size") == 1
+
+    def test_returns_hi_boundary(self) -> None:
+        """The upper boundary itself is valid."""
+        assert require_int_in_range(10, 1, 10, "page_size") == 10
+
+    def test_returns_value_unchanged_identity(self) -> None:
+        """The exact input int is returned (identity, not a copy)."""
+        val = 5
+        result = require_int_in_range(val, 1, 10, "page_size")
+        assert result is val
+
+    def test_returns_zero_when_in_range(self) -> None:
+        """Zero is accepted when it is within [lo, hi]."""
+        assert require_int_in_range(0, -5, 5, "offset") == 0
+
+    def test_returns_negative_when_in_range(self) -> None:
+        """Negative values are accepted when within [lo, hi]."""
+        assert require_int_in_range(-3, -10, 0, "delta") == -3
+
+    def test_raises_value_error_for_below_range(self) -> None:
+        """Value below lo raises ValueError."""
+        with pytest.raises(ValueError, match="page_size must be in range"):
+            require_int_in_range(0, 1, 10, "page_size")
+
+    def test_raises_value_error_for_above_range(self) -> None:
+        """Value above hi raises ValueError."""
+        with pytest.raises(ValueError, match="page_size must be in range"):
+            require_int_in_range(11, 1, 10, "page_size")
+
+    def test_raises_type_error_for_float(self) -> None:
+        """float raises TypeError even if value would be in range."""
+        with pytest.raises(TypeError, match="page_size must be int, got float"):
+            require_int_in_range(5.0, 1, 10, "page_size")
+
+    def test_raises_type_error_for_str(self) -> None:
+        """str raises TypeError."""
+        with pytest.raises(TypeError, match="page_size must be int, got str"):
+            require_int_in_range("5", 1, 10, "page_size")
+
+    def test_raises_type_error_for_none(self) -> None:
+        """None raises TypeError."""
+        with pytest.raises(TypeError, match="page_size must be int, got NoneType"):
+            require_int_in_range(None, 1, 10, "page_size")
+
+    def test_raises_type_error_for_bool_true(self) -> None:
+        """True raises TypeError — bool is an int subtype but rejected."""
+        with pytest.raises(TypeError, match="page_size must be int, got bool"):
+            require_int_in_range(True, 1, 10, "page_size")
+
+    def test_raises_type_error_for_bool_false(self) -> None:
+        """False raises TypeError — bool is rejected before int check."""
+        with pytest.raises(TypeError, match="page_size must be int, got bool"):
+            require_int_in_range(False, 1, 10, "page_size")
+
+    def test_field_name_in_type_error(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_field must be int"):
+            require_int_in_range("x", 1, 10, "my_field")
+
+    def test_field_name_in_range_error(self) -> None:
+        """field_name appears in range ValueError message."""
+        with pytest.raises(ValueError, match="my_field must be in range"):
+            require_int_in_range(0, 1, 10, "my_field")
+
+    def test_range_message_includes_bounds(self) -> None:
+        """Error message includes the lo and hi bounds."""
+        with pytest.raises(ValueError, match=r"\[1, 10\]"):
+            require_int_in_range(0, 1, 10, "page_size")
+
+    def test_single_point_range(self) -> None:
+        """When lo == hi, only that exact value is valid."""
+        assert require_int_in_range(5, 5, 5, "exact") == 5
+        with pytest.raises(ValueError, match="exact must be in range"):
+            require_int_in_range(4, 5, 5, "exact")
+
+    def test_large_positive_int(self) -> None:
+        """Large positive integers are accepted when in range."""
+        assert require_int_in_range(999_999, 0, 1_000_000, "count") == 999_999
+
+
+class TestRequireIntInRangeFacadeExport:
+    """require_int_in_range is reachable from both the core package and root facade."""
+
+    def test_accessible_from_core_package(self) -> None:
+        """require_int_in_range is exported from ftllexengine.core."""
+        assert callable(core_module.require_int_in_range)
+        assert core_module.require_int_in_range is require_int_in_range
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_int_in_range is exported from the ftllexengine root facade."""
+        assert callable(ftllexengine.require_int_in_range)
+        assert ftllexengine.require_int_in_range is require_int_in_range
+
+    def test_in_core_all(self) -> None:
+        """require_int_in_range is listed in ftllexengine.core.__all__."""
+        assert "require_int_in_range" in core_module.__all__
+
+    def test_in_root_all(self) -> None:
+        """require_int_in_range is listed in ftllexengine.__all__."""
+        assert "require_int_in_range" in ftllexengine.__all__

@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.158.0"
+version: "0.159.0"
 domain: CORE
-updated: "2026-03-18"
+updated: "2026-03-19"
 route:
-  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, require_int, require_non_negative_int, coerce_tuple, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool, CurrencyCode, TerritoryCode, NewType]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?", "how do I coerce a list to tuple?", "how do I validate a non-negative int?", "how do I validate any int type?"]
+  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, normalize_optional_str, require_positive_int, require_int, require_int_in_range, require_non_negative_int, coerce_tuple, require_decimal_range, normalize_optional_decimal_range, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool, CurrencyCode, TerritoryCode, NewType, optional, Decimal, range, int range]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?", "how do I coerce a list to tuple?", "how do I validate a non-negative int?", "how do I validate any int type?", "how do I validate an optional string?", "how do I validate a Decimal within a range?", "how do I validate an integer within a range?", "how do I validate an optional Decimal?"]
 ---
 
 # Core API Reference
@@ -1704,6 +1704,124 @@ def coerce_tuple[T](value: object, field_name: str) -> tuple[T, ...]:
 - Thread: Safe.
 - Babel: NOT required.
 - Import: `from ftllexengine import coerce_tuple` or `from ftllexengine.core.validators import coerce_tuple`.
+
+---
+
+## `normalize_optional_str`
+
+Normalize an optional string field: None passthrough over `require_non_empty_str`.
+
+### Signature
+```python
+def normalize_optional_str(value: object, field_name: str) -> str | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | None returns None; non-str raises TypeError; blank str raises ValueError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: `None` if `value` is `None`; otherwise the stripped, non-empty string.
+- Raises: `TypeError` if `value` is not `None` and not a `str` instance.
+- Raises: `ValueError` if `value` is a `str` that is empty or contains only whitespace.
+- Delegation: Non-None path delegates to `require_non_empty_str` with identical behavior.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import normalize_optional_str` or `from ftllexengine.core.validators import normalize_optional_str`.
+
+---
+
+## `require_decimal_range`
+
+Validate that a boundary value is a finite `Decimal` within an inclusive range `[lo, hi]`.
+
+### Signature
+```python
+def require_decimal_range(
+    value: object, lo: Decimal, hi: Decimal, field_name: str
+) -> Decimal:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value. bool and non-Decimal raise TypeError; non-finite or out-of-range raise ValueError. |
+| `lo` | `Decimal` | Y | Inclusive lower bound (must be finite; `lo <= hi` is caller's precondition). |
+| `hi` | `Decimal` | Y | Inclusive upper bound (must be finite; `lo <= hi` is caller's precondition). |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated `Decimal`, identical to the input value.
+- Raises: `TypeError` if `value` is `bool` or not a `Decimal` instance.
+- Raises: `ValueError` if `value` is not finite (Infinity, NaN).
+- Raises: `ValueError` if `value` is outside `[lo, hi]`. Error message includes bounds.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_decimal_range` or `from ftllexengine.core.validators import require_decimal_range`.
+
+---
+
+## `normalize_optional_decimal_range`
+
+Normalize an optional Decimal range field: None passthrough over `require_decimal_range`.
+
+### Signature
+```python
+def normalize_optional_decimal_range(
+    value: object, lo: Decimal, hi: Decimal, field_name: str
+) -> Decimal | None:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | None returns None; bool and non-Decimal raise TypeError; non-finite or out-of-range raise ValueError. |
+| `lo` | `Decimal` | Y | Inclusive lower bound (must be finite; `lo <= hi` is caller's precondition). |
+| `hi` | `Decimal` | Y | Inclusive upper bound (must be finite; `lo <= hi` is caller's precondition). |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: `None` if `value` is `None`; otherwise the validated `Decimal` unchanged.
+- Raises: `TypeError` if `value` is not `None` and is `bool` or not a `Decimal` instance.
+- Raises: `ValueError` if `value` is a non-finite or out-of-range `Decimal`.
+- Delegation: Non-None path delegates to `require_decimal_range` with identical behavior.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import normalize_optional_decimal_range` or `from ftllexengine.core.validators import normalize_optional_decimal_range`.
+
+---
+
+## `require_int_in_range`
+
+Validate that a boundary value is an integer within an inclusive range `[lo, hi]`.
+
+### Signature
+```python
+def require_int_in_range(value: object, lo: int, hi: int, field_name: str) -> int:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value. bool and non-int raise TypeError; out-of-range raises ValueError. |
+| `lo` | `int` | Y | Inclusive lower bound (`lo <= hi` is caller's precondition). |
+| `hi` | `int` | Y | Inclusive upper bound (`lo <= hi` is caller's precondition). |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated integer, identical to the input value.
+- Raises: `TypeError` if `value` is `bool` (bool is an int subtype but rejected as semantically wrong).
+- Raises: `TypeError` if `value` is not an `int` instance.
+- Raises: `ValueError` if `value` is outside `[lo, hi]`. Error message includes bounds.
+- State: Pure function; no side effects, no external dependencies.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_int_in_range` or `from ftllexengine.core.validators import require_int_in_range`.
 
 ---
 

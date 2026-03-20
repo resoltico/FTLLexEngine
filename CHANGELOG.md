@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.158.0"
+version: "0.159.0"
 domain: CHANGELOG
-updated: "2026-03-18"
+updated: "2026-03-20"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,69 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.159.0] - 2026-03-20
+
+### Added
+
+- **`normalize_optional_str(value, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  None-passthrough wrapper over `require_non_empty_str` for optional string fields. If
+  `value` is `None` returns `None`; otherwise delegates to `require_non_empty_str` with
+  identical `TypeError` and `ValueError` behavior — strips whitespace, rejects blank values.
+  Eliminates the `if value is not None: require_non_empty_str(...)` guard that every optional
+  text field would otherwise reimplement. Available as
+  `from ftllexengine import normalize_optional_str` or
+  `from ftllexengine.core.validators import normalize_optional_str`.
+
+- **`require_decimal_range(value, lo, hi, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Boundary validator for `Decimal` fields constrained to an inclusive range `[lo, hi]`.
+  Rejects `bool` (consistent explicit guard, produces uniform error message) and non-`Decimal`
+  types with `TypeError`; rejects non-finite values (Infinity, NaN) with
+  `ValueError "{field_name} must be finite"`; rejects values outside `[lo, hi]` with
+  `ValueError "{field_name} must be in range [lo, hi]"`. Returns the validated `Decimal`
+  unchanged. Eliminates the bool-guard / isinstance / finiteness / range-check chain that
+  every `Decimal`-constrained field (tax rates, ratios, factors) would otherwise reimplement.
+  Available as `from ftllexengine import require_decimal_range` or
+  `from ftllexengine.core.validators import require_decimal_range`.
+
+- **`normalize_optional_decimal_range(value, lo, hi, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  None-passthrough wrapper over `require_decimal_range` for optional `Decimal` range fields.
+  If `value` is `None` returns `None`; otherwise delegates to `require_decimal_range` with
+  identical behavior. Covers optional tax rates, optional ratios, and other optional
+  range-constrained `Decimal` fields. Available as
+  `from ftllexengine import normalize_optional_decimal_range` or
+  `from ftllexengine.core.validators import normalize_optional_decimal_range`.
+
+- **`require_int_in_range(value, lo, hi, field_name)`** (`ftllexengine`, `ftllexengine.core`):
+  Boundary validator for integer fields constrained to an inclusive range `[lo, hi]`. Rejects
+  `bool` (int subtype, semantically wrong for numeric fields) and non-`int` types with
+  `TypeError`; rejects values outside `[lo, hi]` with
+  `ValueError "{field_name} must be in range [lo, hi]"`. Returns the validated `int`
+  unchanged. Parameterizable bounds cover all integer-range fields without separate
+  per-bound helpers — page sizes, pool capacities, fiscal-period-adjacent fields. Available
+  as `from ftllexengine import require_int_in_range` or
+  `from ftllexengine.core.validators import require_int_in_range`.
+
+### Fixed
+
+- **`FluentBundle.format_pattern()` resolution error log level** (`runtime.bundle`): When
+  `strict=False`, resolution errors are the explicit return-value API — the caller receives
+  them in the `(result, errors)` tuple and handles them intentionally. Logging them at
+  `WARNING` level was semantically wrong: expected behavior was being treated as an anomaly,
+  flooding logs during any soft-error workload (including fuzz test iterations that exercise
+  error paths at high frequency). The log level is now gated on `strict`: `strict=True` keeps
+  `WARNING` (errors are unexpected; ops alerts should fire); `strict=False` uses `DEBUG`
+  (errors are the contracted return path; no alert warranted). Applies to both resolution
+  errors (`format_pattern` returning `(result, errors)`) and missing-message errors
+  (`Message 'X' not found` when the message ID is absent from the bundle).
+
+- **`tests/conftest.py` strategy metrics spurious activation** (`tests`): The `pytest_configure`
+  hook activated strategy metrics collection unconditionally whenever the active Hypothesis
+  profile was `"hypofuzz"`, regardless of whether `STRATEGY_METRICS=1` was set. HypoFuzz
+  worker processes are isolated subprocesses — they collect zero events — so every `--deep`
+  session emitted `[METRICS] FINAL SUMMARY ... Total events: 0` per worker as noise in the
+  session log. The `or profile == "hypofuzz"` branches have been removed; metrics now activate
+  only when `STRATEGY_METRICS=1` is explicitly set in the environment, as documented.
 
 ## [0.158.0] - 2026-03-18
 

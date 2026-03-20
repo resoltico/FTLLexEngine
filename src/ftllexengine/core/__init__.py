@@ -19,7 +19,11 @@ Exports (eager — no Babel dependency, no circular import risk):
     fiscal_year_start: Convenience function — first day of a fiscal year
     fiscal_year_end: Convenience function — last day of a fiscal year
     coerce_tuple: Coerce a non-str Sequence to an immutable tuple
+    normalize_optional_decimal_range: None passthrough over require_decimal_range
+    normalize_optional_str: None passthrough over require_non_empty_str
+    require_decimal_range: Validate that a boundary Decimal is finite and within a range
     require_int: Validate that a boundary value is an integer (no range check)
+    require_int_in_range: Validate that a boundary integer is within an inclusive range
     require_non_empty_str: Validate that a boundary value is a non-blank string
     require_non_negative_int: Validate that a boundary value is an int >= 0
     require_positive_int: Validate that a boundary value is a positive integer
@@ -53,7 +57,11 @@ from .fiscal import (
 )
 from .validators import (
     coerce_tuple,
+    normalize_optional_decimal_range,
+    normalize_optional_str,
+    require_decimal_range,
     require_int,
+    require_int_in_range,
     require_non_empty_str,
     require_non_negative_int,
     require_positive_int,
@@ -79,7 +87,11 @@ __all__ = [
     "fiscal_year_end",
     "fiscal_year_start",
     "make_fluent_number",
+    "normalize_optional_decimal_range",
+    "normalize_optional_str",
+    "require_decimal_range",
     "require_int",
+    "require_int_in_range",
     "require_non_empty_str",
     "require_non_negative_int",
     "require_positive_int",

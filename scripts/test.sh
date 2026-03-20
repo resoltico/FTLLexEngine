@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # test.sh — Isolated Test Runner (Agent-Native Edition)
+# Version: 1.0.0
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+ (Optimized for 5.3)
 # ARCHITECTURAL INTENT: 
@@ -29,6 +30,9 @@ if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
 fi
 
 # Bash Settings
+SCRIPT_VERSION="1.0.0"
+SCRIPT_NAME="test.sh"
+
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -112,14 +116,27 @@ _heartbeat_daemon() {
     # Background subshell: emits [HEARTBEAT] lines to stderr while watched_pid is alive.
     # First beat fires at T+5s (short runs stay silent); subsequent beats every
     # HEARTBEAT_INTERVAL_SEC seconds. Uses psutil for CPU/memory when available.
+    #
+    # Delta tracking: if the last log line has not changed since the previous beat,
+    # shows "(no new output, Xs)" instead of repeating the stale line. Indicates
+    # whether the process is making progress or genuinely stuck.
     local watched_pid="$1" log_file="$2" start_sec="$3"
+    local prev_last_line="" prev_change_sec=$SECONDS
     sleep 5
     while kill -0 "$watched_pid" 2>/dev/null; do
         local elapsed=$(( SECONDS - start_sec ))
         local log_bytes=0
         [[ -f "$log_file" ]] && log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
-        local last_line
-        last_line=$(last_nonempty_log_line "$log_file")
+        local raw_last_line last_display
+        raw_last_line=$(last_nonempty_log_line "$log_file")
+        if [[ "$raw_last_line" == "$prev_last_line" ]]; then
+            local unchanged_sec=$(( SECONDS - prev_change_sec ))
+            last_display="(no new output, ${unchanged_sec}s)"
+        else
+            last_display="$raw_last_line"
+            prev_last_line="$raw_last_line"
+            prev_change_sec=$SECONDS
+        fi
         if [[ "$HAS_PSUTIL" == "true" ]]; then
             local stats
             stats=$(python -c "
@@ -133,9 +150,9 @@ try:
 except Exception:
     print('CPU=? MEM=? procs=?')
 " 2>/dev/null || echo "CPU=? MEM=? procs=?")
-            echo "[HEARTBEAT] T+${elapsed}s | ${stats} | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+            echo "[HEARTBEAT] T+${elapsed}s | ${stats} | log=$(format_bytes "$log_bytes") | last: ${last_display}" >&2
         else
-            echo "[HEARTBEAT] T+${elapsed}s | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+            echo "[HEARTBEAT] T+${elapsed}s | log=$(format_bytes "$log_bytes") | last: ${last_display}" >&2
         fi
         sleep "$HEARTBEAT_INTERVAL_SEC"
     done
@@ -254,8 +271,9 @@ fi
 # [SECTION: DIAGNOSTICS]
 pre_flight_diagnostics() {
     log_group_start "Pre-Flight Diagnostics"
+    echo "[ INFO ] Script               : $SCRIPT_NAME v$SCRIPT_VERSION"
     echo "[  OK  ] Schema               : universal-agent-v1"
-    
+
     if [[ "${UV_PROJECT_ENVIRONMENT:-}" == "$TARGET_VENV" ]]; then
        echo "[  OK  ] Environment          : Isolated ($TARGET_VENV)"
     else
@@ -448,6 +466,8 @@ except FileNotFoundError:
     failed_tests = []
 
 final_obj = {
+    'script': sys.argv[11],
+    'script_version': sys.argv[12],
     'result': 'pass' if int(sys.argv[2]) == 0 else 'fail',
     'duration_sec': sys.argv[3],
     'tests_passed': int(sys.argv[4]),
@@ -470,7 +490,7 @@ for item in "${FAILED_TEST_LIST[@]}"; do
     echo "$item" >> "$FAILED_TESTS_FILE"
 done
 
-python -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE"
+python -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE" "$SCRIPT_NAME" "$SCRIPT_VERSION"
 rm -f "$FAILED_TESTS_FILE"
 echo "[SUMMARY-JSON-END]"
 

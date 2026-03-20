@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # lint.sh — Universal Agent-Native Linter
+# Version: 1.0.0
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+
 # ARCHITECTURAL INTENT: 
@@ -30,6 +31,9 @@ if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
 fi
 
 # Bash Settings
+SCRIPT_VERSION="1.0.0"
+SCRIPT_NAME="lint.sh"
+
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -105,8 +109,9 @@ log_err()  { echo -e "${RED}[ERROR]${RESET} $1" >&2; }
 # [SECTION: DIAGNOSTICS]
 pre_flight_diagnostics() {
     log_group_start "Pre-Flight Diagnostics"
+    echo "[ INFO ] Script               : $SCRIPT_NAME v$SCRIPT_VERSION"
     echo "[  OK  ] Schema               : universal-agent-v1"
-    
+
     if [[ "${UV_PROJECT_ENVIRONMENT:-}" == "$TARGET_VENV" ]]; then
        echo "[  OK  ] Environment          : Isolated ($TARGET_VENV)"
     else
@@ -409,6 +414,8 @@ except FileNotFoundError:
 
 # Construct final object
 final_obj = data.copy()
+final_obj['script'] = sys.argv[4]
+final_obj['script_version'] = sys.argv[5]
 final_obj['failed_files'] = failed_files
 final_obj['exit_code'] = int(sys.argv[3])
 
@@ -424,7 +431,7 @@ done
 exit_code_val=0
 if [[ "$FAILED" == "true" ]]; then exit_code_val=1; fi
 
-python -c "$PYTHON_JSON_SCRIPT" "$RESULTS_FILE" "$FAILED_ITEMS_FILE" "$exit_code_val"
+python -c "$PYTHON_JSON_SCRIPT" "$RESULTS_FILE" "$FAILED_ITEMS_FILE" "$exit_code_val" "$SCRIPT_NAME" "$SCRIPT_VERSION"
 rm -f "$RESULTS_FILE"
 rm -f "$FAILED_ITEMS_FILE"
 echo "[SUMMARY-JSON-END]"

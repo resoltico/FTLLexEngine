@@ -20,11 +20,24 @@ Properties verified:
 - coerce_tuple: for str, always raises TypeError.
 - coerce_tuple: for non-Sequence types, always raises TypeError.
 - coerce_tuple: output is always an immutable tuple.
+- normalize_optional_str: None always returns None.
+- normalize_optional_str: non-None delegates identically to require_non_empty_str.
+- require_decimal_range: for finite Decimal in [lo, hi], returns value unchanged.
+- require_decimal_range: for bool/non-Decimal, always raises TypeError.
+- require_decimal_range: for non-finite Decimal, always raises ValueError.
+- require_decimal_range: for Decimal outside [lo, hi], always raises ValueError.
+- normalize_optional_decimal_range: None always returns None.
+- normalize_optional_decimal_range: non-None delegates to require_decimal_range.
+- require_int_in_range: for int in [lo, hi] (not bool), returns value unchanged.
+- require_int_in_range: for bool/non-int, always raises TypeError.
+- require_int_in_range: for int outside [lo, hi], always raises ValueError.
+- require_int_in_range: field_name is always embedded in the error message.
 """
 
 from __future__ import annotations
 
 import string
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, example, given
@@ -32,7 +45,11 @@ from hypothesis import strategies as st
 
 from ftllexengine.core.validators import (
     coerce_tuple,
+    normalize_optional_decimal_range,
+    normalize_optional_str,
+    require_decimal_range,
     require_int,
+    require_int_in_range,
     require_non_empty_str,
     require_non_negative_int,
     require_positive_int,
@@ -449,3 +466,411 @@ class TestCoerceTupleFuzz:
         second: tuple[object, ...] = coerce_tuple(first, field)
         assert first == second
         event("outcome=idempotent")
+
+
+# ---------------------------------------------------------------------------
+# normalize_optional_str fuzz properties
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeOptionalStrFuzz:
+    """Fuzz tests for normalize_optional_str — None passthrough over require_non_empty_str."""
+
+    @given(field=_FIELD_NAMES)
+    def test_none_always_returns_none(self, field: str) -> None:
+        """None input always returns None regardless of field_name."""
+        result = normalize_optional_str(None, field)
+        assert result is None
+        event("outcome=none_passthrough")
+
+    @given(s=_NON_BLANK_STRINGS, field=_FIELD_NAMES)
+    @example(s="hello", field="name")
+    @example(s="  hello  ", field="desc")
+    def test_non_none_returns_stripped_value(self, s: str, field: str) -> None:
+        """For non-None str, delegates to require_non_empty_str — returns s.strip()."""
+        event(f"input_len={len(s)}")
+        result = normalize_optional_str(s, field)
+        assert result == s.strip()
+        assert result != ""
+        event("outcome=stripped_value")
+
+    @given(s=_WHITESPACE_STRINGS, field=_FIELD_NAMES)
+    @example(s=" ", field="desc")
+    @example(s="", field="desc")
+    def test_blank_str_raises_value_error(self, s: str, field: str) -> None:
+        """Blank/whitespace-only string raises ValueError (delegated)."""
+        event(f"ws_len={len(s)}")
+        with pytest.raises(ValueError, match=field):
+            normalize_optional_str(s, field)
+        event("outcome=value_error_raised")
+
+    @given(
+        value=_NON_STR_VALUES.filter(lambda v: v is not None),
+        field=_FIELD_NAMES,
+    )
+    def test_non_str_non_none_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-str, non-None value raises TypeError (delegated)."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match=field):
+            normalize_optional_str(value, field)
+        event("outcome=type_error_raised")
+
+    @given(s=_NON_BLANK_STRINGS, field=_FIELD_NAMES)
+    def test_oracle_matches_require_non_empty_str(self, s: str, field: str) -> None:
+        """normalize_optional_str(s) == require_non_empty_str(s) for non-None str.
+
+        Oracle: non-None path is exactly require_non_empty_str.
+        """
+        event(f"input_len={len(s)}")
+        result_opt = normalize_optional_str(s, field)
+        result_req = require_non_empty_str(s, field)
+        assert result_opt == result_req
+        event("outcome=oracle_match")
+
+
+# ---------------------------------------------------------------------------
+# require_decimal_range fuzz properties
+# ---------------------------------------------------------------------------
+
+_FINITE_DECIMALS = st.decimals(
+    allow_nan=False,
+    allow_infinity=False,
+    min_value=Decimal(-1000),
+    max_value=Decimal(1000),
+)
+
+_RANGE_BOUNDS: st.SearchStrategy[tuple[Decimal, Decimal]] = st.lists(
+    st.decimals(
+        allow_nan=False,
+        allow_infinity=False,
+        min_value=Decimal(-100),
+        max_value=Decimal(100),
+    ),
+    min_size=2,
+    max_size=2,
+).map(lambda xs: (min(xs[0], xs[1]), max(xs[0], xs[1])))
+
+_NON_FINITE_DECIMALS: st.SearchStrategy[Decimal] = st.one_of(
+    st.just(Decimal("Infinity")),
+    st.just(Decimal("-Infinity")),
+    st.just(Decimal("NaN")),
+    st.just(Decimal("-NaN")),
+    st.just(Decimal("sNaN")),
+)
+
+_NON_DECIMAL_VALUES: st.SearchStrategy[object] = st.one_of(
+    st.integers(),
+    st.floats(allow_nan=False),
+    st.text(min_size=0, max_size=10),
+    st.none(),
+    st.binary(min_size=0, max_size=4),
+)
+
+
+class TestRequireDecimalRangeFuzz:
+    """Fuzz tests for require_decimal_range — Decimal range validation invariants."""
+
+    @given(bounds=_RANGE_BOUNDS, field=_FIELD_NAMES)
+    def test_lo_boundary_always_accepted(
+        self, bounds: tuple[Decimal, Decimal], field: str
+    ) -> None:
+        """The lower boundary lo is always within [lo, hi]."""
+        lo, hi = bounds
+        event(f"range_width={'zero' if lo == hi else 'positive'}")
+        result = require_decimal_range(lo, lo, hi, field)
+        assert result == lo
+        event("outcome=lo_accepted")
+
+    @given(bounds=_RANGE_BOUNDS, field=_FIELD_NAMES)
+    def test_hi_boundary_always_accepted(
+        self, bounds: tuple[Decimal, Decimal], field: str
+    ) -> None:
+        """The upper boundary hi is always within [lo, hi]."""
+        lo, hi = bounds
+        event(f"range_width={'zero' if lo == hi else 'positive'}")
+        result = require_decimal_range(hi, lo, hi, field)
+        assert result == hi
+        event("outcome=hi_accepted")
+
+    @given(
+        bounds=_RANGE_BOUNDS,
+        value=_FINITE_DECIMALS,
+        field=_FIELD_NAMES,
+    )
+    def test_in_range_value_accepted(
+        self,
+        bounds: tuple[Decimal, Decimal],
+        value: Decimal,
+        field: str,
+    ) -> None:
+        """Values within [lo, hi] are accepted; values outside are rejected."""
+        lo, hi = bounds
+        in_range = lo <= value <= hi
+        event(f"in_range={in_range}")
+        if in_range:
+            result = require_decimal_range(value, lo, hi, field)
+            assert result == value
+            event("outcome=accepted")
+        else:
+            with pytest.raises(ValueError, match="must be in range"):
+                require_decimal_range(value, lo, hi, field)
+            event("outcome=rejected")
+
+    @given(value=_NON_FINITE_DECIMALS, field=_FIELD_NAMES)
+    @example(value=Decimal("Infinity"), field="rate")
+    @example(value=Decimal("NaN"), field="rate")
+    def test_non_finite_always_raises_value_error(
+        self, value: Decimal, field: str
+    ) -> None:
+        """Non-finite Decimals (Inf, NaN) always raise ValueError."""
+        event(f"kind={'inf' if value.is_infinite() else 'nan'}")
+        lo, hi = Decimal(-1000), Decimal(1000)
+        with pytest.raises(ValueError, match="must be finite"):
+            require_decimal_range(value, lo, hi, field)
+        event("outcome=non_finite_rejected")
+
+    @given(value=_NON_DECIMAL_VALUES, field=_FIELD_NAMES)
+    def test_non_decimal_always_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-Decimal types always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        lo, hi = Decimal(0), Decimal(1)
+        with pytest.raises(TypeError, match=field):
+            require_decimal_range(value, lo, hi, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_bool_true_raises_type_error(self, field: str) -> None:
+        """True raises TypeError — bool rejected before Decimal check."""
+        lo, hi = Decimal(0), Decimal(1)
+        with pytest.raises(TypeError, match="must be Decimal, got bool"):
+            require_decimal_range(True, lo, hi, field)
+        event("outcome=bool_true_rejected")
+
+    @given(field=_FIELD_NAMES)
+    def test_bool_false_raises_type_error(self, field: str) -> None:
+        """False raises TypeError — bool rejected before Decimal check."""
+        lo, hi = Decimal(0), Decimal(1)
+        with pytest.raises(TypeError, match="must be Decimal, got bool"):
+            require_decimal_range(False, lo, hi, field)
+        event("outcome=bool_false_rejected")
+
+    @given(bounds=_RANGE_BOUNDS, field=_FIELD_NAMES)
+    def test_field_name_in_error_messages(
+        self, bounds: tuple[Decimal, Decimal], field: str
+    ) -> None:
+        """field_name is embedded in all error messages."""
+        lo, hi = bounds
+        event(f"field_len={len(field)}")
+        with pytest.raises(TypeError) as exc_info:
+            require_decimal_range(42, lo, hi, field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_type_error")
+
+    @given(value=_FINITE_DECIMALS, field=_FIELD_NAMES)
+    def test_result_is_identical_to_input(
+        self, value: Decimal, field: str
+    ) -> None:
+        """For accepted values, result is identical to input (not a copy)."""
+        lo = value - Decimal(1)
+        hi = value + Decimal(1)
+        result = require_decimal_range(value, lo, hi, field)
+        assert result is value
+        event("outcome=identity_preserved")
+
+
+# ---------------------------------------------------------------------------
+# normalize_optional_decimal_range fuzz properties
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeOptionalDecimalRangeFuzz:
+    """Fuzz tests for normalize_optional_decimal_range — None passthrough oracle."""
+
+    @given(field=_FIELD_NAMES)
+    def test_none_always_returns_none(self, field: str) -> None:
+        """None input always returns None."""
+        lo, hi = Decimal(0), Decimal(1)
+        result = normalize_optional_decimal_range(None, lo, hi, field)
+        assert result is None
+        event("outcome=none_passthrough")
+
+    @given(
+        bounds=_RANGE_BOUNDS,
+        value=_FINITE_DECIMALS,
+        field=_FIELD_NAMES,
+    )
+    def test_oracle_matches_require_decimal_range(
+        self,
+        bounds: tuple[Decimal, Decimal],
+        value: Decimal,
+        field: str,
+    ) -> None:
+        """normalize_optional_decimal_range(x) == require_decimal_range(x) for non-None.
+
+        Oracle: non-None path is exactly require_decimal_range.
+        """
+        lo, hi = bounds
+        in_range = lo <= value <= hi
+        event(f"in_range={in_range}")
+        if in_range:
+            opt_result = normalize_optional_decimal_range(value, lo, hi, field)
+            req_result = require_decimal_range(value, lo, hi, field)
+            assert opt_result == req_result
+            assert opt_result is req_result
+            event("outcome=oracle_match")
+        else:
+            with pytest.raises(ValueError, match="must be in range"):
+                normalize_optional_decimal_range(value, lo, hi, field)
+            event("outcome=range_error_delegated")
+
+    @given(
+        value=_NON_DECIMAL_VALUES.filter(lambda v: v is not None),
+        field=_FIELD_NAMES,
+    )
+    def test_non_decimal_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-None, non-Decimal raises TypeError (delegated)."""
+        event(f"type={type(value).__name__}")
+        lo, hi = Decimal(0), Decimal(1)
+        with pytest.raises(TypeError, match="must be Decimal"):
+            normalize_optional_decimal_range(value, lo, hi, field)
+        event("outcome=type_error_delegated")
+
+
+# ---------------------------------------------------------------------------
+# require_int_in_range fuzz properties
+# ---------------------------------------------------------------------------
+
+_RANGE_INT_BOUNDS: st.SearchStrategy[tuple[int, int]] = st.builds(
+    lambda lo, spread: (lo, lo + spread),
+    lo=st.integers(min_value=-1000, max_value=1000),
+    spread=st.integers(min_value=0, max_value=1000),
+)
+
+_ALL_INTS_BOUNDED = st.integers(min_value=-2000, max_value=2000)
+
+
+class TestRequireIntInRangeFuzz:
+    """Fuzz tests for require_int_in_range — integer range validation invariants."""
+
+    @given(bounds=_RANGE_INT_BOUNDS, field=_FIELD_NAMES)
+    def test_lo_boundary_always_accepted(
+        self, bounds: tuple[int, int], field: str
+    ) -> None:
+        """The lower boundary lo is always within [lo, hi]."""
+        lo, hi = bounds
+        event(f"range_width={'zero' if lo == hi else 'positive'}")
+        result = require_int_in_range(lo, lo, hi, field)
+        assert result == lo
+        assert result is lo
+        event("outcome=lo_accepted")
+
+    @given(bounds=_RANGE_INT_BOUNDS, field=_FIELD_NAMES)
+    def test_hi_boundary_always_accepted(
+        self, bounds: tuple[int, int], field: str
+    ) -> None:
+        """The upper boundary hi is always within [lo, hi]."""
+        lo, hi = bounds
+        event(f"range_width={'zero' if lo == hi else 'positive'}")
+        result = require_int_in_range(hi, lo, hi, field)
+        assert result == hi
+        assert result is hi
+        event("outcome=hi_accepted")
+
+    @given(
+        bounds=_RANGE_INT_BOUNDS,
+        value=_ALL_INTS_BOUNDED,
+        field=_FIELD_NAMES,
+    )
+    def test_in_range_accepted_out_of_range_rejected(
+        self,
+        bounds: tuple[int, int],
+        value: int,
+        field: str,
+    ) -> None:
+        """Values within [lo, hi] are accepted; values outside are rejected."""
+        lo, hi = bounds
+        in_range = lo <= value <= hi
+        event(f"in_range={in_range}")
+        if in_range:
+            result = require_int_in_range(value, lo, hi, field)
+            assert result == value
+            event("outcome=accepted")
+        else:
+            with pytest.raises(ValueError, match=field):
+                require_int_in_range(value, lo, hi, field)
+            event("outcome=rejected")
+
+    @given(value=_NON_INT_VALUES, field=_FIELD_NAMES)
+    def test_non_int_always_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-int types always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match=field):
+            require_int_in_range(value, 0, 100, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_bool_true_raises_type_error(self, field: str) -> None:
+        """True raises TypeError — bool is an int subtype but rejected."""
+        with pytest.raises(TypeError, match="must be int, got bool"):
+            require_int_in_range(True, 0, 100, field)
+        event("outcome=bool_true_rejected")
+
+    @given(field=_FIELD_NAMES)
+    def test_bool_false_raises_type_error(self, field: str) -> None:
+        """False raises TypeError — bool is rejected before int magnitude check."""
+        with pytest.raises(TypeError, match="must be int, got bool"):
+            require_int_in_range(False, 0, 100, field)
+        event("outcome=bool_false_rejected")
+
+    @given(bounds=_RANGE_INT_BOUNDS, field=_FIELD_NAMES)
+    def test_field_name_in_type_error(
+        self, bounds: tuple[int, int], field: str
+    ) -> None:
+        """field_name is embedded in TypeError messages."""
+        lo, hi = bounds
+        event(f"field_len={len(field)}")
+        with pytest.raises(TypeError) as exc_info:
+            require_int_in_range(3.14, lo, hi, field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_type_error")
+
+    @given(bounds=_RANGE_INT_BOUNDS, field=_FIELD_NAMES)
+    def test_field_name_in_range_error(
+        self, bounds: tuple[int, int], field: str
+    ) -> None:
+        """field_name is embedded in range ValueError messages."""
+        lo, hi = bounds
+        out_of_range = lo - 1
+        event(f"field_len={len(field)}")
+        with pytest.raises(ValueError, match="must be in range") as exc_info:
+            require_int_in_range(out_of_range, lo, hi, field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_range_error")
+
+    @given(
+        bounds=_RANGE_INT_BOUNDS,
+        value=_ALL_INTS_BOUNDED,
+        field=_FIELD_NAMES,
+    )
+    def test_result_type_is_int(
+        self,
+        bounds: tuple[int, int],
+        value: int,
+        field: str,
+    ) -> None:
+        """For accepted values, result type is exactly int."""
+        lo, hi = bounds
+        if lo <= value <= hi:
+            result = require_int_in_range(value, lo, hi, field)
+            assert type(result) is int
+            event("outcome=type_is_int")
+        else:
+            event("outcome=skipped_out_of_range")

@@ -505,23 +505,21 @@ def _init_metrics_from_env() -> None:
 
     from tests.strategy_metrics import metrics_collector
 
-    profile = os.environ.get("HYPOTHESIS_PROFILE", "")
-    enable_metrics = (
-        os.environ.get("STRATEGY_METRICS") == "1"
-        or profile == "hypofuzz"
-    )
-
-    if not enable_metrics:
+    # Metrics are enabled ONLY when STRATEGY_METRICS=1 is explicitly set.
+    # The hypofuzz profile (used by --deep) does NOT auto-enable metrics:
+    # HypoFuzz runs tests in isolated worker processes that cannot share a
+    # metrics_collector instance across process boundaries, so each worker
+    # would print "[METRICS] FINAL SUMMARY / Total events: 0" at exit —
+    # spurious noise with no actionable signal. Use --deep --metrics (which
+    # runs single-process pytest, not HypoFuzz) for metrics collection.
+    if os.environ.get("STRATEGY_METRICS") != "1":
         return
 
     metrics_collector.enable()
     metrics_collector.reset()
 
     # Enable live reporting if requested
-    enable_live = (
-        os.environ.get("STRATEGY_METRICS_LIVE") == "1"
-        or profile == "hypofuzz"
-    )
+    enable_live = os.environ.get("STRATEGY_METRICS_LIVE") == "1"
     if enable_live:
         interval = float(os.environ.get("STRATEGY_METRICS_INTERVAL", "10"))
         show_detailed = os.environ.get("STRATEGY_METRICS_DETAILED") == "1"

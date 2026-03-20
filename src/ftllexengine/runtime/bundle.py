@@ -1063,7 +1063,12 @@ class FluentBundle:
 
         # Check if message exists
         if message_id not in self._messages:
-            logger.warning("Message '%s' not found", message_id)
+            # strict=True: missing message is unexpected — WARNING for ops visibility.
+            # strict=False: caller opted into soft-error return semantics; missing messages
+            # are a legitimate return path, not an anomaly. Use DEBUG to avoid log noise.
+            (logger.warning if self._strict else logger.debug)(
+                "Message '%s' not found", message_id
+            )
             diag = ErrorTemplate.message_not_found(message_id)
             error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
             # Don't cache missing message errors
@@ -1090,7 +1095,12 @@ class FluentBundle:
         result, errors_tuple = resolver.resolve_message(message, args, attribute)
 
         if errors_tuple:
-            logger.warning(
+            # strict=True: errors are unexpected — use WARNING so ops alerts fire.
+            # strict=False: errors are the explicit return-value API; caller receives
+            # them in the tuple and handles them. WARNING would fire on every expected
+            # soft-error call, polluting logs. Use DEBUG instead.
+            log_fn = logger.warning if self._strict else logger.debug
+            log_fn(
                 "Message resolution errors for '%s': %d error(s)", message_id, len(errors_tuple)
             )
             for err in errors_tuple:

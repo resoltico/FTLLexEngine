@@ -19,10 +19,15 @@ Python 3.14+.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from decimal import Decimal
 
 __all__ = [
     "coerce_tuple",
+    "normalize_optional_decimal_range",
+    "normalize_optional_str",
+    "require_decimal_range",
     "require_int",
+    "require_int_in_range",
     "require_non_empty_str",
     "require_non_negative_int",
     "require_positive_int",
@@ -282,3 +287,210 @@ def coerce_tuple[T](value: object, field_name: str) -> tuple[T, ...]:
         msg = f"{field_name} must be a Sequence, got {type(value).__name__}"
         raise TypeError(msg)
     return tuple(value)
+
+
+def normalize_optional_str(value: object, field_name: str) -> str | None:
+    """Normalize an optional string field: None passthrough over require_non_empty_str.
+
+    If value is None, returns None. Otherwise delegates to require_non_empty_str
+    with identical TypeError and ValueError behavior: strips surrounding whitespace,
+    rejects non-str types, and rejects blank-after-strip values.
+
+    Use at constructor or API entry points that accept an optional non-blank string
+    field. Eliminates the None-check / require_non_empty_str pattern that every
+    optional text field would otherwise reimplement independently.
+
+    Args:
+        value: Raw boundary value to validate. None returns None; non-str values
+            (other than None) raise TypeError; blank or whitespace-only str raises
+            ValueError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        None if value is None, otherwise the stripped, non-empty string.
+
+    Raises:
+        TypeError: If value is not None and not a str instance.
+        ValueError: If value is a str that is empty or contains only whitespace.
+
+    Example:
+        >>> normalize_optional_str(None, "description")
+        >>> normalize_optional_str("  hello  ", "description")
+        'hello'
+        >>> normalize_optional_str("", "description")
+        Traceback (most recent call last):
+            ...
+        ValueError: description cannot be blank
+        >>> normalize_optional_str(42, "description")
+        Traceback (most recent call last):
+            ...
+        TypeError: description must be str, got int
+    """
+    if value is None:
+        return None
+    return require_non_empty_str(value, field_name)
+
+
+def require_decimal_range(
+    value: object,
+    lo: Decimal,
+    hi: Decimal,
+    field_name: str,
+) -> Decimal:
+    """Validate that a boundary value is a finite Decimal within an inclusive range.
+
+    Rejects bool with TypeError (consistent with numeric validators — bool is not a
+    Decimal subtype but the explicit check produces a uniform error message), rejects
+    non-Decimal types with TypeError, rejects non-finite values (Infinity, NaN) with
+    ValueError, and rejects values outside [lo, hi] with ValueError.
+
+    Use at constructor or API entry points that require a Decimal constrained to a
+    numeric range — tax rates, ratios, proportions, financial factors. Eliminates the
+    None-guard / bool-guard / isinstance / finiteness / range-check chain that every
+    Decimal-constrained field would otherwise reimplement.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object; non-Decimal
+            and bool values always raise TypeError.
+        lo: Inclusive lower bound (must be a finite Decimal; caller's responsibility).
+        hi: Inclusive upper bound (must be a finite Decimal; lo <= hi precondition).
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated Decimal, identical to the input value.
+
+    Raises:
+        TypeError: If value is bool or not a Decimal instance.
+        ValueError: If value is not finite (Infinity, NaN).
+        ValueError: If value is outside the inclusive range [lo, hi].
+
+    Example:
+        >>> from decimal import Decimal
+        >>> require_decimal_range(Decimal("0.5"), Decimal("0"), Decimal("1"), "rate")
+        Decimal('0.5')
+        >>> require_decimal_range(Decimal("1.5"), Decimal("0"), Decimal("1"), "rate")
+        Traceback (most recent call last):
+            ...
+        ValueError: rate must be in range [0, 1]
+        >>> require_decimal_range(42, Decimal("0"), Decimal("1"), "rate")
+        Traceback (most recent call last):
+            ...
+        TypeError: rate must be Decimal, got int
+    """
+    if isinstance(value, bool):
+        msg = f"{field_name} must be Decimal, got bool"
+        raise TypeError(msg)
+    if not isinstance(value, Decimal):
+        msg = f"{field_name} must be Decimal, got {type(value).__name__}"
+        raise TypeError(msg)
+    if not value.is_finite():
+        msg = f"{field_name} must be finite"
+        raise ValueError(msg)
+    if not (lo <= value <= hi):
+        msg = f"{field_name} must be in range [{lo}, {hi}]"
+        raise ValueError(msg)
+    return value
+
+
+def normalize_optional_decimal_range(
+    value: object,
+    lo: Decimal,
+    hi: Decimal,
+    field_name: str,
+) -> Decimal | None:
+    """Normalize an optional Decimal range field: None passthrough over require_decimal_range.
+
+    If value is None, returns None. Otherwise delegates to require_decimal_range
+    with identical TypeError and ValueError behavior: rejects bool, non-Decimal types,
+    non-finite values, and out-of-range values.
+
+    Use at constructor or API entry points that accept an optional Decimal constrained
+    to a numeric range — optional tax rates, optional ratios, optional financial factors.
+
+    Args:
+        value: Raw boundary value to validate. None returns None; bool and non-Decimal
+            values (other than None) raise TypeError; non-finite or out-of-range Decimals
+            raise ValueError.
+        lo: Inclusive lower bound (must be a finite Decimal; caller's responsibility).
+        hi: Inclusive upper bound (must be a finite Decimal; lo <= hi precondition).
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        None if value is None, otherwise the validated Decimal unchanged.
+
+    Raises:
+        TypeError: If value is not None and is bool or not a Decimal instance.
+        ValueError: If value is a Decimal that is not finite or is outside [lo, hi].
+
+    Example:
+        >>> from decimal import Decimal
+        >>> normalize_optional_decimal_range(None, Decimal("0"), Decimal("1"), "rate")
+        >>> normalize_optional_decimal_range(
+        ...     Decimal("0.25"), Decimal("0"), Decimal("1"), "rate"
+        ... )
+        Decimal('0.25')
+        >>> normalize_optional_decimal_range(
+        ...     Decimal("2"), Decimal("0"), Decimal("1"), "rate"
+        ... )
+        Traceback (most recent call last):
+            ...
+        ValueError: rate must be in range [0, 1]
+    """
+    if value is None:
+        return None
+    return require_decimal_range(value, lo, hi, field_name)
+
+
+def require_int_in_range(
+    value: object,
+    lo: int,
+    hi: int,
+    field_name: str,
+) -> int:
+    """Validate that a boundary value is an integer within an inclusive range [lo, hi].
+
+    Rejects bool with TypeError (bool is an int subtype but semantically wrong for
+    numeric-quantity fields), rejects non-int types with TypeError, and rejects values
+    outside [lo, hi] with ValueError.
+
+    Use at constructor or API entry points that require an integer constrained to a
+    specific range — page sizes, pool capacities, fiscal-period-adjacent integers.
+    Eliminates the bool-guard / isinstance / range-check chain that every bounded
+    integer field would otherwise reimplement.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object; non-int
+            and bool values always raise TypeError.
+        lo: Inclusive lower bound (int; lo <= hi precondition).
+        hi: Inclusive upper bound (int; lo <= hi precondition).
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated integer, identical to the input value.
+
+    Raises:
+        TypeError: If value is bool or not an int instance.
+        ValueError: If value is outside the inclusive range [lo, hi].
+
+    Example:
+        >>> require_int_in_range(5, 1, 10, "page_size")
+        5
+        >>> require_int_in_range(0, 1, 10, "page_size")
+        Traceback (most recent call last):
+            ...
+        ValueError: page_size must be in range [1, 10]
+        >>> require_int_in_range(True, 1, 10, "page_size")
+        Traceback (most recent call last):
+            ...
+        TypeError: page_size must be int, got bool
+    """
+    if isinstance(value, bool):
+        msg = f"{field_name} must be int, got bool"
+        raise TypeError(msg)
+    if not isinstance(value, int):
+        msg = f"{field_name} must be int, got {type(value).__name__}"
+        raise TypeError(msg)
+    if not (lo <= value <= hi):
+        msg = f"{field_name} must be in range [{lo}, {hi}]"
+        raise ValueError(msg)
+    return value

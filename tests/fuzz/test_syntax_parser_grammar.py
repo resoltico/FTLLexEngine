@@ -166,7 +166,11 @@ def ftl_call_args(draw: st.DrawFn, depth: int) -> str:
     pos_args = draw(st.lists(ftl_expression(depth + 1), min_size=0, max_size=5))
     named_args: list[str] = []
     for _ in range(draw(st.integers(0, 5))):
-        named_args.append(f"{draw(ftl_identifier())}: {draw(ftl_expression(depth + 1))}")
+        # FTL spec requires named argument values to be literals only
+        # (NumberLiteral | StringLiteral). Non-literal values (message
+        # references, variable references, etc.) produce Junk at parse time.
+        literal = draw(st.one_of(ftl_number_literal(), ftl_string_literal()))
+        named_args.append(f"{draw(ftl_identifier())}: {literal}")
 
     all_args = pos_args + named_args
     return ", ".join(all_args)
@@ -427,6 +431,9 @@ class TestParserProperties:
         serializer = FluentSerializer()
 
         ast_1 = parser.parse(source)
+        # Reject database-replayed examples that strategy previously generated
+        # with invalid named-arg values (non-literals produce Junk at parse time).
+        assume(not has_junk(ast_1))
         verify_spans(ast_1, source)
 
         # Emit semantic events for HypoFuzz guidance
@@ -457,6 +464,9 @@ class TestParserProperties:
         serializer = FluentSerializer()
 
         ast_1 = parser.parse(source)
+        # Reject database-replayed examples that strategy previously generated
+        # with invalid named-arg values (non-literals produce Junk at parse time).
+        assume(not has_junk(ast_1))
 
         # First roundtrip
         ser_1 = serializer.serialize(ast_1)

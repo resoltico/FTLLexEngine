@@ -716,7 +716,9 @@ class TestVariableResolution:
     def test_missing_variable_error_handling(self, var_name: str) -> None:
         """Property: Missing variables are handled gracefully."""
         event(f"var_name_len={len(var_name)}")
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; missing-variable
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", strict=False)
 
         ftl_source = f"msg = {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
@@ -779,7 +781,9 @@ class TestMessageReferenceResolution:
         event(f"id_len={len(nonexistent_id)}")
         assume(nonexistent_id != main_msg_id)
 
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; missing-message-
+        # reference errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", strict=False)
         ftl_source = f"{main_msg_id} = {{ {nonexistent_id} }}"
         bundle.add_resource(ftl_source)
 
@@ -820,7 +824,9 @@ class TestTermReferenceResolution:
     ) -> None:
         """Property: Missing term references handled gracefully."""
         event(f"term_len={len(nonexistent_term)}")
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; missing-term
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", strict=False)
         ftl_source = f"{msg_id} = {{ -{nonexistent_term} }}"
         bundle.add_resource(ftl_source)
 
@@ -915,7 +921,9 @@ class TestCircularReferenceDetection:
         event(f"id_len={len(msg1_id)}")
         assume(msg1_id != msg2_id)
 
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; circular-reference
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", strict=False)
         ftl_source = f"""
 {msg1_id} = {{ {msg2_id} }}
 {msg2_id} = {{ {msg1_id} }}
@@ -929,7 +937,9 @@ class TestCircularReferenceDetection:
     def test_indirect_circular_reference_detection(self, msg_ids: list[str]) -> None:
         """Property: Indirect circular references (chains) are detected."""
         event(f"chain_len={len(msg_ids)}")
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; circular-chain
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", strict=False)
 
         msg_pairs = list(zip(msg_ids, [*msg_ids[1:], msg_ids[0]], strict=True))
         ftl_lines = [f"{m1} = {{ {m2} }}" for m1, m2 in msg_pairs]
@@ -980,7 +990,9 @@ class TestFunctionCallResolution:
         event(f"func_name_len={len(func_name)}")
         assume(func_name not in ("NUMBER", "DATETIME"))
 
-        bundle = FluentBundle("en_US")
+        # strict=False: testing soft-error return semantics; function-exception
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", strict=False)
 
         def failing_func() -> str:
             raise ValueError(error_message)
@@ -1135,7 +1147,9 @@ class TestResolverErrorRecovery:
     ) -> None:
         """Property: Partial resolution continues after errors."""
         event(f"text_len={len(partial_text)}")
-        bundle = FluentBundle("en_US", use_isolating=False)
+        # strict=False: testing soft-error return semantics; missing-variable
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         ftl_source = f"{msg_id} = {partial_text} {{ ${var_name} }}"
         bundle.add_resource(ftl_source)
 
@@ -1155,7 +1169,9 @@ class TestResolverCoverageEdgeCases:
     ) -> None:
         """Placeable error handling in _resolve_pattern (line 142->138)."""
         event(f"text_len={len(text)}")
-        bundle = FluentBundle("en_US", use_isolating=False)
+        # strict=False: testing soft-error return semantics; missing-variable
+        # errors must be returned in the tuple, not raised.
+        bundle = FluentBundle("en_US", use_isolating=False, strict=False)
         ftl_source = f"{msg_id} = {text} {{ $missing }}"
         bundle.add_resource(ftl_source)
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # fuzz_hypofuzz.sh -- HypoFuzz & Property Testing Interface
+# Version: 1.0.0
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+
 #
@@ -15,6 +16,9 @@
 # ==============================================================================
 
 # Bash Settings
+SCRIPT_VERSION="1.0.0"
+SCRIPT_NAME="fuzz_hypofuzz.sh"
+
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -112,14 +116,28 @@ _heartbeat_daemon() {
     # Background subshell: emits [HEARTBEAT] lines to stderr while watched_pid is alive.
     # First beat fires at T+5s (short runs stay silent); subsequent beats every
     # HEARTBEAT_INTERVAL_SEC seconds. Uses psutil for CPU/memory when available.
+    #
+    # Delta tracking: if the last log line has not changed since the previous beat,
+    # shows "(no new output, Xs)" instead of repeating the stale line. This prevents
+    # expected-but-frequent log messages (e.g., soft-error warnings from test iterations)
+    # from making the heartbeat appear stuck.
     local watched_pid="$1" log_file="$2" start_sec="$3"
+    local prev_last_line="" prev_change_sec=$SECONDS
     sleep 5
     while kill -0 "$watched_pid" 2>/dev/null; do
         local elapsed=$(( SECONDS - start_sec ))
         local log_bytes=0
         [[ -f "$log_file" ]] && log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
-        local last_line
-        last_line=$(last_nonempty_log_line "$log_file")
+        local raw_last_line last_display
+        raw_last_line=$(last_nonempty_log_line "$log_file")
+        if [[ "$raw_last_line" == "$prev_last_line" ]]; then
+            local unchanged_sec=$(( SECONDS - prev_change_sec ))
+            last_display="(no new output, ${unchanged_sec}s)"
+        else
+            last_display="$raw_last_line"
+            prev_last_line="$raw_last_line"
+            prev_change_sec=$SECONDS
+        fi
         if [[ "$HAS_PSUTIL" == "true" ]]; then
             local stats
             stats=$(python -c "
@@ -133,9 +151,9 @@ try:
 except Exception:
     print('CPU=? MEM=? procs=?')
 " 2>/dev/null || echo "CPU=? MEM=? procs=?")
-            echo "[HEARTBEAT] T+${elapsed}s | ${stats} | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+            echo "[HEARTBEAT] T+${elapsed}s | ${stats} | log=$(format_bytes "$log_bytes") | last: ${last_display}" >&2
         else
-            echo "[HEARTBEAT] T+${elapsed}s | log=$(format_bytes "$log_bytes") | last: ${last_line}" >&2
+            echo "[HEARTBEAT] T+${elapsed}s | log=$(format_bytes "$log_bytes") | last: ${last_display}" >&2
         fi
         sleep "$HEARTBEAT_INTERVAL_SEC"
     done
@@ -154,34 +172,42 @@ _run_with_heartbeat() {
 
     "$@" > "$fifo" 2>&1 &
     local cmd_pid=$!
+    PID_LIST+=("$cmd_pid")
 
     local hb_pid=0
     if [[ "$HEARTBEAT_ENABLED" == "true" && "$HEARTBEAT_INTERVAL_SEC" -gt 0 ]]; then
         _heartbeat_daemon "$cmd_pid" "$log_file" "$SECONDS" &
         hb_pid=$!
+        PID_LIST+=("$hb_pid")
     fi
 
     if [[ "$VERBOSE" == "true" ]]; then
         if [[ "$append" == "true" ]]; then
-            tee -a "$log_file" < "$fifo"
+            tee -a "$log_file" < "$fifo" || true
         else
-            tee "$log_file" < "$fifo"
+            tee "$log_file" < "$fifo" || true
         fi
     else
         if [[ "$append" == "true" ]]; then
-            cat < "$fifo" >> "$log_file"
+            cat < "$fifo" >> "$log_file" || true
         else
-            cat < "$fifo" > "$log_file"
+            cat < "$fifo" > "$log_file" || true
         fi
     fi
 
-    wait "$cmd_pid"
+    # wait returns the exit code of the process; 2>/dev/null suppresses
+    # "no such process" if _on_signal already killed cmd_pid.
+    wait "$cmd_pid" 2>/dev/null
     local exit_code=$?
 
     if [[ "$hb_pid" -gt 0 ]]; then
         kill "$hb_pid" 2>/dev/null || true
         wait "$hb_pid" 2>/dev/null || true
     fi
+
+    # All managed processes are done; clear PID_LIST.
+    # (_on_signal may have already cleared it; this is a no-op in that case.)
+    PID_LIST=()
 
     rm -f "$fifo"
     return "$exit_code"
@@ -269,11 +295,15 @@ NOTE:
     For Atheris native fuzzing, use ./scripts/fuzz_atheris.sh instead.
 
 NOTE:
-    --workers defaults to 1. Python 3.14's multiprocessing.managers has a
-    teardown race where workers reconnect to the manager socket after it is
-    cleaned up, producing spurious BrokenPipeError on session exit. A single
-    worker eliminates this. Use --workers N only if you need parallelism and
-    can tolerate the teardown noise.
+    --workers defaults to 1. HypoFuzz has a teardown race (hypofuzz.py
+    FuzzWorkerHub.start) where worker processes are not terminated before
+    the multiprocessing Manager exits, causing workers to crash on their next
+    proxy access (BrokenPipeError on Python 3.13; FileNotFoundError on
+    Python 3.14). In continuous --deep mode (no --time), this is handled
+    automatically: the script detects the race and restarts HypoFuzz (up to
+    20 times). The Hypothesis database is preserved across restarts so
+    exploration continues seamlessly. With --time N, restarts are not
+    attempted (session is bounded). The race occurs on any Python version.
 
     All modes emit periodic [HEARTBEAT] lines to stderr (T+5s first beat,
     then every 30s). Each line shows elapsed time, CPU%, memory, log size,
@@ -322,18 +352,33 @@ while [[ $# -gt 0 ]]; do
 done
 
 # [SECTION: SIGNAL_HANDLING]
+# Two-handler design: _on_exit fires only on EXIT (prints [EXIT-CODE] once);
+# _on_signal fires on INT/TERM (kills managed PIDs, sets flag, returns without
+# printing or exiting so bash resumes execution naturally).
 PID_LIST=()
-cleanup() {
+_SIGNAL_RECEIVED=false
+
+_on_exit() {
     local exit_code=$?
-    if [[ ${#PID_LIST[@]} -gt 0 ]]; then
-        for pid in "${PID_LIST[@]}"; do
-            kill -TERM "$pid" 2>/dev/null || true
-        done
-        wait
-    fi
+    local pid
+    for pid in "${PID_LIST[@]}"; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    [[ ${#PID_LIST[@]} -gt 0 ]] && wait "${PID_LIST[@]}" 2>/dev/null || true
     echo "[EXIT-CODE] $exit_code" >&2
 }
-trap cleanup EXIT INT TERM
+
+_on_signal() {
+    _SIGNAL_RECEIVED=true
+    local pid
+    for pid in "${PID_LIST[@]}"; do
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+    PID_LIST=()
+}
+
+trap '_on_exit' EXIT
+trap '_on_signal' INT TERM
 
 # =============================================================================
 # Subroutines
@@ -342,6 +387,8 @@ trap cleanup EXIT INT TERM
 # [SECTION: DIAGNOSTICS]
 run_diagnostics() {
     log_group_start "Pre-Flight Diagnostics"
+
+    echo "[ INFO ] Script               : $SCRIPT_NAME v$SCRIPT_VERSION"
 
     local python_version
     python_version=$(python --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
@@ -651,6 +698,8 @@ else:
     status = 'error'
 
 report = {
+    'script': '$SCRIPT_NAME',
+    'script_version': '$SCRIPT_VERSION',
     'mode': 'check',
     'status': status,
     'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -749,54 +798,150 @@ run_deep() {
     log_info "Workers: $WORKERS"
     log_info "Profile: hypofuzz (deadline=None)"
 
-    # Session header
-    {
-        echo ""
-        echo "================================================================================"
-        echo "HypoFuzz Session: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo "Workers: $WORKERS"
-        echo "Profile: hypofuzz"
-        echo "================================================================================"
-    } >> "$log_file"
-
-    # Record log start position to count only THIS SESSION's failures
-    local log_start=0
-    if [[ -f "$log_file" ]]; then
-        log_start=$(wc -c < "$log_file" | tr -d ' ')
-    fi
+    # session_log_start: byte offset at the start of this --deep invocation.
+    # Used to count failures across ALL restarts in the session without
+    # double-counting evidence from prior sessions in the append-only log.
+    local session_log_start=0
+    [[ -f "$log_file" ]] && session_log_start=$(wc -c < "$log_file" | tr -d ' ')
 
     local exit_code=0
-    set +e
+    local teardown_race_detected=false
+    local restart_count=0
+    local max_teardown_restarts=20
+
+    # Teardown race detection (HypoFuzz bug — hypofuzz.py FuzzWorkerHub.start):
+    # When HypoFuzz completes a full exploration pass, FuzzWorkerHub.start()
+    # breaks out of its poll loop and exits the `with Manager()` block without
+    # first terminating worker processes. Manager.__exit__() closes the IPC
+    # socket; workers crash on their next proxy access. This is a HypoFuzz bug,
+    # not a test failure. Failure mode differs by Python version:
+    #   Python 3.13: BrokenPipeError (socket open at connect, write fails)
+    #   Python 3.14: FileNotFoundError (Manager deletes socket file before
+    #                worker _incref() reconnect; managers.py:863)
+    #
+    # Resolution: auto-restart. The Hypothesis database is preserved between
+    # restarts so exploration continues exactly where it left off. For --time N,
+    # single run only (user wants bounded total time; restarts would exceed it).
+    # For continuous --deep (no --time): loop until Ctrl+C, restarting on race.
+    #
+    # run_log_start is captured before each individual HypoFuzz invocation so
+    # teardown detection is scoped to that run's log window only — avoids
+    # false positives from prior runs' BrokenPipeError evidence.
+
     if [[ -n "$TIME_LIMIT" ]]; then
+        # Time-limited single run: no auto-restart (user wants bounded session).
+        {
+            echo ""
+            echo "================================================================================"
+            echo "HypoFuzz Session: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "Script: $SCRIPT_NAME v$SCRIPT_VERSION"
+            echo "Workers: $WORKERS"
+            echo "Profile: hypofuzz"
+            echo "================================================================================"
+        } >> "$log_file"
+
+        local run_log_start=0
+        [[ -f "$log_file" ]] && run_log_start=$(wc -c < "$log_file" | tr -d ' ')
+
+        set +e
         # timeout(1) sends SIGTERM after TIME_LIMIT seconds; exit 124 = time limit reached
         _run_with_heartbeat "$log_file" true -- timeout "$TIME_LIMIT" uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
         exit_code=$?
+        set -e
         [[ $exit_code -eq 124 ]] && exit_code=0  # time limit reached is a clean stop
-    else
-        _run_with_heartbeat "$log_file" true -- uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
-        exit_code=$?
-    fi
-    set -e
 
-    # Detect Python 3.14 multiprocessing teardown race (BrokenPipeError from worker cleanup).
-    # Workers attempt to reconnect to the manager socket after it has been cleaned up;
-    # this produces spurious BrokenPipeError/FileNotFoundError on session exit but does
-    # not indicate test failures. Downgrade to a warning and exit 0.
-    # Root fix: use --workers 1 (the default) to eliminate the race entirely.
-    if [[ $exit_code -ne 0 && $exit_code -ne 130 && $exit_code -ne 120 ]]; then
-        if [[ -f "$log_file" ]] \
-            && grep -qF "_start_worker" "$log_file" 2>/dev/null \
-            && grep -qE "(BrokenPipeError|FileNotFoundError.*connection)" "$log_file" 2>/dev/null; then
-            log_warn "Worker teardown race detected (Python 3.14 multiprocessing, exit $exit_code)."
-            log_warn "BrokenPipeError during shutdown is not a test failure. Use --workers 1 to avoid."
+        if [[ "$_SIGNAL_RECEIVED" == "true" && $exit_code -ne 0 ]]; then exit_code=130; fi
+
+        # Teardown race check (time-limited: report but don't restart).
+        # Detection: worker subprocess crash (_start_worker in traceback) that
+        # went through the multiprocessing.managers proxy layer (managers.py in
+        # traceback). The exception class varies by timing and Python version:
+        #   BrokenPipeError  — write to closed Manager socket (3.13 typical)
+        #   FileNotFoundError — socket file deleted before connect (3.14)
+        #   EOFError          — Manager closed auth challenge mid-recv (3.14)
+        # Matching on exception class is fragile; _start_worker + managers.py
+        # is the invariant that covers all variants.
+        local _log_window
+        _log_window=$(tail -c "+$((run_log_start + 1))" "$log_file" 2>/dev/null || true)
+        if [[ $exit_code -ne 0 && $exit_code -ne 130 && $exit_code -ne 120 ]] \
+            && [[ -f "$log_file" ]] \
+            && echo "$_log_window" | grep -qF "_start_worker" 2>/dev/null \
+            && echo "$_log_window" | grep -qF "managers.py" 2>/dev/null; then
+            log_warn "Worker teardown race detected (HypoFuzz bug, exit $exit_code)."
+            log_warn "Worker crashed on Manager proxy access after shutdown — no test failures."
+            log_warn "Re-run ./scripts/fuzz_hypofuzz.sh --deep to continue (database is preserved)."
+            teardown_race_detected=true
             exit_code=0
         fi
+    else
+        # Continuous mode: auto-restart on teardown race until Ctrl+C.
+        while true; do
+            local run_log_start=0
+            [[ -f "$log_file" ]] && run_log_start=$(wc -c < "$log_file" | tr -d ' ')
+
+            {
+                echo ""
+                echo "================================================================================"
+                if [[ $restart_count -eq 0 ]]; then
+                    echo "HypoFuzz Session: $(date '+%Y-%m-%d %H:%M:%S')"
+                else
+                    echo "HypoFuzz Restart #${restart_count}: $(date '+%Y-%m-%d %H:%M:%S')"
+                fi
+                echo "Script: $SCRIPT_NAME v$SCRIPT_VERSION"
+                echo "Workers: $WORKERS"
+                echo "Profile: hypofuzz"
+                echo "================================================================================"
+            } >> "$log_file"
+
+            set +e
+            _run_with_heartbeat "$log_file" true -- uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
+            exit_code=$?
+            set -e
+
+            if [[ "$_SIGNAL_RECEIVED" == "true" ]]; then
+                [[ $exit_code -ne 0 ]] && exit_code=130
+                break
+            fi
+
+            [[ $exit_code -eq 0 || $exit_code -eq 120 ]] && break
+
+            # Check teardown race scoped to THIS run's log window.
+            # Invariant: worker subprocess crash (_start_worker in traceback)
+            # via the multiprocessing.managers proxy (managers.py in traceback).
+            # Exception class varies by timing: BrokenPipeError (3.13 typical),
+            # FileNotFoundError (3.14, socket deleted before connect), EOFError
+            # (3.14, Manager closes auth challenge mid-recv). Matching on
+            # _start_worker + managers.py covers all variants.
+            local _log_window
+            _log_window=$(tail -c "+$((run_log_start + 1))" "$log_file" 2>/dev/null || true)
+            if [[ $exit_code -ne 130 ]] \
+                && [[ -f "$log_file" ]] \
+                && echo "$_log_window" | grep -qF "_start_worker" 2>/dev/null \
+                && echo "$_log_window" | grep -qF "managers.py" 2>/dev/null; then
+
+                teardown_race_detected=true
+                (( restart_count++ )) || true
+
+                if [[ $restart_count -gt $max_teardown_restarts ]]; then
+                    log_warn "Teardown race repeated $restart_count times — giving up (max $max_teardown_restarts)."
+                    exit_code=1
+                    break
+                fi
+
+                log_info "Teardown race (${restart_count}/${max_teardown_restarts}) — restarting automatically (database preserved)."
+                sleep 1
+                continue
+            fi
+
+            # Non-race error exit — don't restart
+            break
+        done
     fi
 
-    # Count failures in THIS SESSION ONLY (tail from byte offset avoids counting prior sessions)
+    # Count failures across ALL runs in this session (from session_log_start)
     local failure_count=0
     if [[ -f "$log_file" ]]; then
-        failure_count=$(tail -c "+$((log_start + 1))" "$log_file" | grep -c "Falsifying example" 2>/dev/null) || failure_count=0
+        failure_count=$(tail -c "+$((session_log_start + 1))" "$log_file" | grep -c "Falsifying example" 2>/dev/null) || failure_count=0
     fi
 
     if [[ $exit_code -eq 0 || $exit_code -eq 130 || $exit_code -eq 120 ]]; then
@@ -836,6 +981,12 @@ EVENTEOF
         log_group_end
 
         # JSON summary
+        # Status semantics:
+        #   "pass"          — clean stop: Ctrl+C (130), time limit (0), or natural end (0)
+        #   "teardown_race" — final exit was HypoFuzz teardown race after max
+        #                     auto-restarts exhausted; teardown_restarts shows how many
+        #                     transparent auto-restarts occurred before giving up
+        #   "interrupted"   — HypoFuzz internal interrupt (exit 120)
         python << PYEOF
 import json, re
 from datetime import datetime, timezone
@@ -844,6 +995,8 @@ from pathlib import Path
 log_path = Path("$log_file")
 exit_code = $exit_code
 failure_count = $failure_count
+teardown_race = "${teardown_race_detected}" == "true"
+restart_count = $restart_count
 
 try:
     log_content = log_path.read_text() if log_path.exists() else ""
@@ -858,13 +1011,25 @@ if failure_count > 0:
         example_args = match.group(2).strip()[:500]
         failures.append({"test": test_name, "example": example_args})
 
+# teardown_race in status only when the FINAL exit was a race (max restarts
+# exhausted). Transparent restarts show up in teardown_restarts only.
+if teardown_race and exit_code != 0:
+    status = "teardown_race"
+elif exit_code == 120:
+    status = "interrupted"
+else:
+    status = "pass"
+
 report = {
+    "script": "$SCRIPT_NAME",
+    "script_version": "$SCRIPT_VERSION",
     "mode": "deep",
-    "status": "pass",
+    "status": status,
     "timestamp": datetime.now(timezone.utc).isoformat(),
     "failures_count": failure_count,
     "failures": failures[:50],
     "exit_code": exit_code,
+    "teardown_restarts": restart_count,
     "log_file": "$log_file"
 }
 print("[SUMMARY-JSON-BEGIN]")
@@ -884,6 +1049,8 @@ import json
 from datetime import datetime, timezone
 
 report = {
+    "script": "$SCRIPT_NAME",
+    "script_version": "$SCRIPT_VERSION",
     "mode": "deep",
     "status": "error",
     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -900,7 +1067,7 @@ PYEOF
     fi
 
     log_group_end
-    return 0
+    return "$exit_code"
 }
 
 # =============================================================================
