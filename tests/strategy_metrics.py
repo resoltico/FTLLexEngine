@@ -261,6 +261,7 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "val_scenario=": "validation_resource_sources",
     "val_entry_kind=": "validation_resource_sources",
     "val_semantic_variant=": "semantic_validation_resources",
+    "val_ref_kind=": "validation_dependency_graphs",
 }
 
 # Known strategy weight distributions (intended weights)
@@ -572,6 +573,12 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "nested_placeable": 0.10,
         "empty_resource": 0.10,
     },
+    "val_ref_kind=": {
+        "msg_only": 0.25,
+        "term_only": 0.25,
+        "mixed": 0.25,
+        "empty": 0.25,
+    },
 }
 
 # Expected event categories (for coverage gap detection)
@@ -787,6 +794,11 @@ EXPECTED_EVENTS: set[str] = {
     "val_semantic_variant=term_named_args_only",
     "val_semantic_variant=nested_placeable",
     "val_semantic_variant=empty_resource",
+    # Validation dependency graph strategy events
+    "val_ref_kind=msg_only",
+    "val_ref_kind=term_only",
+    "val_ref_kind=mixed",
+    "val_ref_kind=empty",
 }
 
 

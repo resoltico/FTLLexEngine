@@ -53,6 +53,8 @@ from .iso import (
     is_valid_territory_code,
     list_currencies,
     list_territories,
+    require_currency_code,
+    require_territory_code,
 )
 
 __all__ = [
@@ -87,6 +89,9 @@ __all__ = [
     # ISO type guards
     "is_valid_territory_code",
     "is_valid_currency_code",
+    # ISO boundary validators
+    "require_currency_code",
+    "require_territory_code",
     # ISO cache management
     "clear_iso_cache",
     # Babel diagnostics

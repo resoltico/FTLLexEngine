@@ -31,6 +31,8 @@ from ftllexengine.introspection import (
     is_valid_territory_code,
     list_currencies,
     list_territories,
+    require_currency_code,
+    require_territory_code,
 )
 
 # Private member access permitted for integration tests
@@ -1805,3 +1807,184 @@ class TestGetCurrencyDecimalDigits:
             assert result == 2, f"{code} (fund code) should have 2 decimal digits"
         # UYI (Uruguay Peso en Unidades Indexadas): 0 decimal
         assert get_currency_decimal_digits("UYI") == 0
+
+    def test_recently_added_active_codes(self) -> None:
+        """Codes added by recent ISO 4217 amendments are active and return precision.
+
+        VED (Amendment 169, 2021), ZWG (Amendment 171+, 2024), and XCG
+        (Amendment 17x, 2025) are active ISO 4217 codes with default 2 decimal digits.
+        """
+        for code in ("VED", "ZWG", "XCG"):
+            result = get_currency_decimal_digits(code)
+            assert result == 2, (
+                f"{code} (recently-added active code) should have 2 decimal digits, "
+                f"got {result!r}"
+            )
+
+    def test_recently_retired_codes_return_none(self) -> None:
+        """Codes retired by recent ISO 4217 amendments return None.
+
+        SLL (Sierra Leone Leone, retired Amendment 170, 2022) and ZWL
+        (Zimbabwean Dollar, retired Amendment 171+, 2024) are no longer active
+        and must not appear in ISO_4217_VALID_CODES.
+        """
+        for code in ("SLL", "ZWL"):
+            result = get_currency_decimal_digits(code)
+            assert result is None, (
+                f"{code} (retired code) should return None, got {result!r}"
+            )
+
+    def test_iqd_iso_standard_value(self) -> None:
+        """IQD (Iraqi Dinar) returns ISO 4217 standard value of 3 decimal digits.
+
+        ISO 4217 specifies IQD with 3 decimal places (fils subdivision).
+        Babel CLDR reports 0 because fils are not used in practice.
+        This library follows the ISO standard, not CLDR practical usage.
+        """
+        assert get_currency_decimal_digits("IQD") == 3
+
+
+class TestRequireCurrencyCode:
+    """Tests for require_currency_code boundary validator."""
+
+    def test_valid_uppercase_code_returns_currency_code(self) -> None:
+        """Valid uppercase ISO 4217 code returns CurrencyCode."""
+        result = require_currency_code("USD", "price")
+        assert result == CurrencyCode("USD")
+        assert type(result) is str  # CurrencyCode is a str alias
+
+    def test_valid_lowercase_code_is_normalized(self) -> None:
+        """Lowercase code is normalised to uppercase CurrencyCode."""
+        result = require_currency_code("eur", "amount")
+        assert result == CurrencyCode("EUR")
+
+    def test_valid_mixed_case_code_is_normalized(self) -> None:
+        """Mixed-case code is normalised to uppercase."""
+        result = require_currency_code("Jpy", "fee")
+        assert result == CurrencyCode("JPY")
+
+    def test_leading_trailing_whitespace_is_stripped(self) -> None:
+        """Whitespace around a valid code is stripped before validation."""
+        result = require_currency_code("  GBP  ", "price")
+        assert result == CurrencyCode("GBP")
+
+    def test_invalid_code_raises_value_error(self) -> None:
+        """Unrecognised currency code raises ValueError."""
+        with pytest.raises(ValueError, match="currency code"):
+            require_currency_code("XYZ", "amount")
+
+    def test_empty_string_raises_value_error(self) -> None:
+        """Empty string raises ValueError (not a valid ISO 4217 code)."""
+        with pytest.raises(ValueError, match="currency code"):
+            require_currency_code("", "amount")
+
+    def test_whitespace_only_raises_value_error(self) -> None:
+        """Whitespace-only string raises ValueError after stripping."""
+        with pytest.raises(ValueError, match="currency code"):
+            require_currency_code("   ", "amount")
+
+    def test_non_str_raises_type_error(self) -> None:
+        """Non-str value raises TypeError with field_name in message."""
+        with pytest.raises(TypeError, match="price"):
+            require_currency_code(123, "price")
+
+    def test_none_raises_type_error(self) -> None:
+        """None raises TypeError."""
+        with pytest.raises(TypeError, match="currency_code"):
+            require_currency_code(None, "currency_code")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in both TypeError and ValueError messages."""
+        with pytest.raises(TypeError, match="my_field"):
+            require_currency_code(42, "my_field")
+        with pytest.raises(ValueError, match="my_field"):
+            require_currency_code("BADCODE", "my_field")
+
+    def test_valid_codes_cover_major_currencies(self) -> None:
+        """Major ISO 4217 codes are accepted."""
+        for code in ("USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD"):
+            result = require_currency_code(code, "amount")
+            assert result == CurrencyCode(code)
+
+    def test_returns_currency_code_type(self) -> None:
+        """Return value is CurrencyCode (str subtype)."""
+        result = require_currency_code("USD", "amount")
+        assert isinstance(result, str)
+
+
+class TestRequireTerritoryCode:
+    """Tests for require_territory_code boundary validator."""
+
+    def test_valid_uppercase_code_returns_territory_code(self) -> None:
+        """Valid uppercase ISO 3166-1 alpha-2 code returns TerritoryCode."""
+        result = require_territory_code("US", "region")
+        assert result == TerritoryCode("US")
+
+    def test_valid_lowercase_code_is_normalized(self) -> None:
+        """Lowercase code is normalised to uppercase TerritoryCode."""
+        result = require_territory_code("de", "country")
+        assert result == TerritoryCode("DE")
+
+    def test_valid_mixed_case_code_is_normalized(self) -> None:
+        """Mixed-case code is normalised to uppercase."""
+        result = require_territory_code("Gb", "territory")
+        assert result == TerritoryCode("GB")
+
+    def test_leading_trailing_whitespace_is_stripped(self) -> None:
+        """Whitespace around a valid code is stripped before validation."""
+        result = require_territory_code("  FR  ", "country")
+        assert result == TerritoryCode("FR")
+
+    def test_invalid_code_raises_value_error(self) -> None:
+        """Unrecognised territory code raises ValueError."""
+        # "99"/"X9" contain digits — not valid ISO 3166-1 alpha-2 codes
+        with pytest.raises(ValueError, match="territory code"):
+            require_territory_code("99", "region")
+
+    def test_empty_string_raises_value_error(self) -> None:
+        """Empty string raises ValueError."""
+        with pytest.raises(ValueError, match="territory code"):
+            require_territory_code("", "region")
+
+    def test_whitespace_only_raises_value_error(self) -> None:
+        """Whitespace-only string raises ValueError after stripping."""
+        with pytest.raises(ValueError, match="territory code"):
+            require_territory_code("   ", "region")
+
+    def test_three_char_code_raises_value_error(self) -> None:
+        """3-char string is not a valid alpha-2 code and raises ValueError."""
+        with pytest.raises(ValueError, match="territory code"):
+            require_territory_code("USA", "country")
+
+    def test_non_str_raises_type_error(self) -> None:
+        """Non-str value raises TypeError with field_name in message."""
+        with pytest.raises(TypeError, match="region"):
+            require_territory_code(42, "region")
+
+    def test_none_raises_type_error(self) -> None:
+        """None raises TypeError."""
+        with pytest.raises(TypeError, match="territory"):
+            require_territory_code(None, "territory")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in both TypeError and ValueError messages."""
+        with pytest.raises(TypeError, match="my_field"):
+            require_territory_code(99, "my_field")
+        with pytest.raises(ValueError, match="my_field"):
+            require_territory_code("XX", "my_field")
+
+    def test_valid_codes_cover_major_territories(self) -> None:
+        """Major ISO 3166-1 alpha-2 codes are accepted."""
+        for code in ("US", "DE", "GB", "FR", "JP", "CA", "AU"):
+            result = require_territory_code(code, "region")
+            assert result == TerritoryCode(code)
+
+    def test_casefold_expansion_guard(self) -> None:
+        """Single-char inputs that expand via .upper() (e.g. 'ß'->'SS') are rejected."""
+        with pytest.raises(ValueError, match="territory code"):
+            require_territory_code("ß", "region")
+
+    def test_returns_territory_code_type(self) -> None:
+        """Return value is TerritoryCode (str subtype)."""
+        result = require_territory_code("US", "region")
+        assert isinstance(result, str)

@@ -57,6 +57,9 @@ __all__ = [
     # Type guards
     "is_valid_territory_code",
     "is_valid_currency_code",
+    # Boundary validators
+    "require_currency_code",
+    "require_territory_code",
     # Cache management
     "clear_iso_cache",
     # Exceptions
@@ -385,14 +388,29 @@ def get_currency_decimal_digits(code: str) -> int | None:
     code set. Only codes present in that set yield a precision value. Codes
     not listed return None regardless of Babel availability.
 
+    **ISO 4217 vs CLDR divergence:** This function follows the ISO 4217
+    standard, not Babel's CLDR usage data. The two sources differ for
+    some currencies where minor units exist in the standard but are not
+    used in practice:
+
+    - ``IQD`` (Iraqi Dinar): ISO 4217 specifies **3** decimal places (fils).
+      Babel/CLDR reports 0 because fils are not used in daily commerce.
+      Callers mixing this function with ``babel.numbers.get_currency_precision``
+      will observe a discrepancy for IQD. This function returns the
+      ISO-standard value (3).
+    - ``MGA`` (Malagasy Ariary): ISO 4217 assigns exponent 2, but the actual
+      subdivision is 1/5 (1 ariary = 5 iraimbilanja), not 1/100. This
+      function returns 2 per the ISO standard; financial systems formatting
+      MGA should be aware that the subdivision is non-decimal.
+
     Args:
         code: ISO 4217 currency code (e.g., 'USD', 'EUR'). Case-insensitive.
 
     Returns:
         Number of decimal digits (0 for JPY, 2 for USD/EUR, 3 for KWD), or
         None if the code is not a currently active ISO 4217 currency code.
-        Historical or retired codes (e.g. TMM, TRL) return None — they are
-        absent from ``ISO_4217_VALID_CODES``, which covers only active
+        Historical or retired codes (e.g. SLL, ZWL, TMM, TRL) return None —
+        they are absent from ``ISO_4217_VALID_CODES``, which covers only active
         standards. Babel's ``get_currency()`` may still return data for these
         historical codes via CLDR; the two functions have different scopes by
         design.
@@ -407,6 +425,8 @@ def get_currency_decimal_digits(code: str) -> int | None:
         0
         >>> get_currency_decimal_digits("EUR")
         2
+        >>> get_currency_decimal_digits("IQD")
+        3
         >>> get_currency_decimal_digits("XYZ") is None
         True
     """
@@ -689,6 +709,108 @@ def is_valid_currency_code(value: str) -> TypeIs[CurrencyCode]:
 # ============================================================================
 # CACHE MANAGEMENT
 # ============================================================================
+
+
+def require_currency_code(value: object, field_name: str) -> CurrencyCode:
+    """Validate and normalize a boundary value to a canonical ISO 4217 currency code.
+
+    Strips surrounding whitespace, rejects non-str types with TypeError, normalizes
+    to uppercase, and validates against Babel's CLDR currency database. Returns the
+    canonical uppercase CurrencyCode so callers need no post-validation normalization.
+
+    Use at every constructor or API entry point that accepts a currency code field.
+    Eliminates the require_non_empty_str + upper() + is_valid_currency_code chain
+    that every downstream system would otherwise reimplement independently.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object; non-str
+            values always raise TypeError; values that are not valid ISO 4217 codes
+            raise ValueError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        Canonical uppercase CurrencyCode (e.g., CurrencyCode("USD")).
+
+    Raises:
+        TypeError: If value is not a str instance.
+        ValueError: If value (after stripping and uppercasing) is not a known
+            ISO 4217 currency code.
+        BabelImportError: If Babel is not installed.
+
+    Example:
+        >>> require_currency_code("usd", "currency")
+        'USD'
+        >>> require_currency_code("  EUR  ", "currency")
+        'EUR'
+        >>> require_currency_code("XYZ", "currency")
+        Traceback (most recent call last):
+            ...
+        ValueError: currency must be a valid ISO 4217 currency code, got 'XYZ'
+        >>> require_currency_code(840, "currency")
+        Traceback (most recent call last):
+            ...
+        TypeError: currency must be str, got int
+    """
+    if not isinstance(value, str):
+        msg = f"{field_name} must be str, got {type(value).__name__}"
+        raise TypeError(msg)
+    stripped = value.strip()
+    if not is_valid_currency_code(stripped):
+        msg = f"{field_name} must be a valid ISO 4217 currency code, got {value!r}"
+        raise ValueError(msg)
+    return CurrencyCode(stripped.upper())
+
+
+def require_territory_code(value: object, field_name: str) -> TerritoryCode:
+    """Validate and normalize a boundary value to a canonical ISO 3166-1 alpha-2 code.
+
+    Strips surrounding whitespace, rejects non-str types with TypeError, normalizes
+    to uppercase, and validates against Babel's CLDR territory database. Returns the
+    canonical uppercase TerritoryCode so callers need no post-validation normalization.
+
+    Use at every constructor or API entry point that accepts a territory code field.
+    Eliminates the require_non_empty_str + upper() + is_valid_territory_code chain
+    that every downstream system would otherwise reimplement independently.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object; non-str
+            values always raise TypeError; values that are not valid ISO 3166-1
+            alpha-2 codes raise ValueError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        Canonical uppercase TerritoryCode (e.g., TerritoryCode("US")).
+
+    Raises:
+        TypeError: If value is not a str instance.
+        ValueError: If value (after stripping and uppercasing) is not a known
+            ISO 3166-1 alpha-2 territory code.
+        BabelImportError: If Babel is not installed.
+
+    Example:
+        >>> require_territory_code("us", "territory")
+        'US'
+        >>> require_territory_code("  DE  ", "territory")
+        'DE'
+        >>> require_territory_code("XX", "territory")
+        Traceback (most recent call last):
+            ...
+        ValueError: territory must be a valid ISO 3166-1 alpha-2 territory code, got 'XX'
+        >>> require_territory_code(840, "territory")
+        Traceback (most recent call last):
+            ...
+        TypeError: territory must be str, got int
+    """
+    if not isinstance(value, str):
+        msg = f"{field_name} must be str, got {type(value).__name__}"
+        raise TypeError(msg)
+    stripped = value.strip()
+    if not is_valid_territory_code(stripped):
+        msg = (
+            f"{field_name} must be a valid ISO 3166-1 alpha-2 territory code, got {value!r}"
+        )
+        raise ValueError(msg)
+    return TerritoryCode(stripped.upper())
 
 
 def clear_iso_cache() -> None:

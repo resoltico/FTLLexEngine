@@ -10,8 +10,11 @@ Boundary validation contract (applied in order):
     2. Value check: reject out-of-range or empty values with ValueError.
     3. Return the canonical form so callers need no post-validation normalization.
 
-All functions in this module are pure, stateless, and have no external
-dependencies. Safe for parser-only installations.
+Functions operating on stdlib types (str, int, Decimal, date, datetime) have no
+external dependencies and are safe for parser-only installations. Functions that
+validate internal core types (FluentNumber, FiscalPeriod, FiscalCalendar) depend
+on other modules in the same package but remain pure Python with no Babel or
+external dependency.
 
 Python 3.14+.
 """
@@ -19,13 +22,23 @@ Python 3.14+.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date as _date
+from datetime import datetime as _datetime
 from decimal import Decimal
+
+from .fiscal import FiscalCalendar, FiscalPeriod
+from .value_types import FluentNumber
 
 __all__ = [
     "coerce_tuple",
     "normalize_optional_decimal_range",
     "normalize_optional_str",
+    "require_date",
+    "require_datetime",
     "require_decimal_range",
+    "require_fiscal_calendar",
+    "require_fiscal_period",
+    "require_fluent_number",
     "require_int",
     "require_int_in_range",
     "require_non_empty_str",
@@ -493,4 +506,203 @@ def require_int_in_range(
     if not (lo <= value <= hi):
         msg = f"{field_name} must be in range [{lo}, {hi}]"
         raise ValueError(msg)
+    return value
+
+
+def require_date(value: object, field_name: str) -> _date:
+    """Validate that a boundary value is a stdlib date (not datetime).
+
+    Rejects datetime instances with TypeError — datetime is a subclass of date
+    but carries a time component, making it semantically distinct from a calendar
+    date. Rejects all non-date types with TypeError.
+
+    Use at constructor or API entry points that require a strict calendar date —
+    fiscal year boundaries, effective dates, legislative dates. Distinguishing
+    date from datetime at boundaries prevents accidental time-component leakage
+    into date-only domain models.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object; datetime
+            and non-date values always raise TypeError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated date, identical to the input value.
+
+    Raises:
+        TypeError: If value is a datetime (subclass of date but semantically wrong
+            for strict calendar-date fields).
+        TypeError: If value is not a date instance.
+
+    Example:
+        >>> from datetime import date, datetime
+        >>> require_date(date(2024, 1, 15), "effective_date")
+        datetime.date(2024, 1, 15)
+        >>> require_date(datetime(2024, 1, 15, 9, 0), "effective_date")
+        Traceback (most recent call last):
+            ...
+        TypeError: effective_date must be date, got datetime
+        >>> require_date("2024-01-15", "effective_date")
+        Traceback (most recent call last):
+            ...
+        TypeError: effective_date must be date, got str
+    """
+    # Check datetime BEFORE date: datetime is a subclass of date, so
+    # isinstance(datetime_obj, date) is True. Reject datetime explicitly —
+    # a calendar date and a point-in-time are semantically different types.
+    if isinstance(value, _datetime):
+        msg = f"{field_name} must be date, got datetime"
+        raise TypeError(msg)
+    if not isinstance(value, _date):
+        msg = f"{field_name} must be date, got {type(value).__name__}"
+        raise TypeError(msg)
+    return value
+
+
+def require_datetime(value: object, field_name: str) -> _datetime:
+    """Validate that a boundary value is a stdlib datetime.
+
+    Rejects plain date instances and all other non-datetime types with TypeError.
+    datetime is a subclass of date, so isinstance(date_obj, datetime) is False —
+    no special ordering required.
+
+    Use at constructor or API entry points that require a point-in-time value —
+    event timestamps, audit records, scheduled execution times.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object;
+            non-datetime values (including plain date) always raise TypeError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated datetime, identical to the input value.
+
+    Raises:
+        TypeError: If value is not a datetime instance (including plain date).
+
+    Example:
+        >>> from datetime import date, datetime
+        >>> require_datetime(datetime(2024, 1, 15, 9, 0), "created_at")
+        datetime.datetime(2024, 1, 15, 9, 0)
+        >>> require_datetime(date(2024, 1, 15), "created_at")
+        Traceback (most recent call last):
+            ...
+        TypeError: created_at must be datetime, got date
+        >>> require_datetime("2024-01-15T09:00:00", "created_at")
+        Traceback (most recent call last):
+            ...
+        TypeError: created_at must be datetime, got str
+    """
+    if not isinstance(value, _datetime):
+        msg = f"{field_name} must be datetime, got {type(value).__name__}"
+        raise TypeError(msg)
+    return value
+
+
+def require_fluent_number(value: object, field_name: str) -> FluentNumber:
+    """Validate that a boundary value is a FluentNumber.
+
+    Rejects all non-FluentNumber values with TypeError. FluentNumber is an
+    immutable formatted-number wrapper produced by make_fluent_number() that
+    carries both numeric identity (for Fluent plural matching) and a locale-
+    formatted string (for display). Domain models accepting monetary or
+    locale-formatted amounts should gate on this validator at construction time.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object;
+            non-FluentNumber values always raise TypeError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated FluentNumber, identical to the input value.
+
+    Raises:
+        TypeError: If value is not a FluentNumber instance.
+
+    Example:
+        >>> from ftllexengine.core.value_types import FluentNumber
+        >>> from decimal import Decimal
+        >>> fn = FluentNumber(value=Decimal("9.99"), formatted="9.99", precision=2)
+        >>> require_fluent_number(fn, "amount")
+        FluentNumber(value=Decimal('9.99'), formatted='9.99', precision=2)
+        >>> require_fluent_number(9.99, "amount")
+        Traceback (most recent call last):
+            ...
+        TypeError: amount must be FluentNumber, got float
+    """
+    if not isinstance(value, FluentNumber):
+        msg = f"{field_name} must be FluentNumber, got {type(value).__name__}"
+        raise TypeError(msg)
+    return value
+
+
+def require_fiscal_period(value: object, field_name: str) -> FiscalPeriod:
+    """Validate that a boundary value is a FiscalPeriod.
+
+    Rejects all non-FiscalPeriod values with TypeError. FiscalPeriod is an
+    immutable identifier for a fiscal period (year, quarter, month) owned by
+    FTLLexEngine. Domain models accepting a fiscal period reference should
+    gate on this validator at construction time rather than reimplementing
+    the isinstance guard locally.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object;
+            non-FiscalPeriod values always raise TypeError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated FiscalPeriod, identical to the input value.
+
+    Raises:
+        TypeError: If value is not a FiscalPeriod instance.
+
+    Example:
+        >>> from ftllexengine.core.fiscal import FiscalPeriod
+        >>> fp = FiscalPeriod(year=2024, quarter=1, month=None)
+        >>> require_fiscal_period(fp, "period")
+        FiscalPeriod(year=2024, quarter=1, month=None)
+        >>> require_fiscal_period("Q1-2024", "period")
+        Traceback (most recent call last):
+            ...
+        TypeError: period must be FiscalPeriod, got str
+    """
+    if not isinstance(value, FiscalPeriod):
+        msg = f"{field_name} must be FiscalPeriod, got {type(value).__name__}"
+        raise TypeError(msg)
+    return value
+
+
+def require_fiscal_calendar(value: object, field_name: str) -> FiscalCalendar:
+    """Validate that a boundary value is a FiscalCalendar.
+
+    Rejects all non-FiscalCalendar values with TypeError. FiscalCalendar is an
+    immutable configuration type for fiscal year boundaries owned by FTLLexEngine.
+    Domain models that accept a fiscal calendar as a dependency should gate on
+    this validator at construction time rather than reimplementing the isinstance
+    guard locally.
+
+    Args:
+        value: Raw boundary value to validate. Accepts any Python object;
+            non-FiscalCalendar values always raise TypeError.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated FiscalCalendar, identical to the input value.
+
+    Raises:
+        TypeError: If value is not a FiscalCalendar instance.
+
+    Example:
+        >>> from ftllexengine.core.fiscal import FiscalCalendar
+        >>> cal = FiscalCalendar(start_month=4)
+        >>> require_fiscal_calendar(cal, "calendar")
+        FiscalCalendar(start_month=4, ...)
+        >>> require_fiscal_calendar("April", "calendar")
+        Traceback (most recent call last):
+            ...
+        TypeError: calendar must be FiscalCalendar, got str
+    """
+    if not isinstance(value, FiscalCalendar):
+        msg = f"{field_name} must be FiscalCalendar, got {type(value).__name__}"
+        raise TypeError(msg)
     return value

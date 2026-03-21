@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.160.0"
 domain: TYPES
-updated: "2026-03-13"
+updated: "2026-03-21"
 route:
-  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217]
-  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?"]
+  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217, require_currency_code, require_territory_code]
+  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?", "how do I validate an ISO currency code?", "how do I validate an ISO territory code?"]
 ---
 
 # AST Types Reference
@@ -1504,6 +1504,59 @@ def is_valid_currency_code(value: str) -> TypeIs[CurrencyCode]:
 - Thread: Safe.
 - TypeIs: Narrows type in type checkers.
 - Import: `from ftllexengine.introspection import is_valid_currency_code`
+
+---
+
+## `require_currency_code`
+
+Validate, strip, and normalise a boundary value to a canonical `CurrencyCode`. Eliminates per-caller trim / blank / case normalisation chains for ISO 4217 codes.
+
+### Signature
+```python
+def require_currency_code(value: object, field_name: str) -> CurrencyCode:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value. Non-str always raises TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: `CurrencyCode` — stripped, uppercased, valid ISO 4217 code.
+- Raises: `TypeError` if `value` is not `str`.
+- Raises: `ValueError` if the stripped/uppercased value is not a recognised ISO 4217 code.
+- Raises: `BabelImportError` if Babel not installed (delegated from `is_valid_currency_code`).
+- State: Pure function with cache delegation.
+- Thread: Safe.
+- Import: `from ftllexengine import require_currency_code` or `from ftllexengine.introspection import require_currency_code`.
+
+---
+
+## `require_territory_code`
+
+Validate, strip, and normalise a boundary value to a canonical `TerritoryCode`. Eliminates per-caller trim / blank / case normalisation chains for ISO 3166-1 alpha-2 codes.
+
+### Signature
+```python
+def require_territory_code(value: object, field_name: str) -> TerritoryCode:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value. Non-str always raises TypeError. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: `TerritoryCode` — stripped, uppercased, valid ISO 3166-1 alpha-2 code.
+- Raises: `TypeError` if `value` is not `str`.
+- Raises: `ValueError` if the stripped/uppercased value is not a recognised ISO 3166-1 territory code.
+- Raises: `BabelImportError` if Babel not installed (delegated from `is_valid_territory_code`).
+- Note: Casefold-expansion guard prevents `"ß"` (len=1) from matching `"SS"` — raw length is checked before `.upper()`.
+- State: Pure function with cache delegation.
+- Thread: Safe.
+- Import: `from ftllexengine import require_territory_code` or `from ftllexengine.introspection import require_territory_code`.
 
 ---
 

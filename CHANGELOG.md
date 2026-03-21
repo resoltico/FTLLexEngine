@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.159.0"
+version: "0.160.0"
 domain: CHANGELOG
-updated: "2026-03-20"
+updated: "2026-03-21"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -13,7 +13,87 @@ route:
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.160.0] - 2026-03-21
+
+### Added
+
+**Boundary validators — core type guards (`ftllexengine.core.validators`):**
+
+- `require_date(value, field_name) -> date` — rejects `datetime` subtypes before checking `date`;
+  callers receive a `TypeError` with `field_name` in the message if `value` is a `datetime` or
+  any non-`date` type.
+- `require_datetime(value, field_name) -> datetime` — accepts `datetime` only (not plain `date`);
+  raises `TypeError` with `field_name` for all other types.
+- `require_fluent_number(value, field_name) -> FluentNumber` — validates `FluentNumber` at system
+  boundaries without callers having to import `FluentNumber` for the check.
+- `require_fiscal_period(value, field_name) -> FiscalPeriod` — validates `FiscalPeriod` at
+  system boundaries.
+- `require_fiscal_calendar(value, field_name) -> FiscalCalendar` — validates `FiscalCalendar`
+  at system boundaries.
+
+All five validators are exported from `ftllexengine.core`, `ftllexengine.core.validators`,
+and the root `ftllexengine` facade.
+
+**Boundary validators — ISO code guards (`ftllexengine.introspection.iso`):**
+
+- `require_currency_code(value, field_name) -> CurrencyCode` — validates, strips, and
+  normalises to uppercase; raises `TypeError` for non-str, `ValueError` for unrecognised
+  ISO 4217 codes.
+- `require_territory_code(value, field_name) -> TerritoryCode` — validates, strips, and
+  normalises to uppercase; raises `TypeError` for non-str, `ValueError` for unrecognised
+  ISO 3166-1 alpha-2 codes.
+
+Both validators are re-exported from `ftllexengine.introspection` and the root
+`ftllexengine` facade.
+
+**Root facade additions (`ftllexengine`):**
+
+- `detect_cycles` (from `ftllexengine.analysis`) — cycle detection promoted to root facade.
+- `WarningSeverity` (from `ftllexengine.diagnostics`) — warning severity enum promoted to root facade.
+- `CurrencyCode`, `TerritoryCode` — ISO type aliases promoted to root facade.
+- `is_valid_currency_code`, `is_valid_territory_code` — ISO type guards promoted to root facade.
+- `require_currency_code`, `require_territory_code` — ISO boundary validators promoted to root facade.
+- `get_currency_decimal_digits` — moved from Babel-optional block to always-available (no Babel
+  required; backed by `ISO_4217_VALID_CODES` constants only).
+
+**Internal: `_compute_longest_paths` dead-code removal (`ftllexengine.validation.resource`):**
+
+- Removed the unreachable `or node in in_stack` sub-condition from the phase-0 guard in
+  `_compute_longest_paths`. The DFS stack extension filter (`child not in in_stack`) already
+  prevents any phase-0 entry from being pushed while the node is in `in_stack`; the guard
+  could only fire via `node in longest_path`. No behaviour change — the algorithm produces
+  identical results. 100% branch coverage now verified by the targeted topology test.
+
+**ISO 4217 data corrections (`ftllexengine.constants`, `ftllexengine.introspection.iso`):**
+
+- `ISO_4217_VALID_CODES` updated to reflect recent ISO 4217 amendments:
+  - **Removed** `SLL` (Sierra Leone Leone — retired Amendment 170, 2022; replaced by `SLE`).
+  - **Removed** `ZWL` (Zimbabwean Dollar — retired Amendment 171+, 2024; replaced by `ZWG`).
+  - **Added** `VED` (Venezuelan Bolivar Digital — active Amendment 169, 2021).
+  - **Added** `ZWG` (Zimbabwean Gold — active Amendment 171+, 2024).
+  - **Added** `XCG` (Caribbean Guilder — active Amendment 17x, 2025).
+- `get_currency_decimal_digits` docstring extended with ISO 4217 vs CLDR divergence note:
+  IQD (Iraqi Dinar) returns 3 per ISO 4217 standard (fils subdivision exists), while Babel
+  CLDR reports 0 because fils are not used in practice. MGA (Malagasy Ariary) note added:
+  non-decimal subdivision (1/5 iraimbilanja), but ISO specifies 2 decimal places.
+
+**ISO 4217 verification (`scripts/verify_iso4217.py`):**
+
+- Script promoted to a lint.sh plugin via `# @lint-plugin: ISO4217` header; now runs
+  automatically in every `lint.sh` invocation with full exit-code integration.
+- Added Babel-based retirement detection: codes in `ISO_4217_VALID_CODES` whose Babel English
+  name contains a date-range em-dash or en-dash suffix are flagged as `[ERROR]` stale codes
+  (exits 1). This caught `SLL` and `ZWL` in the current data before correction.
+- Improved unverifiable-divergence classification: Babel-zero codes now split into
+  `active_practical_zero` (ISO active, minor unit unused) and `retired_handled` (not in valid
+  codes, correctly returns None). `[INFO]` items are suppressed in normal output; `--verbose`
+  lists them.
+
+### Breaking Changes
+
+- `get_currency_decimal_digits` is no longer gated by Babel presence. It was previously absent
+  (raising `ImportError`) in parser-only installs despite being fully Babel-free. It is now
+  always importable and callable.
 
 ## [0.159.0] - 2026-03-20
 

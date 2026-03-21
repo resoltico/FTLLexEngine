@@ -37,13 +37,20 @@ Boundary Validators (no Babel dependency):
     coerce_tuple - Coerce a non-str Sequence to an immutable tuple
     normalize_optional_decimal_range - None passthrough over require_decimal_range
     normalize_optional_str - None passthrough over require_non_empty_str
+    require_currency_code - Validate and normalize an ISO 4217 currency code (requires Babel)
+    require_date - Validate that a boundary value is a date (not datetime)
+    require_datetime - Validate that a boundary value is a datetime
     require_decimal_range - Validate that a boundary Decimal is finite and within a range
+    require_fiscal_calendar - Validate that a boundary value is a FiscalCalendar
+    require_fiscal_period - Validate that a boundary value is a FiscalPeriod
+    require_fluent_number - Validate that a boundary value is a FluentNumber
     require_int - Validate that a boundary value is an integer (no range check)
     require_int_in_range - Validate that a boundary integer is within an inclusive range
+    require_locale_code - Validate and canonicalize a locale code at a system boundary
     require_non_empty_str - Validate that a boundary value is a non-blank string
     require_non_negative_int - Validate that a boundary value is an int >= 0
     require_positive_int - Validate that a boundary value is a positive integer
-    require_locale_code - Validate and canonicalize a locale code at a system boundary
+    require_territory_code - Validate and normalize an ISO 3166-1 alpha-2 territory code
 
 Fiscal Calendar (no Babel dependency):
     FiscalCalendar - Configuration for fiscal year boundaries
@@ -63,8 +70,20 @@ Parsing Return Type (no Babel dependency):
 Introspection (no Babel dependency):
     MessageVariableValidationResult - Structured result of variable schema validation
     validate_message_variables - Compare FTL message variables against expected schema
-    get_currency_decimal_digits - ISO 4217 decimal precision for a currency code (requires Babel)
+
+ISO Standards (Babel required at call time; importable without Babel):
+    CurrencyCode - ISO 4217 currency code NewType (e.g., CurrencyCode("USD"))
+    TerritoryCode - ISO 3166-1 alpha-2 territory code NewType (e.g., TerritoryCode("US"))
+    is_valid_currency_code - TypeIs guard: True if str is a valid ISO 4217 code (requires Babel)
+    is_valid_territory_code - TypeIs guard: True if str is a valid ISO 3166-1 alpha-2 code
+    get_currency_decimal_digits - ISO 4217 decimal precision for a currency code (no Babel required)
     get_cldr_version - Babel CLDR data version string (requires Babel)
+
+Diagnostics:
+    WarningSeverity - Severity levels for validation warnings (CRITICAL, WARNING, INFO)
+
+Graph Analysis:
+    detect_cycles - Detect circular dependencies in a message/term reference graph
 
 Exceptions:
     FrozenFluentError - Immutable, sealed error type
@@ -110,6 +129,8 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _get_version
 
+from .analysis import detect_cycles
+
 # Fiscal calendar - no Babel dependency; imported after diagnostics to avoid circular import
 from .core.fiscal import (
     FiscalCalendar,
@@ -124,12 +145,17 @@ from .core.fiscal import (
 )
 from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
 
-# Boundary validators - no Babel dependency; pure stdlib, no circular import risk
+# Boundary validators - no Babel dependency; no circular import risk
 from .core.validators import (
     coerce_tuple,
     normalize_optional_decimal_range,
     normalize_optional_str,
+    require_date,
+    require_datetime,
     require_decimal_range,
+    require_fiscal_calendar,
+    require_fiscal_period,
+    require_fluent_number,
     require_int,
     require_int_in_range,
     require_non_empty_str,
@@ -146,6 +172,7 @@ from .diagnostics import (
     FrozenFluentError,
     ParseResult,
     ParseTypeLiteral,
+    WarningSeverity,
 )
 from .enums import LoadStatus
 from .integrity import (
@@ -159,6 +186,15 @@ from .integrity import (
     PersistenceIntegrityError,
     SyntaxIntegrityError,
     WriteConflictError,
+)
+from .introspection.iso import (
+    CurrencyCode,
+    TerritoryCode,
+    get_currency_decimal_digits,
+    is_valid_currency_code,
+    is_valid_territory_code,
+    require_currency_code,
+    require_territory_code,
 )
 from .introspection.message import MessageVariableValidationResult, validate_message_variables
 from .localization.types import LocaleCode
@@ -174,9 +210,6 @@ from .validation import validate_resource
 try:
     from .core.babel_compat import (
         get_cldr_version as get_cldr_version,
-    )
-    from .introspection.iso import (
-        get_currency_decimal_digits as get_currency_decimal_digits,
     )
     from .localization import (
         FallbackInfo as FallbackInfo,
@@ -252,7 +285,6 @@ _BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
     "fluent_function",
     "make_fluent_number",
     "get_cldr_version",
-    "get_currency_decimal_digits",
 })
 
 
@@ -441,7 +473,12 @@ __all__ = [
     "coerce_tuple",
     "normalize_optional_decimal_range",
     "normalize_optional_str",
+    "require_date",
+    "require_datetime",
     "require_decimal_range",
+    "require_fiscal_calendar",
+    "require_fiscal_period",
+    "require_fluent_number",
     "require_int",
     "require_int_in_range",
     "require_locale_code",
@@ -463,9 +500,19 @@ __all__ = [
     # Introspection (no Babel dependency)
     "MessageVariableValidationResult",
     "validate_message_variables",
-    # ISO data utilities (require Babel)
+    # ISO standards (importable without Babel; most raise BabelImportError when called)
+    "CurrencyCode",
+    "TerritoryCode",
     "get_cldr_version",
     "get_currency_decimal_digits",
+    "is_valid_currency_code",
+    "is_valid_territory_code",
+    "require_currency_code",
+    "require_territory_code",
+    # Diagnostics
+    "WarningSeverity",
+    # Graph analysis
+    "detect_cycles",
     # Parsing API
     "parse_ftl",
     "parse_stream_ftl",

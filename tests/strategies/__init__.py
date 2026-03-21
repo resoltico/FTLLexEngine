@@ -33,7 +33,7 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - error_categories, validation_errors, validation_warnings
     - validation_results, diagnostic_formatters, frozen_fluent_errors
     - complete_graphs, dependency_graphs, cycle_paths, namespace_ref_pairs
-    - validation_resource_sources, semantic_validation_resources
+    - validation_resource_sources, validation_dependency_graphs, semantic_validation_resources
 """
 
 # Currency parsing strategies
@@ -212,6 +212,7 @@ from .localization import (
 # Validation domain strategies
 from .validation import (
     semantic_validation_resources,
+    validation_dependency_graphs,
     validation_resource_sources,
 )
 
@@ -388,5 +389,6 @@ __all__ = [
     "namespace_ref_pairs",
     # Validation domain strategies
     "validation_resource_sources",
+    "validation_dependency_graphs",
     "semantic_validation_resources",
 ]

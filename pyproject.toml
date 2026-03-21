@@ -36,7 +36,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.159.0"
+version = "0.160.0"
 description = "Fluent (FTL) i18n infrastructure library: bidirectional parsing, locale-aware numbers/dates/currency, strict-mode boot validation, and Decimal precision"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -424,6 +424,8 @@ ignore = [
 "tests/test_runtime_resolver.py" = ["N802", "EM101", "PLC0415"]
 "tests/test_runtime_function_registry_integration.py" = ["N802"]
 "tests/test_parsing_dates.py" = ["DTZ001"]
+# DTZ001: datetime test fixtures are test data, not production datetimes
+"tests/test_core_validators.py" = ["DTZ001"]
 "tests/test_parsing_*.py" = ["PLC0415"]
 "tests/test_core_fiscal.py" = ["PLC0415"]
 "tests/test_core_fiscal_property.py" = ["PLC0415"]
@@ -464,3 +466,5 @@ ignore = [
 "tests/fuzz/test_syntax_parser_grammar.py" = ["E402"]
 "tests/fuzz/test_syntax_parser_whitespace.py" = ["E402"]
 "tests/fuzz/test_parsing_numbers_property.py" = ["PLC0415"]
+# DTZ001: datetime strategy bounds and @example fixtures are test data, not production datetimes
+"tests/fuzz/test_core_validators_property.py" = ["DTZ001"]

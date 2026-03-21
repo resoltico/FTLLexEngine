@@ -8,7 +8,7 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - val_scenario={variant}: FTL source scenario for validate_resource()
     - val_entry_kind={kind}: Entry type composition in generated FTL
     - val_semantic_variant={variant}: AST scenario for SemanticValidator
-    - val_ref_kind={kind}: Reference type in dependency graph scenarios
+    - val_ref_kind={kind}: Reference namespace composition in typed graphs
 
 Python 3.13+.
 """
@@ -42,6 +42,7 @@ from ftllexengine.syntax.ast import (
 
 __all__ = [
     "semantic_validation_resources",
+    "validation_dependency_graphs",
     "validation_resource_sources",
 ]
 
@@ -444,3 +445,59 @@ def semantic_validation_resources(draw: st.DrawFn) -> Resource:  # noqa: PLR0911
 
         case _:  # empty_resource
             return Resource(entries=())
+
+
+# ---------------------------------------------------------------------------
+# Typed dependency graph strategies
+# ---------------------------------------------------------------------------
+
+
+@st.composite
+def validation_dependency_graphs(
+    draw: st.DrawFn,
+    *,
+    max_nodes: int = 6,
+) -> dict[str, set[str]]:
+    """Generate typed dependency graphs for _compute_longest_paths testing.
+
+    Generates adjacency lists with msg:/term: prefixed node names, mirroring
+    the output of _build_dependency_graph(). Covers msg-only, term-only,
+    mixed-namespace, and empty graphs.
+
+    Args:
+        draw: Hypothesis draw function.
+        max_nodes: Maximum number of nodes to generate.
+
+    Events emitted:
+        - ``val_ref_kind={kind}``: Namespace composition of the generated graph.
+    """
+    kind = draw(st.sampled_from(["msg_only", "term_only", "mixed", "empty"]))
+    event(f"val_ref_kind={kind}")
+
+    if kind == "empty":
+        return {}
+
+    n = draw(st.integers(min_value=1, max_value=max_nodes))
+    prefixes: list[str]
+    match kind:
+        case "msg_only":
+            prefixes = ["msg:"] * n
+        case "term_only":
+            prefixes = ["term:"] * n
+        case _:  # mixed
+            prefixes = [
+                draw(st.sampled_from(["msg:", "term:"]))
+                for _ in range(n)
+            ]
+
+    nodes = [f"{prefix}node{i}" for i, prefix in enumerate(prefixes)]
+    graph: dict[str, set[str]] = {node: set() for node in nodes}
+
+    edge_count = draw(st.integers(min_value=0, max_value=n * 2))
+    for _ in range(edge_count):
+        src = draw(st.sampled_from(nodes))
+        dst = draw(st.sampled_from(nodes))
+        if src != dst:
+            graph[src].add(dst)
+
+    return graph

@@ -1,4 +1,5 @@
 # ISO data utilities (require Babel)
+from .analysis import detect_cycles as detect_cycles
 from .core.babel_compat import get_cldr_version as get_cldr_version
 
 # Fiscal calendar (no Babel dependency)
@@ -21,7 +22,12 @@ from .core.locale_utils import require_locale_code as require_locale_code
 from .core.validators import coerce_tuple as coerce_tuple
 from .core.validators import normalize_optional_decimal_range as normalize_optional_decimal_range
 from .core.validators import normalize_optional_str as normalize_optional_str
+from .core.validators import require_date as require_date
+from .core.validators import require_datetime as require_datetime
 from .core.validators import require_decimal_range as require_decimal_range
+from .core.validators import require_fiscal_calendar as require_fiscal_calendar
+from .core.validators import require_fiscal_period as require_fiscal_period
+from .core.validators import require_fluent_number as require_fluent_number
 from .core.validators import require_int as require_int
 from .core.validators import require_int_in_range as require_int_in_range
 from .core.validators import require_non_empty_str as require_non_empty_str
@@ -44,6 +50,7 @@ from .diagnostics import (
 from .diagnostics import (
     ParseTypeLiteral as ParseTypeLiteral,
 )
+from .diagnostics import WarningSeverity as WarningSeverity
 
 # Localization status enum (no Babel dependency)
 from .enums import LoadStatus as LoadStatus
@@ -79,7 +86,13 @@ from .integrity import (
 from .integrity import (
     WriteConflictError as WriteConflictError,
 )
+from .introspection.iso import CurrencyCode as CurrencyCode
+from .introspection.iso import TerritoryCode as TerritoryCode
 from .introspection.iso import get_currency_decimal_digits as get_currency_decimal_digits
+from .introspection.iso import is_valid_currency_code as is_valid_currency_code
+from .introspection.iso import is_valid_territory_code as is_valid_territory_code
+from .introspection.iso import require_currency_code as require_currency_code
+from .introspection.iso import require_territory_code as require_territory_code
 
 # Message introspection (no Babel dependency)
 from .introspection.message import (
@@ -169,7 +182,12 @@ __all__: list[str] = [
     "coerce_tuple",
     "normalize_optional_decimal_range",
     "normalize_optional_str",
+    "require_date",
+    "require_datetime",
     "require_decimal_range",
+    "require_fiscal_calendar",
+    "require_fiscal_period",
+    "require_fluent_number",
     "require_int",
     "require_int_in_range",
     "require_locale_code",
@@ -191,9 +209,19 @@ __all__: list[str] = [
     # Message introspection (no Babel dependency)
     "MessageVariableValidationResult",
     "validate_message_variables",
-    # ISO data utilities (require Babel)
+    # Analysis (no Babel dependency)
+    "detect_cycles",
+    # Diagnostics (no Babel dependency)
+    "WarningSeverity",
+    # ISO data utilities
+    "CurrencyCode",
+    "TerritoryCode",
     "get_cldr_version",
     "get_currency_decimal_digits",
+    "is_valid_currency_code",
+    "is_valid_territory_code",
+    "require_currency_code",
+    "require_territory_code",
     # Parsing API
     "parse_ftl",
     "parse_stream_ftl",

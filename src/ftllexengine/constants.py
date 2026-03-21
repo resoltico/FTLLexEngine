@@ -364,16 +364,22 @@ ISO_4217_DEFAULT_DECIMALS: int = 2
 # Complete set of active ISO 4217 alphabetic currency codes.
 #
 # Used by get_currency_decimal_digits() for Babel-free code validation.
-# Only active codes are included. Withdrawn/retired codes (e.g., BYR, HRK)
-# are excluded. Fund codes (BOV, CHE, CHW, MXV, USN, etc.) and special
-# X-codes are included per ISO 4217 because financial systems encounter them.
+# Only active codes are included. Withdrawn/retired codes (e.g., BYR, HRK,
+# SLL, ZWL) are excluded. Fund codes (BOV, CHE, CHW, MXV, USN, etc.) and
+# special X-codes are included per ISO 4217 because financial systems
+# encounter them.
 #
 # X-special codes: XAF/XOF/XPF are regional CFA francs; XAG/XAU/XPD/XPT
 # are precious metal troy ounce codes; XBA-XBD are European bond units;
 # XDR is IMF Special Drawing Rights; XSU is the ALBA Sucre; XTS is reserved
 # for testing; XUA is the Asian Development Bank unit; XXX signals no currency.
 #
-# Source: ISO 4217:2015 and subsequent amendments (amendment 170+).
+# Source: ISO 4217:2015 and subsequent amendments.
+# Notable recent amendments reflected here:
+#   - Amendment 169 (2021): VED (Venezuelan Bolivar Digital) added.
+#   - Amendment 170 (2022): SLE (Sierra Leone Leone) added; SLL retired.
+#   - Amendment 171+ (2024): ZWG (Zimbabwean Gold) added; ZWL retired.
+#   - Amendment 17x  (2025): XCG (Caribbean Guilder) added.
 ISO_4217_VALID_CODES: frozenset[str] = frozenset({
     # A
     "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN",
@@ -415,21 +421,21 @@ ISO_4217_VALID_CODES: frozenset[str] = frozenset({
     # R
     "RON", "RSD", "RUB", "RWF",
     # S
-    "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SLL", "SOS",
+    "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SOS",
     "SRD", "SSP", "STN", "SVC", "SYP", "SZL",
     # T
     "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS",
     # U
     "UAH", "UGX", "USD", "USN", "UYI", "UYU", "UYW", "UZS",
     # V
-    "VES", "VND", "VUV",
+    "VED", "VES", "VND", "VUV",
     # W
     "WST",
     # X (special codes per ISO 4217)
-    "XAF", "XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XCD", "XDR", "XOF",
-    "XPD", "XPF", "XPT", "XSU", "XTS", "XUA", "XXX",
+    "XAF", "XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XCD", "XCG", "XDR",
+    "XOF", "XPD", "XPF", "XPT", "XSU", "XTS", "XUA", "XXX",
     # Y
     "YER",
     # Z
-    "ZAR", "ZMW", "ZWL",
+    "ZAR", "ZMW", "ZWG",
 })

@@ -21,7 +21,12 @@ Exports (eager — no Babel dependency, no circular import risk):
     coerce_tuple: Coerce a non-str Sequence to an immutable tuple
     normalize_optional_decimal_range: None passthrough over require_decimal_range
     normalize_optional_str: None passthrough over require_non_empty_str
+    require_date: Validate that a boundary value is a date (not datetime)
+    require_datetime: Validate that a boundary value is a datetime
     require_decimal_range: Validate that a boundary Decimal is finite and within a range
+    require_fiscal_calendar: Validate that a boundary value is a FiscalCalendar
+    require_fiscal_period: Validate that a boundary value is a FiscalPeriod
+    require_fluent_number: Validate that a boundary value is a FluentNumber
     require_int: Validate that a boundary value is an integer (no range check)
     require_int_in_range: Validate that a boundary integer is within an inclusive range
     require_non_empty_str: Validate that a boundary value is a non-blank string
@@ -59,7 +64,12 @@ from .validators import (
     coerce_tuple,
     normalize_optional_decimal_range,
     normalize_optional_str,
+    require_date,
+    require_datetime,
     require_decimal_range,
+    require_fiscal_calendar,
+    require_fiscal_period,
+    require_fluent_number,
     require_int,
     require_int_in_range,
     require_non_empty_str,
@@ -89,7 +99,12 @@ __all__ = [
     "make_fluent_number",
     "normalize_optional_decimal_range",
     "normalize_optional_str",
+    "require_date",
+    "require_datetime",
     "require_decimal_range",
+    "require_fiscal_calendar",
+    "require_fiscal_period",
+    "require_fluent_number",
     "require_int",
     "require_int_in_range",
     "require_non_empty_str",

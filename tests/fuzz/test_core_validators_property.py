@@ -32,28 +32,48 @@ Properties verified:
 - require_int_in_range: for bool/non-int, always raises TypeError.
 - require_int_in_range: for int outside [lo, hi], always raises ValueError.
 - require_int_in_range: field_name is always embedded in the error message.
+- require_date: for any date (not datetime), returns value unchanged.
+- require_date: for datetime (subclass of date), always raises TypeError.
+- require_date: for non-date values, always raises TypeError.
+- require_datetime: for any datetime, returns value unchanged.
+- require_datetime: for plain date (not datetime), always raises TypeError.
+- require_datetime: for non-datetime values, always raises TypeError.
+- require_fluent_number: for any FluentNumber, returns value unchanged.
+- require_fluent_number: for non-FluentNumber values, always raises TypeError.
+- require_fiscal_period: for any FiscalPeriod, returns value unchanged.
+- require_fiscal_period: for non-FiscalPeriod values, always raises TypeError.
+- require_fiscal_calendar: for any FiscalCalendar, returns value unchanged.
+- require_fiscal_calendar: for non-FiscalCalendar values, always raises TypeError.
 """
 
 from __future__ import annotations
 
 import string
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
 from hypothesis import event, example, given
 from hypothesis import strategies as st
 
+from ftllexengine.core.fiscal import FiscalCalendar, FiscalPeriod
 from ftllexengine.core.validators import (
     coerce_tuple,
     normalize_optional_decimal_range,
     normalize_optional_str,
+    require_date,
+    require_datetime,
     require_decimal_range,
+    require_fiscal_calendar,
+    require_fiscal_period,
+    require_fluent_number,
     require_int,
     require_int_in_range,
     require_non_empty_str,
     require_non_negative_int,
     require_positive_int,
 )
+from ftllexengine.core.value_types import FluentNumber
 
 pytestmark = pytest.mark.fuzz
 
@@ -874,3 +894,270 @@ class TestRequireIntInRangeFuzz:
             event("outcome=type_is_int")
         else:
             event("outcome=skipped_out_of_range")
+
+
+# ---------------------------------------------------------------------------
+# Strategies for new validators
+# ---------------------------------------------------------------------------
+
+_DATES = st.dates(min_value=date(1900, 1, 1), max_value=date(2100, 12, 31))
+_DATETIMES = st.datetimes(
+    min_value=datetime(1900, 1, 1),
+    max_value=datetime(2100, 12, 31),
+)
+_NON_DATE_VALUES: st.SearchStrategy[object] = st.one_of(
+    st.integers(),
+    st.text(min_size=0, max_size=10),
+    st.none(),
+    st.floats(allow_nan=False),
+    st.booleans(),
+)
+
+_FLUENT_NUMBERS: st.SearchStrategy[FluentNumber] = st.one_of(
+    st.integers(min_value=-1_000_000, max_value=1_000_000).map(
+        lambda v: FluentNumber(value=v, formatted=str(v), precision=0)
+    ),
+    st.decimals(
+        min_value=Decimal("-999999.99"),
+        max_value=Decimal("999999.99"),
+        allow_nan=False,
+        allow_infinity=False,
+        places=2,
+    ).map(lambda v: FluentNumber(value=v, formatted=str(v), precision=2)),
+)
+
+_NON_FLUENT_NUMBER_VALUES: st.SearchStrategy[object] = st.one_of(
+    st.integers(),
+    st.decimals(allow_nan=False, allow_infinity=False),
+    st.text(min_size=0, max_size=10),
+    st.none(),
+    st.floats(allow_nan=False),
+    st.booleans(),
+)
+
+_FISCAL_PERIODS: st.SearchStrategy[FiscalPeriod] = st.builds(
+    FiscalPeriod,
+    fiscal_year=st.integers(min_value=1, max_value=9999),
+    quarter=st.integers(min_value=1, max_value=4),
+    month=st.integers(min_value=1, max_value=12),
+)
+
+_FISCAL_CALENDARS: st.SearchStrategy[FiscalCalendar] = st.builds(
+    FiscalCalendar,
+    start_month=st.integers(min_value=1, max_value=12),
+)
+
+_NON_FISCAL_VALUES: st.SearchStrategy[object] = st.one_of(
+    st.integers(),
+    st.text(min_size=0, max_size=10),
+    st.none(),
+    st.booleans(),
+    _DATES,
+)
+
+
+# ---------------------------------------------------------------------------
+# require_date properties
+# ---------------------------------------------------------------------------
+
+
+class TestRequireDateProperties:
+    """Property-based invariants for require_date."""
+
+    @given(d=_DATES, field=_FIELD_NAMES)
+    @example(d=date(2024, 1, 15), field="effective_date")
+    @example(d=date(1900, 1, 1), field="start")
+    def test_returns_date_unchanged(self, d: date, field: str) -> None:
+        """For any date (not datetime), returns value unchanged (identity)."""
+        event(f"year={d.year}")
+        result = require_date(d, field)
+        assert result is d
+        event("outcome=pass_through")
+
+    @given(d=_DATETIMES, field=_FIELD_NAMES)
+    @example(d=datetime(2024, 1, 15, 9, 0), field="effective_date")
+    def test_datetime_always_raises_type_error(self, d: datetime, field: str) -> None:
+        """datetime (subclass of date) always raises TypeError."""
+        event(f"has_time={'yes' if d.hour != 0 or d.minute != 0 else 'midnight'}")
+        with pytest.raises(TypeError, match="must be date, got datetime"):
+            require_date(d, field)
+        event("outcome=datetime_rejected")
+
+    @given(value=_NON_DATE_VALUES, field=_FIELD_NAMES)
+    def test_non_date_always_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-date, non-datetime values always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match=field):
+            require_date(value, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_field_name_in_type_error(self, field: str) -> None:
+        """field_name is embedded in the TypeError message."""
+        with pytest.raises(TypeError) as exc_info:
+            require_date(42, field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_error")
+
+
+# ---------------------------------------------------------------------------
+# require_datetime properties
+# ---------------------------------------------------------------------------
+
+
+class TestRequireDatetimeProperties:
+    """Property-based invariants for require_datetime."""
+
+    @given(d=_DATETIMES, field=_FIELD_NAMES)
+    @example(d=datetime(2024, 1, 15, 9, 0, 0), field="created_at")
+    def test_returns_datetime_unchanged(self, d: datetime, field: str) -> None:
+        """For any datetime, returns value unchanged (identity)."""
+        event(f"has_time={'yes' if d.hour != 0 or d.minute != 0 else 'midnight'}")
+        result = require_datetime(d, field)
+        assert result is d
+        event("outcome=pass_through")
+
+    @given(d=_DATES.filter(lambda d: type(d) is date), field=_FIELD_NAMES)
+    @example(d=date(2024, 1, 15), field="created_at")
+    def test_plain_date_always_raises_type_error(self, d: date, field: str) -> None:
+        """Plain date (not datetime) always raises TypeError."""
+        event(f"year={d.year}")
+        with pytest.raises(TypeError, match="must be datetime, got date"):
+            require_datetime(d, field)
+        event("outcome=date_rejected")
+
+    @given(value=_NON_DATE_VALUES, field=_FIELD_NAMES)
+    def test_non_datetime_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-datetime values always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match=field):
+            require_datetime(value, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_field_name_in_type_error(self, field: str) -> None:
+        """field_name is embedded in the TypeError message."""
+        with pytest.raises(TypeError) as exc_info:
+            require_datetime(date(2024, 1, 1), field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_error")
+
+
+# ---------------------------------------------------------------------------
+# require_fluent_number properties
+# ---------------------------------------------------------------------------
+
+
+class TestRequireFluentNumberProperties:
+    """Property-based invariants for require_fluent_number."""
+
+    @given(fn=_FLUENT_NUMBERS, field=_FIELD_NAMES)
+    def test_returns_fluent_number_unchanged(
+        self, fn: FluentNumber, field: str
+    ) -> None:
+        """For any FluentNumber, returns value unchanged (identity)."""
+        event(f"precision={fn.precision}")
+        result = require_fluent_number(fn, field)
+        assert result is fn
+        event("outcome=pass_through")
+
+    @given(value=_NON_FLUENT_NUMBER_VALUES, field=_FIELD_NAMES)
+    def test_non_fluent_number_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-FluentNumber values always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match="must be FluentNumber"):
+            require_fluent_number(value, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_field_name_in_type_error(self, field: str) -> None:
+        """field_name is embedded in the TypeError message."""
+        with pytest.raises(TypeError) as exc_info:
+            require_fluent_number(42, field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_error")
+
+
+# ---------------------------------------------------------------------------
+# require_fiscal_period properties
+# ---------------------------------------------------------------------------
+
+
+class TestRequireFiscalPeriodProperties:
+    """Property-based invariants for require_fiscal_period."""
+
+    @given(fp=_FISCAL_PERIODS, field=_FIELD_NAMES)
+    @example(
+        fp=FiscalPeriod(fiscal_year=2024, quarter=1, month=1), field="period"
+    )
+    def test_returns_fiscal_period_unchanged(
+        self, fp: FiscalPeriod, field: str
+    ) -> None:
+        """For any FiscalPeriod, returns value unchanged (identity)."""
+        event(f"quarter={fp.quarter}")
+        result = require_fiscal_period(fp, field)
+        assert result is fp
+        event("outcome=pass_through")
+
+    @given(value=_NON_FISCAL_VALUES, field=_FIELD_NAMES)
+    def test_non_fiscal_period_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-FiscalPeriod values always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match="must be FiscalPeriod"):
+            require_fiscal_period(value, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_field_name_in_type_error(self, field: str) -> None:
+        """field_name is embedded in the TypeError message."""
+        with pytest.raises(TypeError) as exc_info:
+            require_fiscal_period("Q1-2024", field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_error")
+
+
+# ---------------------------------------------------------------------------
+# require_fiscal_calendar properties
+# ---------------------------------------------------------------------------
+
+
+class TestRequireFiscalCalendarProperties:
+    """Property-based invariants for require_fiscal_calendar."""
+
+    @given(cal=_FISCAL_CALENDARS, field=_FIELD_NAMES)
+    @example(cal=FiscalCalendar(start_month=1), field="calendar")
+    @example(cal=FiscalCalendar(start_month=7), field="cal")
+    def test_returns_fiscal_calendar_unchanged(
+        self, cal: FiscalCalendar, field: str
+    ) -> None:
+        """For any FiscalCalendar, returns value unchanged (identity)."""
+        event(f"start_month={cal.start_month}")
+        result = require_fiscal_calendar(cal, field)
+        assert result is cal
+        event("outcome=pass_through")
+
+    @given(value=_NON_FISCAL_VALUES, field=_FIELD_NAMES)
+    def test_non_fiscal_calendar_raises_type_error(
+        self, value: object, field: str
+    ) -> None:
+        """Non-FiscalCalendar values always raise TypeError."""
+        event(f"type={type(value).__name__}")
+        with pytest.raises(TypeError, match="must be FiscalCalendar"):
+            require_fiscal_calendar(value, field)
+        event("outcome=type_error_raised")
+
+    @given(field=_FIELD_NAMES)
+    def test_field_name_in_type_error(self, field: str) -> None:
+        """field_name is embedded in the TypeError message."""
+        with pytest.raises(TypeError) as exc_info:
+            require_fiscal_calendar("April", field)
+        assert field in str(exc_info.value)
+        event("outcome=field_in_error")

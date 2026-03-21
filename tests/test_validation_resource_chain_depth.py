@@ -27,6 +27,7 @@ from ftllexengine.syntax import (
 )
 from ftllexengine.validation.resource import (
     _build_dependency_graph,
+    _compute_longest_paths,
     _detect_long_chains,
     validate_resource,
 )
@@ -593,3 +594,69 @@ class TestValidationChainDepth:
             and e.diagnostic.code.name == "MAX_DEPTH_EXCEEDED"
         ]
         assert len(depth_errors) > 0
+
+
+# ============================================================================
+# _compute_longest_paths memoization coverage
+# ============================================================================
+
+
+class TestComputeLongestPathsMemoization:
+    """Test that the phase-0 memoization continue branch fires correctly."""
+
+    def test_duplicate_stack_push_triggers_memoization_continue(self) -> None:
+        """Phase-0 continue fires when a node appears twice in the DFS stack.
+
+        Graph A -> {B, C}, B -> {C}, C -> {B}: A pushes both B and C; whichever
+        child is processed first (say C) will push the other (B) again. After
+        both B and C complete their phase-1, the original copy of B (pushed by
+        A) is popped in phase-0 and finds B already in longest_path. The
+        memoization continue fires regardless of Python's hash-randomized set
+        iteration order because both orderings of {B, C} produce a duplicate
+        push of one of the two nodes.
+        """
+        graph: dict[str, set[str]] = {
+            "a": {"b", "c"},
+            "b": {"c"},
+            "c": {"b"},
+        }
+        result = _compute_longest_paths(graph)
+
+        assert set(result.keys()) == {"a", "b", "c"}
+        for node, (depth, path) in result.items():
+            assert depth >= 0
+            assert len(path) >= 1
+            assert path[0] == node
+
+    def test_single_node_graph(self) -> None:
+        """Single-node graph: node maps to depth 0 and one-element path."""
+        result = _compute_longest_paths({"x": set()})
+        assert result == {"x": (0, ["x"])}
+
+    def test_empty_graph(self) -> None:
+        """Empty graph returns empty mapping."""
+        result = _compute_longest_paths({})
+        assert result == {}
+
+    def test_linear_chain_depth(self) -> None:
+        """Linear A -> B -> C produces correct depths (2, 1, 0)."""
+        graph: dict[str, set[str]] = {"a": {"b"}, "b": {"c"}, "c": set()}
+        result = _compute_longest_paths(graph)
+        assert result["c"] == (0, ["c"])
+        assert result["b"] == (1, ["b", "c"])
+        assert result["a"][0] == 2
+        assert result["a"][1][0] == "a"
+
+    def test_diamond_dag_shares_subgraph(self) -> None:
+        """Diamond A -> {B, C}, B -> D, C -> D: D computed once via memoization."""
+        graph: dict[str, set[str]] = {
+            "a": {"b", "c"},
+            "b": {"d"},
+            "c": {"d"},
+            "d": set(),
+        }
+        result = _compute_longest_paths(graph)
+        assert result["d"] == (0, ["d"])
+        assert result["b"] == (1, ["b", "d"])
+        assert result["c"] == (1, ["c", "d"])
+        assert result["a"][0] == 2

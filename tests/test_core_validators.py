@@ -40,27 +40,40 @@ Tests cover:
 - require_int_in_range: raises ValueError for out-of-range values
 - require_int_in_range: field_name appears in error messages
 - require_int_in_range: accessible from core package and root facade
+- require_date: returns date unchanged (identity); rejects datetime and non-date
+- require_datetime: returns datetime unchanged (identity); rejects plain date
+- require_fluent_number: returns FluentNumber unchanged; rejects non-FluentNumber
+- require_fiscal_period: returns FiscalPeriod unchanged; rejects wrong types
+- require_fiscal_calendar: returns FiscalCalendar unchanged; rejects wrong types
 """
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
 
 import ftllexengine
 import ftllexengine.core as core_module
+from ftllexengine.core.fiscal import FiscalCalendar, FiscalPeriod
 from ftllexengine.core.validators import (
     coerce_tuple,
     normalize_optional_decimal_range,
     normalize_optional_str,
+    require_date,
+    require_datetime,
     require_decimal_range,
+    require_fiscal_calendar,
+    require_fiscal_period,
+    require_fluent_number,
     require_int,
     require_int_in_range,
     require_non_empty_str,
     require_non_negative_int,
     require_positive_int,
 )
+from ftllexengine.core.value_types import FluentNumber
 
 
 class TestRequireNonEmptyStr:
@@ -942,3 +955,185 @@ class TestRequireIntInRangeFacadeExport:
     def test_in_root_all(self) -> None:
         """require_int_in_range is listed in ftllexengine.__all__."""
         assert "require_int_in_range" in ftllexengine.__all__
+
+
+class TestRequireDate:
+    """Tests for require_date boundary validator."""
+
+    def test_returns_date_identity(self) -> None:
+        """A plain date is returned unchanged (same object)."""
+        d = date(2024, 6, 15)
+        assert require_date(d, "effective_date") is d
+
+    def test_rejects_datetime_subtype(self) -> None:
+        """datetime (subclass of date) raises TypeError with field_name in message."""
+        dt = datetime(2024, 6, 15, 9, 0)
+        with pytest.raises(TypeError, match="effective_date"):
+            require_date(dt, "effective_date")
+
+    def test_datetime_error_message_names_got_type(self) -> None:
+        """Error message for datetime input says 'got datetime'."""
+        with pytest.raises(TypeError, match="got datetime"):
+            require_date(datetime(2024, 1, 1), "field")
+
+    def test_rejects_non_date_types(self) -> None:
+        """Non-date types raise TypeError."""
+        for bad in ("2024-01-01", 42, None, 3.14):
+            with pytest.raises(TypeError, match="field"):
+                require_date(bad, "field")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in TypeError message for any invalid value."""
+        with pytest.raises(TypeError, match="my_date_field"):
+            require_date("not-a-date", "my_date_field")
+
+    def test_accessible_from_core(self) -> None:
+        """require_date is exported from ftllexengine.core."""
+        assert require_date is core_module.require_date
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_date is exported from the ftllexengine root facade."""
+        assert ftllexengine.require_date is require_date
+
+    def test_in_root_all(self) -> None:
+        """require_date is listed in ftllexengine.__all__."""
+        assert "require_date" in ftllexengine.__all__
+
+
+class TestRequireDatetime:
+    """Tests for require_datetime boundary validator."""
+
+    def test_returns_datetime_identity(self) -> None:
+        """A datetime is returned unchanged (same object)."""
+        dt = datetime(2024, 6, 15, 9, 30)
+        assert require_datetime(dt, "created_at") is dt
+
+    def test_rejects_plain_date(self) -> None:
+        """A plain date (not datetime) raises TypeError with field_name."""
+        d = date(2024, 6, 15)
+        with pytest.raises(TypeError, match="created_at"):
+            require_datetime(d, "created_at")
+
+    def test_rejects_non_datetime_types(self) -> None:
+        """Non-datetime types raise TypeError."""
+        for bad in ("2024-01-01T09:00:00", 42, None, 3.14):
+            with pytest.raises(TypeError, match="field"):
+                require_datetime(bad, "field")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_dt_field"):
+            require_datetime(date(2024, 1, 1), "my_dt_field")
+
+    def test_accessible_from_core(self) -> None:
+        """require_datetime is exported from ftllexengine.core."""
+        assert require_datetime is core_module.require_datetime
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_datetime is exported from the ftllexengine root facade."""
+        assert ftllexengine.require_datetime is require_datetime
+
+    def test_in_root_all(self) -> None:
+        """require_datetime is listed in ftllexengine.__all__."""
+        assert "require_datetime" in ftllexengine.__all__
+
+
+class TestRequireFluentNumber:
+    """Tests for require_fluent_number boundary validator."""
+
+    def test_returns_fluent_number_identity(self) -> None:
+        """A FluentNumber is returned unchanged (same object)."""
+        fn = FluentNumber(value=42, formatted="42", precision=0)
+        assert require_fluent_number(fn, "count") is fn
+
+    def test_rejects_plain_int(self) -> None:
+        """A plain int raises TypeError."""
+        with pytest.raises(TypeError, match="count"):
+            require_fluent_number(42, "count")
+
+    def test_rejects_non_fluent_number_types(self) -> None:
+        """Non-FluentNumber types raise TypeError."""
+        for bad in ("42", 42.0, None, Decimal(42)):
+            with pytest.raises(TypeError, match="field"):
+                require_fluent_number(bad, "field")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_num_field"):
+            require_fluent_number(99, "my_num_field")
+
+    def test_accessible_from_core(self) -> None:
+        """require_fluent_number is exported from ftllexengine.core."""
+        assert require_fluent_number is core_module.require_fluent_number
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_fluent_number is exported from the ftllexengine root facade."""
+        assert ftllexengine.require_fluent_number is require_fluent_number
+
+    def test_in_root_all(self) -> None:
+        """require_fluent_number is listed in ftllexengine.__all__."""
+        assert "require_fluent_number" in ftllexengine.__all__
+
+
+class TestRequireFiscalPeriod:
+    """Tests for require_fiscal_period boundary validator."""
+
+    def test_returns_fiscal_period_identity(self) -> None:
+        """A FiscalPeriod is returned unchanged (same object)."""
+        fp = FiscalPeriod(fiscal_year=2024, quarter=2, month=4)
+        assert require_fiscal_period(fp, "period") is fp
+
+    def test_rejects_non_fiscal_period(self) -> None:
+        """Non-FiscalPeriod values raise TypeError."""
+        for bad in ("2024-Q2", 2024, None, (2024, 2, 4)):
+            with pytest.raises(TypeError, match="period"):
+                require_fiscal_period(bad, "period")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_period_field"):
+            require_fiscal_period("Q2", "my_period_field")
+
+    def test_accessible_from_core(self) -> None:
+        """require_fiscal_period is exported from ftllexengine.core."""
+        assert require_fiscal_period is core_module.require_fiscal_period
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_fiscal_period is exported from the ftllexengine root facade."""
+        assert ftllexengine.require_fiscal_period is require_fiscal_period
+
+    def test_in_root_all(self) -> None:
+        """require_fiscal_period is listed in ftllexengine.__all__."""
+        assert "require_fiscal_period" in ftllexengine.__all__
+
+
+class TestRequireFiscalCalendar:
+    """Tests for require_fiscal_calendar boundary validator."""
+
+    def test_returns_fiscal_calendar_identity(self) -> None:
+        """A FiscalCalendar is returned unchanged (same object)."""
+        fc = FiscalCalendar(start_month=10)
+        assert require_fiscal_calendar(fc, "cal") is fc
+
+    def test_rejects_non_fiscal_calendar(self) -> None:
+        """Non-FiscalCalendar values raise TypeError."""
+        for bad in (10, "October", None, {"year_start_month": 10}):
+            with pytest.raises(TypeError, match="cal"):
+                require_fiscal_calendar(bad, "cal")
+
+    def test_field_name_in_error_message(self) -> None:
+        """field_name appears in TypeError message."""
+        with pytest.raises(TypeError, match="my_cal_field"):
+            require_fiscal_calendar(None, "my_cal_field")
+
+    def test_accessible_from_core(self) -> None:
+        """require_fiscal_calendar is exported from ftllexengine.core."""
+        assert require_fiscal_calendar is core_module.require_fiscal_calendar
+
+    def test_accessible_from_root_facade(self) -> None:
+        """require_fiscal_calendar is exported from the ftllexengine root facade."""
+        assert ftllexengine.require_fiscal_calendar is require_fiscal_calendar
+
+    def test_in_root_all(self) -> None:
+        """require_fiscal_calendar is listed in ftllexengine.__all__."""
+        assert "require_fiscal_calendar" in ftllexengine.__all__

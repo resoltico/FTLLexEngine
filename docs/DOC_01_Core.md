@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.159.0"
+version: "0.160.0"
 domain: CORE
-updated: "2026-03-19"
+updated: "2026-03-21"
 route:
-  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, normalize_optional_str, require_positive_int, require_int, require_int_in_range, require_non_negative_int, coerce_tuple, require_decimal_range, normalize_optional_decimal_range, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool, CurrencyCode, TerritoryCode, NewType, optional, Decimal, range, int range]
-  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?", "how do I coerce a list to tuple?", "how do I validate a non-negative int?", "how do I validate any int type?", "how do I validate an optional string?", "how do I validate a Decimal within a range?", "how do I validate an integer within a range?", "how do I validate an optional Decimal?"]
+  keywords: [AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, has_message, has_attribute, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, normalize_optional_str, require_positive_int, require_int, require_int_in_range, require_non_negative_int, coerce_tuple, require_decimal_range, normalize_optional_decimal_range, require_date, require_datetime, require_fluent_number, require_fiscal_period, require_fiscal_calendar, validate_resource, introspect_message, introspect_term, get_cache_audit_log, strict, CacheConfig, IntegrityCache, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, LocaleCode, normalize_locale, get_system_locale, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, ResourceLoader, PathResourceLoader, incremental, streaming, line iterator, async, asyncio, event loop, thread pool, CurrencyCode, TerritoryCode, NewType, optional, Decimal, range, int range, date, datetime, FluentNumber, FiscalPeriod, FiscalCalendar]
+  questions: ["how to format message?", "how to add translations?", "how to validate ftl?", "how do I validate one message schema at boot?", "how do I validate localization at boot?", "how to check message exists?", "how do I canonicalize a locale code?", "is bundle thread safe?", "how to use strict mode?", "how to enable cache audit?", "how do I get the cache audit log?", "how do I coerce a list to tuple?", "how do I validate a non-negative int?", "how do I validate any int type?", "how do I validate an optional string?", "how do I validate a Decimal within a range?", "how do I validate an integer within a range?", "how do I validate an optional Decimal?", "how do I validate a date at a boundary?", "how do I validate a datetime?", "how do I validate a FluentNumber?", "how do I validate a FiscalPeriod or FiscalCalendar?"]
 ---
 
 # Core API Reference
@@ -1932,5 +1932,131 @@ def clear_locale_cache() -> None:
 - Thread: Safe (functools.cache internal locking).
 - Babel: REQUIRED. Install with `pip install ftllexengine[babel]`.
 - Import: `from ftllexengine.core.locale_utils import clear_locale_cache`
+
+---
+
+## `require_date`
+
+Validate that a boundary value is a `date` (not `datetime`). Rejects `datetime` explicitly because `datetime` is a subclass of `date` and would otherwise pass an `isinstance(value, date)` check.
+
+### Signature
+```python
+def require_date(value: object, field_name: str) -> date:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated `date` object, unchanged.
+- Raises: `TypeError` if `value` is a `datetime` (subtype check runs first), with message "must be date, got datetime".
+- Raises: `TypeError` if `value` is not a `date` at all, with message including `field_name` and `type(value).__name__`.
+- State: Pure function; no side effects.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_date` or `from ftllexengine.core.validators import require_date`.
+
+---
+
+## `require_datetime`
+
+Validate that a boundary value is a `datetime`. Rejects plain `date` objects (which are NOT subtypes of `datetime`).
+
+### Signature
+```python
+def require_datetime(value: object, field_name: str) -> datetime:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated `datetime` object, unchanged.
+- Raises: `TypeError` if `value` is not a `datetime` instance (includes plain `date`).
+- State: Pure function; no side effects.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_datetime` or `from ftllexengine.core.validators import require_datetime`.
+
+---
+
+## `require_fluent_number`
+
+Validate that a boundary value is a `FluentNumber`.
+
+### Signature
+```python
+def require_fluent_number(value: object, field_name: str) -> FluentNumber:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated `FluentNumber` object, unchanged.
+- Raises: `TypeError` if `value` is not a `FluentNumber` instance. Plain `int`, `float`, and `Decimal` are rejected.
+- State: Pure function; no side effects.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_fluent_number` or `from ftllexengine.core.validators import require_fluent_number`.
+
+---
+
+## `require_fiscal_period`
+
+Validate that a boundary value is a `FiscalPeriod`.
+
+### Signature
+```python
+def require_fiscal_period(value: object, field_name: str) -> FiscalPeriod:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated `FiscalPeriod` object, unchanged.
+- Raises: `TypeError` if `value` is not a `FiscalPeriod` instance.
+- State: Pure function; no side effects.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_fiscal_period` or `from ftllexengine.core.validators import require_fiscal_period`.
+
+---
+
+## `require_fiscal_calendar`
+
+Validate that a boundary value is a `FiscalCalendar`.
+
+### Signature
+```python
+def require_fiscal_calendar(value: object, field_name: str) -> FiscalCalendar:
+```
+
+### Parameters
+| Parameter | Type | Req | Description |
+|:----------|:-----|:----|:------------|
+| `value` | `object` | Y | Raw boundary value to validate. |
+| `field_name` | `str` | Y | Human-readable field label used in error messages. |
+
+### Constraints
+- Return: The validated `FiscalCalendar` object, unchanged.
+- Raises: `TypeError` if `value` is not a `FiscalCalendar` instance.
+- State: Pure function; no side effects.
+- Thread: Safe.
+- Babel: NOT required.
+- Import: `from ftllexengine import require_fiscal_calendar` or `from ftllexengine.core.validators import require_fiscal_calendar`.
 
 ---

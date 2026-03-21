@@ -166,7 +166,6 @@ class TestBabelOptionalAttrsSet:
             "fluent_function",
             "make_fluent_number",
             "get_cldr_version",
-            "get_currency_decimal_digits",
         }
         assert expected == ftllexengine._BABEL_OPTIONAL_ATTRS  # type: ignore[attr-defined]
 
@@ -407,7 +406,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 67
+        assert len(ftllexengine.__all__) == 80
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
@@ -464,6 +463,48 @@ class TestInitModuleExports:
         for name in ("__version__", "__fluent_spec_version__", "__spec_url__",
                      "__recommended_encoding__"):
             assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+    def test_new_validators_are_in_all(self) -> None:
+        """New boundary validators added in this release are in ftllexengine.__all__."""
+        import ftllexengine
+
+        for name in (
+            "require_date",
+            "require_datetime",
+            "require_fiscal_calendar",
+            "require_fiscal_period",
+            "require_fluent_number",
+            "require_currency_code",
+            "require_territory_code",
+        ):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+    def test_iso_types_are_in_all(self) -> None:
+        """ISO code types and guards are in ftllexengine.__all__."""
+        import ftllexengine
+
+        for name in (
+            "CurrencyCode",
+            "TerritoryCode",
+            "is_valid_currency_code",
+            "is_valid_territory_code",
+            "get_currency_decimal_digits",
+        ):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+    def test_warning_severity_is_in_all(self) -> None:
+        """WarningSeverity is promoted to the root facade."""
+        import ftllexengine
+
+        assert "WarningSeverity" in ftllexengine.__all__
+        assert hasattr(ftllexengine, "WarningSeverity")
+
+    def test_detect_cycles_is_in_all(self) -> None:
+        """detect_cycles is promoted to the root facade."""
+        import ftllexengine
+
+        assert "detect_cycles" in ftllexengine.__all__
+        assert hasattr(ftllexengine, "detect_cycles")
 
 
 class TestClearModuleCaches:

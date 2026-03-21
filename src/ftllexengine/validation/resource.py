@@ -680,7 +680,7 @@ def _compute_longest_paths(
             node, phase, children = stack.pop()
 
             if phase == 0:
-                if node in longest_path or node in in_stack:
+                if node in longest_path:
                     continue
 
                 in_stack.add(node)
