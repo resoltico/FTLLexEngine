@@ -483,7 +483,6 @@ Pre-built strategies in `tests/strategies/` emit events automatically:
 ```python
 from tests.strategies.ftl import ftl_placeables  # Emits strategy=placeable_*
 from tests.strategies.iso import currency_by_decimals  # Emits currency_decimals=*
-from tests.strategies.fiscal import date_by_boundary  # Emits date_boundary=*
 
 @given(source=ftl_placeables())
 def test_placeables(source: str) -> None:
@@ -570,10 +569,6 @@ After a `--deep` fuzzing session, the script reports event diversity:
 | `iso.py` | `currency_by_decimals()` | `currency_decimals={0,2,3}` |
 | `iso.py` | `territory_by_region()` | `territory_region={g7,brics,baltic,...}` |
 | `iso.py` | `locale_by_script()` | `locale_script={latin,cjk,cyrillic,arabic,other}` |
-| `fiscal.py` | `fiscal_delta_by_magnitude()` | `fiscal_delta={zero,small,medium,large}` |
-| `fiscal.py` | `date_by_boundary()` | `date_boundary={month_end,year_end,leap_feb,...}` |
-| `fiscal.py` | `fiscal_calendar_by_type()` | `fiscal_calendar={calendar_year,uk_japan,...}` |
-| `fiscal.py` | `month_end_policy_with_event()` | `month_end_policy={preserve,clamp,strict}` |
 
 ---
 
@@ -623,7 +618,6 @@ Strategy                       Invocations    Wall Time    Mean Cost   Weight
 ------------------------------------------------------------------------------
 ftl_placeables                       1,234      456.7ms       0.370ms   15.2%
 currency_by_decimals                   890      123.4ms       0.139ms   10.9%
-fiscal_delta_by_magnitude              456       89.2ms       0.196ms    5.6%
 ...
 ------------------------------------------------------------------------------
 ```

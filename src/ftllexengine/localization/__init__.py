@@ -17,7 +17,7 @@ Babel Optionality:
     On parser-only installs the Babel-dependent names are absent; accessing
     them raises ImportError via the root ftllexengine.__getattr__ guard.
 
-Python 3.14+.
+Python 3.13+.
 """
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability

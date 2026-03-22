@@ -22,9 +22,6 @@ route:
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency, integrity, and public audit-trail access |
 | `fuzz_currency.py` | `runtime.functions` | 8 | 65 (.txt) + 23 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
 | `fuzz_parse_currency.py` | `parsing.currency`, `parsing.guards` | 9 | 5 (.txt) + 20 (.bin) | Locale-aware currency parsing, symbol disambiguation, cache stability |
-| `fuzz_fiscal.py` | `parsing.fiscal` | 10 | 38 (.bin) | Fiscal calendar arithmetic, contracts |
-| `fuzz_integrity.py` | `validation`, `syntax.validator`, `integrity`, `diagnostics.errors` | 31 | 68 (.ftl) + 38 (.bin) | Semantic validation, strict mode, cross-resource, FrozenFluentError Error Layer, LedgerInvariantError, PersistenceIntegrityError |
-| `_inactive_fuzz_interpreter_pool.py` | `runtime.interpreter_pool` | 6 | 6 (.bin) | InterpreterPool lifecycle, acquire/release, crash isolation (ExecutionFailed), close semantics -- INACTIVE: requires Python 3.14+ (`concurrent.interpreters`, PEP 734); Atheris requires Python <= 3.13 |
 | `fuzz_iso.py` | `introspection.iso`, `ftllexengine` | 11 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle; `clear_module_caches(components=...)` |
 | `fuzz_lock.py` | `runtime`, `runtime.rwlock` | 16 | 39 (.bin) | RWLock concurrency primitives and public runtime export |
 | `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
@@ -54,13 +51,11 @@ route:
 | `diagnostics.validation` | diagnostics_formatter, integrity |
 | `integrity` | runtime, cache, integrity |
 | `introspection.iso` | iso |
-| `runtime.interpreter_pool` | interpreter_pool |
 | `introspection.message` | introspection |
 | `localization.loading` | localization |
 | `localization.orchestrator` | localization |
 | `parsing.currency` | parse_currency |
 | `parsing.dates` | dates |
-| `parsing.fiscal` | fiscal |
 | `parsing.guards` | parse_currency, parse_decimal |
 | `parsing.numbers` | parse_decimal |
 | `runtime` | lock |
@@ -78,7 +73,6 @@ route:
 | `syntax.position` | cursor |
 | `syntax.serializer` | roundtrip, serializer, structured |
 | `syntax.visitor` | serializer |
-| `validation` | integrity |
 
 ## `fuzz_bridge`
 
@@ -469,52 +463,6 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 ### Allowed Exceptions
 
 `DataIntegrityError` (and subclasses), `LedgerInvariantError`, `PersistenceIntegrityError`, `FrozenFluentError`, `ValueError`, `TypeError`, `KeyError`, `RecursionError`, `MemoryError` -- expected for strict mode and adversarial inputs.
-
----
-
-## `fuzz_interpreter_pool` (INACTIVE)
-
-**Blocked: requires `concurrent.interpreters` (Python 3.14+, PEP 734). Atheris requires Python <= 3.13. These constraints are mutually exclusive.** The fuzzer is preserved as `_inactive_fuzz_interpreter_pool.py` (excluded from plugin discovery) until Atheris supports Python 3.14.
-
-Target: `runtime.interpreter_pool.InterpreterPool`, `runtime.interpreter_pool._PooledInterpreter` -- subinterpreter pool lifecycle, acquire/release context manager protocol, crash isolation for `ExecutionFailed`, close semantics.
-
-Concern boundary: This fuzzer stress-tests the `InterpreterPool` resource lifecycle. It covers construction validation (`min_size >= 1`, `max_size >= min_size`), acquire/release via context manager, `call()` argument passing, `ExecutionFailed` crash isolation (interpreter reused after user-code raise), pool-as-context-manager (`__enter__`/`__exit__` closing on exit), and `close()` idempotency and post-close acquire rejection. Does NOT cover concurrent multi-threaded access (covered by `test_runtime_interpreter_pool.py`).
-
-Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `InterpreterPoolMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
-
-### Patterns
-
-6 patterns across 3 categories:
-
-**CONSTRUCTION (2)** - Configuration validation:
-
-| Pattern | Weight | Invariants Checked |
-|:--------|-------:|:-------------------|
-| `construction_valid` | 8 | Default and custom min/max sizes construct without error; attributes stored correctly |
-| `construction_invalid` | 8 | `min_size=0` and `max_size < min_size` raise `ValueError` |
-
-**LIFECYCLE (2)** - acquire/release/call cycles:
-
-| Pattern | Weight | Invariants Checked |
-|:--------|-------:|:-------------------|
-| `lifecycle_call` | 10 | `call()` returns expected value; argument passing works; repeated sequential cycles maintain pool availability |
-| `lifecycle_context_manager` | 10 | Pool context manager closes on exit; `_PooledInterpreter` context manager auto-releases |
-
-**CRASH_ISOLATION (1)** - ExecutionFailed behavior:
-
-| Pattern | Weight | Invariants Checked |
-|:--------|-------:|:-------------------|
-| `crash_isolation` | 8 | `ExecutionFailed` propagates from `call()`; interpreter remains healthy and reusable; multiple cycles do not exhaust pool |
-
-**CLOSE (1)** - close() semantics:
-
-| Pattern | Weight | Invariants Checked |
-|:--------|-------:|:-------------------|
-| `close_behavior` | 8 | `close()` prevents acquire (`RuntimeError`); idempotent (multiple close() calls safe); pool closeable after sequential acquire/release |
-
-### Allowed Exceptions
-
-`ValueError`, `TypeError`, `TimeoutError`, `RuntimeError`, `concurrent.interpreters.ExecutionFailed`, `concurrent.interpreters.InterpreterError` -- construction validation, closed pool, subinterpreter-level errors.
 
 ---
 

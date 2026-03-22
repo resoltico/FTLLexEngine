@@ -14,9 +14,6 @@ from .functions import datetime_format as datetime_format
 from .functions import get_shared_registry as get_shared_registry
 from .functions import number_format as number_format
 from .plural_rules import select_plural_category as select_plural_category
-from .resolution_context import ResolutionContext as ResolutionContext
-from .resolver import FluentResolver as FluentResolver
-from .rwlock import RWLock as RWLock
 from .value_types import make_fluent_number as make_fluent_number
 
 __all__: list[str] = [
@@ -25,10 +22,7 @@ __all__: list[str] = [
     "CacheConfig",
     "FluentBundle",
     "FluentNumber",
-    "FluentResolver",
     "FunctionRegistry",
-    "RWLock",
-    "ResolutionContext",
     "ValidationResult",
     "WriteLogEntry",
     "create_default_registry",

@@ -7,19 +7,20 @@
 """RWLock Contention Fuzzer (Atheris).
 
 Targets:
-- ftllexengine.runtime.RWLock
-- ftllexengine.runtime.rwlock.RWLock
+- ftllexengine.runtime.rwlock.RWLock (internal module only)
 
 Concern boundary: This fuzzer stress-tests the RWLock concurrency primitive
-directly. Tests reader/writer mutual exclusion, reader concurrency, writer
-preference, reentrant readers, read-to-write upgrade rejection,
-write-to-write reentry rejection, write-to-read downgrade rejection,
-timeout behavior, negative timeout rejection, release-without-acquire
+directly. RWLock is an internal implementation detail of FluentBundle thread
+safety — it is present in ftllexengine.runtime.rwlock but absent from the
+ftllexengine.runtime public facade. Tests reader/writer mutual exclusion,
+reader concurrency, writer preference, reentrant readers, read-to-write
+upgrade rejection, write-to-write reentry rejection, write-to-read downgrade
+rejection, timeout behavior, negative timeout rejection, release-without-acquire
 rejection, zero-timeout non-blocking paths, and deadlock detection.
 Distinct from runtime/cache fuzzers which exercise locking only as a side effect.
 
 Metrics:
-- Public export checks (`ftllexengine.runtime.RWLock`)
+- Public surface checks (RWLock absent from ftllexengine.runtime.__all__)
 - Pattern coverage (reader_writer_exclusion, reentrant_reads, etc.)
 - Weight skew detection (actual vs intended distribution)
 - Performance profiling (min/mean/median/p95/p99/max)
@@ -195,7 +196,7 @@ atheris.enabled_hooks.add("str")
 
 with atheris.instrument_imports(include=["ftllexengine"]):
     import ftllexengine.runtime as runtime_public
-    from ftllexengine.runtime import RWLock
+    from ftllexengine.runtime.rwlock import RWLock
     from ftllexengine.runtime.rwlock import RWLock as DirectRWLock
 
 
@@ -218,21 +219,24 @@ def _track_threads(count: int) -> None:
 # --- Pattern Implementations ---
 
 def _pattern_public_export_surface(_fdp: atheris.FuzzedDataProvider) -> None:
-    """Public runtime facade exports the canonical RWLock symbol."""
+    """RWLock is internal: absent from runtime facade, accessible from rwlock module."""
     _domain.public_export_checks += 1
 
-    if RWLock is not DirectRWLock:
-        msg = "ftllexengine.runtime.RWLock is not the direct implementation alias"
+    # RWLock is an internal concurrency primitive — removed from the public facade.
+    # Callers use FluentBundle directly; they have no need to instantiate RWLock.
+    if "RWLock" in runtime_public.__all__:
+        msg = "RWLock must not appear in ftllexengine.runtime.__all__ (internal primitive)"
         raise LockFuzzError(msg)
 
-    if "RWLock" not in runtime_public.__all__:
-        msg = "RWLock missing from ftllexengine.runtime.__all__"
+    # The implementation must remain accessible from the internal module.
+    if RWLock is not DirectRWLock:
+        msg = "ftllexengine.runtime.rwlock.RWLock identity mismatch"
         raise LockFuzzError(msg)
 
     lock = RWLock()
     with lock.read():
         if lock.reader_count != 1:
-            msg = f"RWLock public export reader_count mismatch: {lock.reader_count}"
+            msg = f"RWLock reader_count mismatch: {lock.reader_count}"
             raise LockFuzzError(msg)
 
 

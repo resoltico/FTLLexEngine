@@ -39,7 +39,7 @@ set -o pipefail
 shopt -s inherit_errexit
 
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.14}"
+PY_VERSION="${PY_VERSION:-3.13}"
 TARGET_VENV=".venv-${PY_VERSION}"
 
 if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then

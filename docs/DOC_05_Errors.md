@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.155.0"
+version: "0.161.0"
 domain: ERRORS
-updated: "2026-03-16"
+updated: "2026-03-21"
 route:
-  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ParseTypeLiteral, ImmutabilityViolationError, DataIntegrityError, IntegrityContext, CacheCorruptionError, IntegrityCheckFailedError, WriteConflictError, SyntaxIntegrityError, FormattingIntegrityError, LedgerInvariantError, PersistenceIntegrityError, financial, ledger, persistence, invariant_code, entity_ref, ValidationResult, DiagnosticCode, Diagnostic, VALIDATION_PLACEABLE_SELECTOR]
-  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?", "what is IntegrityContext?", "what is CacheCorruptionError?", "what is WriteConflictError?", "what is LedgerInvariantError?", "what is PersistenceIntegrityError?", "how do I handle financial domain integrity errors?"]
+  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ParseTypeLiteral, ImmutabilityViolationError, DataIntegrityError, IntegrityContext, CacheCorruptionError, IntegrityCheckFailedError, WriteConflictError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic, VALIDATION_PLACEABLE_SELECTOR]
+  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?", "what is IntegrityContext?", "what is CacheCorruptionError?", "what is WriteConflictError?"]
 ---
 
 # Errors Reference
@@ -197,7 +197,7 @@ class DataIntegrityError(Exception):
 
 ### Constraints
 - Purpose: Base class for all system-level integrity exceptions (NOT a `FrozenFluentError` subclass — different error domain).
-- Hierarchy: Eight sealed `@final` subclasses: `CacheCorruptionError`, `FormattingIntegrityError`, `ImmutabilityViolationError`, `IntegrityCheckFailedError`, `LedgerInvariantError`, `PersistenceIntegrityError`, `SyntaxIntegrityError`, `WriteConflictError`.
+- Hierarchy: Six sealed `@final` subclasses: `CacheCorruptionError`, `FormattingIntegrityError`, `ImmutabilityViolationError`, `IntegrityCheckFailedError`, `SyntaxIntegrityError`, `WriteConflictError`.
 - Immutable: Attributes frozen after construction. Mutation raises `ImmutabilityViolationError` (except Python exception machinery attributes).
 - Context: `context` property exposes the `IntegrityContext` passed at construction.
 - Import: `from ftllexengine.integrity import DataIntegrityError` or `from ftllexengine import DataIntegrityError`
@@ -447,79 +447,6 @@ class FormattingIntegrityError(DataIntegrityError):
 - Sealed: `@final` decorator prevents subclassing.
 - Financial: Financial applications require fail-fast behavior. Silent fallback values are unacceptable when formatting monetary amounts.
 - Import: `from ftllexengine.integrity import FormattingIntegrityError` or `from ftllexengine import FormattingIntegrityError`
-
----
-
-## `LedgerInvariantError`
-
-Financial domain invariant violated in persisted data.
-
-### Signature
-```python
-@final
-class LedgerInvariantError(DataIntegrityError):
-    def __init__(
-        self,
-        message: str,
-        context: IntegrityContext | None = None,
-        *,
-        invariant_code: str,
-        entity_ref: str | None = None,
-    ) -> None: ...
-
-    @property
-    def invariant_code(self) -> str: ...
-    @property
-    def entity_ref(self) -> str | None: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-| `invariant_code` | `str` | Y | Machine-readable code identifying the violated invariant. |
-| `entity_ref` | `str \| None` | N | Reference to the failing entity (transaction ref, account code, period ID). |
-
-### Constraints
-- Purpose: Raised when data read from storage fails an accounting invariant (e.g., unbalanced transaction, duplicate account code, fiscal period overlap). Indicates storage corruption or write-path bug — NOT a user input error.
-- Distinguished From: `IntegrityCheckFailedError` is generic boot/load failure; `LedgerInvariantError` is specifically financial domain logic on structurally valid stored data.
-- `invariant_code` Examples: `'BALANCE'`, `'DUPLICATE_ACCOUNT'`, `'PERIOD_OVERLAP'`.
-- Immutable: All attributes frozen after construction.
-- Sealed: `@final` decorator prevents subclassing.
-- Version: Added in v0.155.0.
-- Import: `from ftllexengine.integrity import LedgerInvariantError` or `from ftllexengine import LedgerInvariantError`
-
----
-
-## `PersistenceIntegrityError`
-
-Storage-layer read produced structurally invalid data.
-
-### Signature
-```python
-@final
-class PersistenceIntegrityError(DataIntegrityError):
-    def __init__(
-        self,
-        message: str,
-        context: IntegrityContext | None = None,
-    ) -> None: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-
-### Constraints
-- Purpose: Raised when deserialization produces a value that cannot satisfy domain model invariants (e.g., `Decimal` outside ISO 4217 precision bounds, unknown currency code in a stored ledger entry, date outside permitted fiscal calendar range).
-- Distinguished From: `LedgerInvariantError` is domain-logic failure on structurally valid data; `PersistenceIntegrityError` is storage-boundary failure (invalid wire format / schema migration gap).
-- Immutable: All attributes frozen after construction.
-- Sealed: `@final` decorator prevents subclassing.
-- Version: Added in v0.155.0.
-- Import: `from ftllexengine.integrity import PersistenceIntegrityError` or `from ftllexengine import PersistenceIntegrityError`
 
 ---
 

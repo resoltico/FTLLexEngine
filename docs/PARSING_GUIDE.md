@@ -163,7 +163,7 @@ result, errors = parse_date("2025-01-28", "en_US")
 ```
 
 **Implementation Details**:
-- **Python 3.14 stdlib only** - Uses `datetime.strptime()` and `datetime.fromisoformat()`
+- **Python 3.13 stdlib only** - Uses `datetime.strptime()` and `datetime.fromisoformat()`
 - **Babel CLDR patterns** - Converts Babel date patterns to strptime format directives
   - Example conversions: `"M/d/yy"` → `"%m/%d/%y"`, `"dd.MM.yyyy"` → `"%d.%m.%Y"`
 - **Token-based converter** - Replaces fragile regex approach for pattern conversion
@@ -174,7 +174,7 @@ result, errors = parse_date("2025-01-28", "en_US")
   3. No generic fallback patterns (prevents misinterpretation)
 - **Locale determines interpretation** - Day-first (EU) vs month-first (US) based on CLDR patterns
 - **Thread-safe** - No global state, immutable pattern lists
-- **Zero external dependencies** - Uses only Python 3.14 stdlib + Babel (already a dependency)
+- **Zero external dependencies** - Uses only Python 3.13 stdlib + Babel (already a dependency)
 
 **Important**: Ambiguous dates like "1/2/25" will FAIL unless:
 - Input matches locale's CLDR pattern (e.g., "1/2/25" only works for en_US, not lv_LV)
@@ -851,4 +851,4 @@ parse_date("Januar 15, 2026", "de_DE")  # German month name
 
 ---
 
-**Python Requirement**: 3.14+
+**Python Requirement**: 3.13+

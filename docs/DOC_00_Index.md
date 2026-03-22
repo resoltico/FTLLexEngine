@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.160.0"
+version: "0.161.0"
 domain: INDEX
 updated: "2026-03-21"
 route:
-  keywords: [api reference, documentation, exports, imports, AsyncFluentBundle, fluentbundle, fluentlocalization, cache-audit, boot-validation, LocalizationBootConfig, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, require_int, require_non_negative_int, coerce_tuple, make_fluent_number, parse_fluent_number, FluentNumber, decimal_value, RWLock, fiscal, iso, currency, get_currency_decimal_digits, LocaleCode, normalize_locale, get_system_locale, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats, parse_stream, parse_stream_ftl, add_resource_stream, incremental, streaming, async, asyncio, CurrencyCode, TerritoryCode, NewType, require_date, require_datetime, require_fluent_number, require_fiscal_period, require_fiscal_calendar, require_currency_code, require_territory_code, detect_cycles, WarningSeverity]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I import RWLock?", "how do I get the cache audit log?", "how to import ISO introspection?", "how do I boot FluentLocalization with strict validation?", "what is LocalizationBootConfig?", "how do I coerce a sequence to tuple?", "how do I validate any integer type?", "how do I validate a non-negative integer?", "how do I validate a date at a boundary?", "how do I validate a datetime?", "how do I validate a FluentNumber?", "how do I validate a FiscalPeriod or FiscalCalendar?", "how do I validate an ISO currency or territory code?"]
+  keywords: [api reference, documentation, exports, imports, AsyncFluentBundle, fluentbundle, fluentlocalization, cache-audit, boot-validation, LocalizationBootConfig, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, decimal_value, iso, currency, get_currency_decimal_digits, LocaleCode, normalize_locale, get_system_locale, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats, parse_stream, parse_stream_ftl, add_resource_stream, incremental, streaming, async, asyncio, CurrencyCode, TerritoryCode, NewType, require_date, require_datetime, require_fluent_number, require_currency_code, require_territory_code, detect_cycles, WarningSeverity]
+  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I get the cache audit log?", "how to import ISO introspection?", "how do I boot FluentLocalization with strict validation?", "what is LocalizationBootConfig?", "how do I validate a date at a boundary?", "how do I validate a datetime?", "how do I validate a FluentNumber?", "how do I validate an ISO currency or territory code?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -37,8 +37,6 @@ from ftllexengine import (
     DataIntegrityError,
     FormattingIntegrityError,
     ImmutabilityViolationError,
-    LedgerInvariantError,
-    PersistenceIntegrityError,
     SyntaxIntegrityError,
     CacheCorruptionError,
     WriteConflictError,
@@ -58,27 +56,10 @@ from ftllexengine import (
     normalize_locale,        # Convert BCP-47 to canonical lowercase POSIX form
     get_system_locale,       # Detect locale from OS environment variables
     # Boundary validators (no Babel required)
-    coerce_tuple,            # Coerce a non-str Sequence to an immutable tuple
-    require_int,             # Validate integer type only (no range check)
-    require_non_empty_str,   # Validate non-blank string at a system boundary
-    require_non_negative_int, # Validate integer >= 0 at a system boundary
-    require_positive_int,    # Validate positive integer at a system boundary
     require_locale_code,     # Validate and canonicalize a locale code
     require_date,            # Validate date; rejects datetime subtypes
     require_datetime,        # Validate datetime; rejects plain date
     require_fluent_number,   # Validate FluentNumber at a system boundary
-    require_fiscal_period,   # Validate FiscalPeriod at a system boundary
-    require_fiscal_calendar, # Validate FiscalCalendar at a system boundary
-    # Fiscal calendar (no Babel required)
-    FiscalCalendar,
-    FiscalDelta,
-    FiscalPeriod,
-    MonthEndPolicy,
-    fiscal_quarter,
-    fiscal_year,
-    fiscal_month,
-    fiscal_year_start,
-    fiscal_year_end,
     # Parsing return type (no Babel required; lazy-loaded)
     ParseResult,         # tuple[T | None, tuple[FrozenFluentError, ...]]
     # Message introspection (no Babel required)
@@ -187,9 +168,6 @@ from ftllexengine.validation import validate_resource
 ```python
 from ftllexengine.core import (
     DepthGuard, depth_clamp,  # Depth limiting
-    # Fiscal calendar (no Babel required)
-    FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy,
-    fiscal_quarter, fiscal_year, fiscal_month, fiscal_year_start, fiscal_year_end,
 )
 from ftllexengine.core.babel_compat import (
     BabelImportError, require_babel,        # Babel availability checking
@@ -201,8 +179,8 @@ from ftllexengine.core.babel_compat import (
 ### Runtime (`from ftllexengine.runtime import ...`)
 ```python
 from ftllexengine.runtime import (
-    CacheAuditLogEntry, FluentBundle, FluentNumber, FluentResolver,
-    FunctionRegistry, InterpreterPool, ResolutionContext, RWLock, WriteLogEntry, fluent_function,
+    CacheAuditLogEntry, FluentBundle, FluentNumber,
+    FunctionRegistry, WriteLogEntry, fluent_function,
     create_default_registry, get_shared_registry,
     number_format, datetime_format, currency_format, make_fluent_number,
     select_plural_category,
@@ -221,8 +199,7 @@ from ftllexengine.localization import (
 
 ### Parsing (`from ftllexengine.parsing import ...`)
 
-> **Babel required** for this entire module. For fiscal calendar without Babel,
-> use `from ftllexengine import FiscalCalendar` or `from ftllexengine.core import FiscalCalendar`.
+> **Babel required** for this entire module.
 
 ```python
 from ftllexengine.parsing import (
@@ -234,9 +211,6 @@ from ftllexengine.parsing import (
     ParseResult,
     # Cache management
     clear_date_caches, clear_currency_caches,
-    # Fiscal calendar (re-exported from ftllexengine.core; Babel required for this module)
-    FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy,
-    fiscal_quarter, fiscal_year, fiscal_month, fiscal_year_start, fiscal_year_end,
 )
 ```
 
@@ -246,12 +220,11 @@ from ftllexengine.parsing import (
 
 | Query Pattern | Target File | Domain |
 |:--------------|:------------|:-------|
-| AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_non_empty_str, require_positive_int, require_date, require_datetime, require_fluent_number, require_fiscal_period, require_fiscal_calendar, get_cache_audit_log, LocaleCode, normalize_locale, get_system_locale, LocalizationBootConfig, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
+| AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_date, require_datetime, require_fluent_number, get_cache_audit_log, LocaleCode, normalize_locale, get_system_locale, LocalizationBootConfig, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
 | Message, Term, Pattern, Resource, AST, Identifier, FTLLiteral, NamedArgument, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
 | parse, parse_stream, parse_stream_ftl, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, parse_date, parse_currency, FluentParserV1 | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
-| FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy, fiscal_quarter, fiscal_year, fiscal_month | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Fiscal Calendar |
-| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, RWLock, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry, InterpreterPool, subinterpreter, clear_module_caches | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
-| FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode, LedgerInvariantError, PersistenceIntegrityError, financial | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
+| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry, clear_module_caches | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
+| FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
 | detect_cycles, entry_dependency_set, make_cycle_key, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
 | extract_variables, extract_references, extract_references_by_attribute, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
 | TerritoryInfo, CurrencyInfo, get_territory, get_currency, require_currency_code, require_territory_code, ISO 3166, ISO 4217 | [DOC_02_Types.md](DOC_02_Types.md) | ISO Introspection |
@@ -266,7 +239,7 @@ ftllexengine/
   __init__.py              # Public API exports
   constants.py             # MAX_DEPTH, MAX_IDENTIFIER_LENGTH, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
   enums.py                 # CommentType, VariableContext, ReferenceKind, LoadStatus
-  integrity.py             # DataIntegrityError hierarchy (8 sealed subclasses), IntegrityContext
+  integrity.py             # DataIntegrityError hierarchy (6 sealed subclasses), IntegrityContext
   localization/
     __init__.py            # FluentLocalization, LocalizationBootConfig, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
     types.py               # PEP 695 type aliases: MessageId, LocaleCode, ResourceId, FTLSource
@@ -278,13 +251,12 @@ ftllexengine/
     message.py             # MessageIntrospection, introspect_message, extract_variables, extract_references, extract_references_by_attribute
     iso.py                 # TerritoryInfo, CurrencyInfo, get_territory, get_currency, require_currency_code, require_territory_code
   core/
-    __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError, fiscal types, require_non_empty_str)
+    __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError, require_non_empty_str)
     babel_compat.py        # BabelImportError, Babel lazy import infrastructure
     depth_guard.py         # DepthGuard, depth_clamp
     errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
-    fiscal.py              # FiscalCalendar, FiscalDelta, FiscalPeriod, MonthEndPolicy (no Babel)
     identifier_validation.py  # FTL identifier validation utilities
-    validators.py          # coerce_tuple, require_int, require_non_empty_str, require_non_negative_int, require_positive_int, require_date, require_datetime, require_fluent_number, require_fiscal_period, require_fiscal_calendar
+    validators.py          # require_positive_int, require_date, require_datetime, require_fluent_number (internal validators)
     locale_utils.py        # require_locale_code, get_system_locale, normalize_locale, get_babel_locale, clear_locale_cache
   analysis/
     __init__.py            # Analysis API exports
@@ -315,11 +287,10 @@ ftllexengine/
     plural_rules.py        # select_plural_category
     resolution_context.py  # GlobalDepthGuard, ResolutionContext
     resolver.py            # FluentResolver
-    interpreter_pool.py    # InterpreterPool, _PooledInterpreter (subinterpreter pool)
-    rwlock.py              # RWLock (readers-writer lock)
+    rwlock.py              # RWLock (internal readers-writer lock)
     value_types.py         # FluentNumber, make_fluent_number, FluentValue, FluentFunction, FunctionSignature
   parsing/
-    __init__.py            # Parsing API exports (requires Babel; re-exports fiscal from core)
+    __init__.py            # Parsing API exports (requires Babel)
     numbers.py             # parse_decimal, parse_fluent_number
     dates.py               # parse_date, parse_datetime
     currency.py            # parse_currency
@@ -368,7 +339,7 @@ ftllexengine/
 | [README.md](../README.md) | Entry point, installation, quick start | Humans |
 | [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet, common patterns | Humans |
 | [PARSING_GUIDE.md](PARSING_GUIDE.md) | Bi-directional parsing tutorial | Humans |
-| [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md) | Python 3.14 type patterns | Humans |
+| [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md) | Python 3.13+ type patterns | Humans |
 | [TERMINOLOGY.md](TERMINOLOGY.md) | Glossary, disambiguation | Both |
 | [MIGRATION.md](MIGRATION.md) | fluent.runtime migration guide | Humans |
 | [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md) | Custom function tutorial | Humans |

@@ -6,8 +6,9 @@ from typing import Any
 import pytest
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
-from ftllexengine.runtime import FluentBundle, FluentResolver, create_default_registry
+from ftllexengine.runtime import FluentBundle, create_default_registry
 from ftllexengine.runtime.function_bridge import FunctionRegistry
+from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.syntax import (
     Attribute,
     CallArguments,

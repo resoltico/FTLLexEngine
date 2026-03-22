@@ -2,7 +2,7 @@
 
 Tests the fallback chain logic, resource loading, Mozilla architecture alignment,
 and root facade accessibility for boot evidence types.
-Uses Python 3.14 features for modern test patterns.
+Uses Python 3.13 features for modern test patterns.
 """
 
 from __future__ import annotations

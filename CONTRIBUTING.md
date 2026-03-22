@@ -36,14 +36,14 @@ To ensure data integrity and zero "environment stomping," the project is strictl
 | Environment | Purpose | Managed By |
 |-------------|---------|------------|
 | `.venv` (Root) | **IDE Sanctuary** - Autocomplete, LSP, manual runs. | You (`uv sync`) |
-| `.venv-3.14` | **Validation Silo** - Clean-room lint/test baseline (Python 3.14, declared minimum). | `scripts/lint.sh`, `scripts/test.sh` |
-| `.venv-atheris` | **Atheris Fuzzing** - Python 3.13 venv; INACTIVE until Atheris supports Python 3.14+. | `scripts/fuzz_atheris.sh --setup` |
+| `.venv-3.13` | **Validation Silo** - Clean-room lint/test baseline (Python 3.13, declared minimum). | `scripts/lint.sh`, `scripts/test.sh` |
+| `.venv-atheris` | **Atheris Fuzzing** - Python 3.13 venv; active on 3.13 baseline. | `scripts/fuzz_atheris.sh --setup` |
 
 ---
 
 ## Automated Scripts (The Pivot)
 
-All validation scripts are **self-isolating**. They automatically "pivot" into `.venv-3.14`, ensuring a clean, reproducible baseline independent of your IDE venv or Atheris toolchain.
+All validation scripts are **self-isolating**. They automatically "pivot" into `.venv-3.13`, ensuring a clean, reproducible baseline independent of your IDE venv or Atheris toolchain.
 
 | Script | Purpose | Preferred Command |
 |--------|---------|-------------------|
@@ -60,25 +60,25 @@ All validation scripts are **self-isolating**. They automatically "pivot" into `
 
 ## Multi-Version Development
 
-Python 3.14 is the declared minimum. Python 3.15 is the forward-compatibility target (N+1 policy).
+Python 3.13 is the declared minimum. Python 3.14 is the current stable target; Python 3.15 is the forward-compatibility target (N+1 policy).
 
 ### The Master Control: `PY_VERSION`
 
-The `PY_VERSION` environment variable selects the target Python version. The default is 3.14.
+The `PY_VERSION` environment variable selects the target Python version. The default is 3.13.
 
 | Task | Command | Target Silo |
 |------|---------|-------------|
-| **Lint (default)** | `./scripts/lint.sh` | `.venv-3.14` |
-| **Lint (3.15 forward-compat)** | `PY_VERSION=3.15 ./scripts/lint.sh` | `.venv-3.15` |
-| **Test (default)** | `./scripts/test.sh` | `.venv-3.14` |
-| **Test (3.15 forward-compat)** | `PY_VERSION=3.15 ./scripts/test.sh` | `.venv-3.15` |
-| **Benchmark (default)** | `./scripts/benchmark.sh` | `.venv-3.14` |
-| **Benchmark (3.15 forward-compat)** | `PY_VERSION=3.15 ./scripts/benchmark.sh` | `.venv-3.15` |
+| **Lint (default)** | `./scripts/lint.sh` | `.venv-3.13` |
+| **Lint (3.14 forward-compat)** | `PY_VERSION=3.14 ./scripts/lint.sh` | `.venv-3.14` |
+| **Test (default)** | `./scripts/test.sh` | `.venv-3.13` |
+| **Test (3.14 forward-compat)** | `PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
+| **Benchmark (default)** | `./scripts/benchmark.sh` | `.venv-3.13` |
+| **Benchmark (3.14 forward-compat)** | `PY_VERSION=3.14 ./scripts/benchmark.sh` | `.venv-3.14` |
 
 ### Why this works
-- **Zero Stomping**: Running 3.15 checks will **never** wipe your 3.14 environment.
-- **Instant Switching**: Switching between 3.14 and 3.15 is instant (no `uv sync` overhead).
-- **Parallel Testing**: You can run 3.14 tests in one terminal and 3.15 tests in another simultaneously.
+- **Zero Stomping**: Running 3.14 checks will **never** wipe your 3.13 environment.
+- **Instant Switching**: Switching between 3.13 and 3.14 is instant (no `uv sync` overhead).
+- **Parallel Testing**: You can run 3.13 tests in one terminal and 3.14 tests in another simultaneously.
 
 ---
 
@@ -126,7 +126,7 @@ If you see `HYPOTHESIS DETECTED A LOGIC FLAW`, an edge case has been found.
 Before submitting a PR, ensure both versions pass verification:
 
 ```bash
-# Verify Baseline (Python 3.14)
+# Verify Baseline (Python 3.13)
 ./scripts/lint.sh && ./scripts/test.sh
 
 # Verify Tomorrow (Python 3.15 forward-compat)
@@ -134,7 +134,7 @@ PY_VERSION=3.15 ./scripts/lint.sh && PY_VERSION=3.15 ./scripts/test.sh
 ```
 
 ### CI Requirements
-- Parallel matrix testing on 3.14 and 3.15.
+- Parallel matrix testing on 3.13 and 3.14.
 - Coverage >= 95.00%.
 - Strict type checking (mypy) on all targets.
 - Successful documentation validation (`scripts/validate_docs.py`).

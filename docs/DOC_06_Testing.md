@@ -378,7 +378,6 @@ Byte-level mutation fuzzing with Atheris/libFuzzer.
 | `fuzz_builtins` | Built-in functions | NUMBER/DATETIME/CURRENCY edge cases |
 | `fuzz_numbers` | Number formatting | Locale-aware number handling |
 | `fuzz_currency` | Currency parsing | Symbol detection, ambiguity |
-| `fuzz_fiscal` | Fiscal calendar | Date arithmetic correctness |
 | `fuzz_plural` | Plural rules | CLDR plural category selection |
 | `fuzz_iso` | ISO introspection | Territory/currency lookups |
 | `fuzz_integrity` | Data integrity | Cache, error immutability |

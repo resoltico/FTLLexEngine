@@ -1,10 +1,10 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.161.0"
 domain: reference
-updated: "2026-03-13"
+updated: "2026-03-21"
 route:
-  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, RWLock]
+  keywords: [cheat sheet, quick reference, examples, code snippets, patterns, copy paste, BabelImportError, cache, clear cache, CacheConfig, audit-log, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber]
   questions: ["how to format message?", "how to parse number?", "how to use bundle?", "what exceptions can occur?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how to clear cache?", "how do I get the cache audit log?"]
 ---
 
@@ -12,7 +12,7 @@ route:
 
 **One-page cheat sheet for common tasks**
 
-Python 3.14+ | [Full API Documentation](DOC_00_Index.md) | [Examples](../examples/)
+Python 3.13+ | [Full API Documentation](DOC_00_Index.md) | [Examples](../examples/)
 
 ---
 
@@ -26,7 +26,7 @@ pip install ftllexengine
 pip install ftllexengine[babel]
 ```
 
-**Requirements**: Python 3.14+ | Babel>=2.18.0 (optional for locale formatting)
+**Requirements**: Python 3.13+ | Babel>=2.18.0 (optional for locale formatting)
 
 ---
 
@@ -614,7 +614,7 @@ result, errors = parse_currency("£100", "ar_EG", infer_from_locale=True)  # EGP
 - `parse_datetime(value, locale, tzinfo=None)` → `tuple[datetime | None, tuple[FrozenFluentError, ...]]`
 - `parse_currency(value, locale)` → `tuple[tuple[Decimal, str] | None, tuple[FrozenFluentError, ...]]`
 
-**Implementation**: Uses Babel for number parsing, Python 3.14 stdlib (`strptime`, `fromisoformat`) with Babel CLDR patterns for date parsing.
+**Implementation**: Uses Babel for number parsing, Python 3.13 stdlib (`strptime`, `fromisoformat`) with Babel CLDR patterns for date parsing.
 
 **Babel Required**: All parsing functions raise `BabelImportError` if Babel is not installed. Install with `pip install ftllexengine[babel]`.
 
@@ -963,4 +963,4 @@ print(f"Fluent Specification {__fluent_spec_version__}")
 
 ---
 
-**Python Requirement**: 3.14+
+**Python Requirement**: 3.13+

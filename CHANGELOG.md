@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.160.0"
+version: "0.161.0"
 domain: CHANGELOG
-updated: "2026-03-21"
+updated: "2026-03-22"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -12,6 +12,103 @@ route:
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.161.0] - 2026-03-22
+
+### Breaking Changes
+
+**Public surface scope purge — out-of-scope symbols removed from all facades.**
+
+This release enforces the library's architectural identity: FTLLexEngine is the Python
+runtime for the Fluent Template Language specification, with CLDR-backed locale-aware
+formatting and compliance-grade boot validation. Its public surface is bounded by five
+domains — FTL specification, locale-aware formatting, compliance-grade boot/audit, ISO 4217
+currency data, and ISO 3166 territory data. Symbols outside these domains have been removed.
+
+**Removed from `ftllexengine` (root facade):**
+
+- `LedgerInvariantError` — accounting domain; financial ledger invariants are the caller's
+  concern. The class has been deleted from the codebase.
+- `PersistenceIntegrityError` — storage domain; FTLLexEngine consumes locale resources, it
+  does not own the persistence layer. The class has been deleted from the codebase.
+- `InterpreterPool` — general concurrency primitive; no FTL-specific semantics.
+  The class and `runtime/interpreter_pool.py` have been deleted from the codebase.
+- `require_positive_int` — generic integer validator for a stdlib Python type (`int`).
+  The function remains internally in `ftllexengine.core.validators` for use by cache
+  configuration validation, but is not part of the public contract.
+- `require_int`, `require_non_negative_int`, `require_int_in_range` — generic integer
+  validators. Removed from all public facades and from the codebase.
+- `require_non_empty_str`, `normalize_optional_str` — generic string validators.
+  Removed from all public facades and from the codebase.
+- `require_decimal_range`, `normalize_optional_decimal_range` — generic Decimal range
+  validators. Removed from all public facades and from the codebase.
+- `coerce_tuple` — generic sequence coercion. Removed from all public facades and from
+  the codebase.
+
+**Removed from `ftllexengine.runtime` (runtime facade):**
+
+- `RWLock` — internal concurrency primitive. The class remains in
+  `ftllexengine.runtime.rwlock` as an implementation detail of `FluentBundle` thread
+  safety, but is no longer part of the contracted public surface. Callers use
+  `FluentBundle` directly; they have no need to instantiate `RWLock`.
+- `FluentResolver` — internal message resolution engine. Remains in
+  `ftllexengine.runtime.resolver`; not a caller extension point.
+- `ResolutionContext` — internal resolution state carrier. Remains in
+  `ftllexengine.runtime.resolution_context`; not a caller extension point.
+
+**Removed from `ftllexengine` (root facade) — fiscal calendar purge:**
+
+- `FiscalCalendar` — pure date arithmetic; no CLDR interaction, no Babel dependency, no FTL
+  parser involvement. Not an ISO standard. Deleted from the codebase.
+- `FiscalDelta` — same rationale. Deleted from the codebase.
+- `FiscalPeriod` — same rationale. Deleted from the codebase.
+- `MonthEndPolicy` — same rationale. Deleted from the codebase.
+- `fiscal_year` — same rationale. Deleted from the codebase.
+- `fiscal_quarter` — same rationale. Deleted from the codebase.
+- `fiscal_month` — same rationale. Deleted from the codebase.
+- `fiscal_year_start` — same rationale. Deleted from the codebase.
+- `fiscal_year_end` — same rationale. Deleted from the codebase.
+- `require_fiscal_period` — validates a type that no longer exists in the public surface.
+  Deleted from the codebase.
+- `require_fiscal_calendar` — validates a type that no longer exists in the public surface.
+  Deleted from the codebase.
+
+The fiscal calendar module (`ftllexengine.core.fiscal`) has been deleted entirely.
+Fiscal date math belongs in the caller's financial domain layer, not in i18n infrastructure.
+
+**Migration:** No replacement required for removed symbols — they addressed concerns
+outside i18n infrastructure. Callers who relied on `require_int` or `require_non_empty_str`
+should implement equivalent validation in their own codebase, where it belongs.
+Callers who imported `LedgerInvariantError` or `PersistenceIntegrityError` should define
+domain-specific exception types in their own codebase.
+Callers who used the fiscal calendar API should implement equivalent date arithmetic in their
+own financial domain layer.
+
+### Changed
+
+- **Python minimum baseline corrected to 3.13**: `requires-python = ">=3.14"` was set when
+  `InterpreterPool` depended on `concurrent.interpreters` (PEP 734, Python 3.14 feature).
+  `InterpreterPool` has been removed from the codebase. The actual minimum language features
+  in use are PEP 695 generics (Python 3.12) and `TypeIs` (PEP 742, Python 3.13). The
+  baseline is now correctly stated as `>=3.13`. All tooling configuration updated: four
+  `mypy.ini` files, Ruff `target-version` (`py314` → `py313`), all four scripts
+  (`PY_VERSION` default), and `fuzz_atheris.sh` (removed `--ignore-requires-python` pip
+  flag and dead `check_concurrent_interpreters()` function).
+
+- **CI/CD matrix expanded**: GitHub Actions test and publish workflows now run on both
+  Python 3.13 (minimum) and 3.14 (forward compatibility), replacing the previous
+  3.14-only matrix.
+
+- **Atheris fuzz targets restored**: 24 fuzz modules previously renamed to
+  `_inactive_fuzz_*.py` (blocked by the now-corrected version mismatch) have been restored
+  to `fuzz_*.py` status. All targets are active and exercisable via
+  `./scripts/fuzz_atheris.sh`.
+
+- **Package description updated**: `pyproject.toml` description now reads "Python runtime
+  for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware
+  formatting, and compliance-grade boot validation" — aligned with the library identity.
 
 ## [0.160.0] - 2026-03-21
 

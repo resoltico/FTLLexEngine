@@ -45,7 +45,7 @@ python -m mypy .
 
 Examples-specific mypy configuration that:
 - Enables **strict mode** (demonstrates best practices)
-- Uses Python 3.14 features (type aliases, pattern matching)
+- Uses Python 3.13 features (type aliases, pattern matching)
 - Points to local type stubs in `stubs/` directory
 
 **Philosophy**: Examples should demonstrate production-quality type safety.
@@ -148,5 +148,5 @@ $ python examples/thread_safety.py
 ---
 
 **Last Updated**: 2026-02-28
-**Python Version**: 3.14+
+**Python Version**: 3.13+
 **Mypy Version**: Compatible with latest stable mypy

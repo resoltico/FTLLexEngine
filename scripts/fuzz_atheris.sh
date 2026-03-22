@@ -45,7 +45,7 @@
 # ENVIRONMENT STRICTNESS:
 # This script FORCES the use of '.venv-atheris' by setting UV_PROJECT_ENVIRONMENT.
 # It pins Python 3.13 explicitly (--python 3.13) because Atheris requires Python <= 3.13,
-# independent of the project's .python-version (currently 3.14).
+# which matches the project's requires-python = ">=3.13" baseline.
 
 set -euo pipefail
 
@@ -64,9 +64,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Atheris venv: managed independently of uv's project system.
-# Atheris requires Python <= 3.13; the project baseline is Python 3.14.
+# Atheris requires Python <= 3.13; the project baseline is Python 3.13.
 # UV_PROJECT_ENVIRONMENT must NOT be set — it would cause uv to recreate the
-# venv with Python 3.14 (matching requires-python), which breaks Atheris.
+# venv (matching requires-python), which could break Atheris if the venv Python
+# changes.
 ATHERIS_VENV="${PROJECT_ROOT}/.venv-atheris"
 ATHERIS_PYTHON="${ATHERIS_VENV}/bin/python"
 # Unset VIRTUAL_ENV to prevent uv from confusing it with an active shell venv
@@ -202,9 +203,7 @@ ensure_atheris_venv() {
     echo "Installing atheris + psutil..."
     "$ATHERIS_PYTHON" -m pip install --quiet "atheris>=3.0.0" "psutil>=7.0.0"
     echo "Installing ftllexengine[babel]..."
-    # --ignore-requires-python: project baseline is 3.14 but atheris requires 3.13;
-    # the library code is compatible — only the fuzzer infrastructure is version-gated.
-    "$ATHERIS_PYTHON" -m pip install --quiet --ignore-requires-python -e "${PROJECT_ROOT}[babel]"
+    "$ATHERIS_PYTHON" -m pip install --quiet -e "${PROJECT_ROOT}[babel]"
     echo -e "${GREEN}[OK] .venv-atheris ready (Python 3.13 + Atheris).${NC}"
 }
 
@@ -262,12 +261,6 @@ run_diagnostics() {
         else
             echo -e "${RED}FAILED${NC}"
             exit 1
-        fi
-
-        # Target-specific: interpreter_pool requires concurrent.interpreters (Python 3.13
-        # with --with-experimental-isolated-subinterpreters compiled in).
-        if [[ "${TARGET:-}" == "interpreter_pool" ]]; then
-            check_concurrent_interpreters "$python_bin"
         fi
 
         echo -e "\n${BOLD}============================================================${NC}"
@@ -350,41 +343,19 @@ heal_macos_atheris() {
 }
 
 
-check_concurrent_interpreters() {
-    local python_bin="$1"
-
-    echo -n "concurrent.interpreters... "
-    if "$python_bin" -c "import concurrent.interpreters" 2>/dev/null; then
-        echo -e "${GREEN}OK${NC}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}MISSING${NC}"
-    # concurrent.interpreters (PEP 734) shipped in Python 3.14. It is not
-    # available in Python 3.13 under any build configuration — there is no
-    # configure flag that adds it. Atheris requires Python <= 3.13. This
-    # fuzzer is therefore blocked until Atheris gains Python 3.14 support.
-    # No heal is possible; report the constraint and exit cleanly.
-    echo -e "${YELLOW}[INFO] concurrent.interpreters requires Python 3.14 (PEP 734).${NC}"
-    echo -e "       Atheris requires Python <= 3.13. These constraints are mutually exclusive."
-    echo -e "       fuzz_interpreter_pool cannot run until Atheris supports Python 3.14."
-    exit 3
-}
-
 # =============================================================================
 # Subroutines
 # =============================================================================
 
 run_setup() {
-    # Explicit environment setup/heal. Runs full diagnostics including any
-    # target-specific checks (e.g. concurrent.interpreters for interpreter_pool).
-    # Heals automatically on macOS; prints manual instructions on other platforms.
+    # Explicit environment setup/heal. Heals automatically on macOS; prints
+    # manual instructions on other platforms.
     echo -e "${BOLD}Environment Setup / Heal${NC}"
     if [[ -n "${TARGET:-}" ]]; then
         echo "Target: $TARGET (target-specific checks enabled)"
     else
         echo "Target: (none) -- pass a target name for target-specific checks"
-        echo "  Example: ./scripts/fuzz_atheris.sh --setup interpreter_pool"
+        echo "  Example: ./scripts/fuzz_atheris.sh --setup currency"
     fi
     echo ""
     run_diagnostics
@@ -408,9 +379,7 @@ EOF
     cat << EOF
 
 COMMANDS:
-    --setup [TARGET]    Check and auto-heal the fuzzing environment. Runs all
-                        diagnostics including target-specific checks (e.g.
-                        concurrent.interpreters for interpreter_pool). Heals
+    --setup [TARGET]    Check and auto-heal the fuzzing environment. Heals
                         automatically on macOS; prints manual instructions
                         on other platforms. No fuzzing run is started.
     --list              List all crashes and finding artifacts
@@ -435,19 +404,13 @@ AUTO-HEAL:
     1. Atheris ABI mismatch (LLVM version): Atheris is rebuilt from source
        using the system LLVM (brew install llvm required).
 
-    NOT healable: interpreter_pool requires concurrent.interpreters (Python
-    3.14, PEP 734). Atheris requires Python <= 3.13. These are mutually
-    exclusive until Atheris gains Python 3.14 support. The check reports
-    this and exits cleanly (exit code 3) — no heal is attempted.
-
     To trigger heals without starting a fuzz run:
         ./scripts/fuzz_atheris.sh --setup
-        ./scripts/fuzz_atheris.sh --setup interpreter_pool
 
 EXAMPLES:
     ./scripts/fuzz_atheris.sh currency --time 60
     ./scripts/fuzz_atheris.sh stability --workers 8
-    ./scripts/fuzz_atheris.sh --setup interpreter_pool
+    ./scripts/fuzz_atheris.sh --setup
     ./scripts/fuzz_atheris.sh --minimize currency .fuzz_atheris_corpus/crash_abc123
     ./scripts/fuzz_atheris.sh --replay structured
     ./scripts/fuzz_atheris.sh --replay structured .fuzz_atheris_corpus/structured/findings/

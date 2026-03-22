@@ -14,15 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     # Force all uv commands (sync, run, etc.) to use the same versioned venv as the
     # scripts. Without this, bare "uv sync" creates the default ".venv" while the
-    # scripts pivot to ".venv-3.14", wasting ~150 MiB on a duplicate environment.
+    # scripts pivot to ".venv-<version>", wasting ~150 MiB on a duplicate environment.
     env:
-      UV_PROJECT_ENVIRONMENT: .venv-3.14
+      UV_PROJECT_ENVIRONMENT: .venv-${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
-        # Python 3.14 is the minimum supported version (requires-python = ">=3.14").
-        # When Python 3.15 releases (~late 2026), add "3.15" here to validate forward compatibility.
-        python-version: ["3.14"]
+        # 3.13 is the minimum supported version (requires-python = ">=3.13").
+        # 3.14 validates forward compatibility.
+        # When Python 3.15 releases (~late 2026), add "3.15" here.
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -213,9 +214,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
-        # Python 3.14 is the minimum supported version (requires-python = ">=3.14").
-        # When Python 3.15 releases (~late 2026), add "3.15" here to validate forward compatibility.
-        python-version: ["3.14"]
+        # Test installation on both minimum and latest supported Python versions.
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -323,9 +323,8 @@ jobs:
     if: github.event_name == 'release'
     strategy:
       matrix:
-        # Python 3.14 is the minimum supported version (requires-python = ">=3.14").
-        # When Python 3.15 releases (~late 2026), add "3.15" here to validate forward compatibility.
-        python-version: ["3.14"]
+        # Test installation on both minimum and latest supported Python versions.
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -403,7 +402,7 @@ jobs:
           python -c "import ${PACKAGE} as pkg; r = pkg.parse_ftl('greeting = Hello, World!'); s = pkg.serialize_ftl(r); assert 'greeting' in s; print('Smoke test passed: ${PACKAGE} v' + pkg.__version__)"
 
   verify-python-requirement:
-    name: Verify Python 3.14+ Requirement
+    name: Verify Python 3.13+ Requirement
     needs: publish
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
@@ -423,11 +422,10 @@ jobs:
           echo "Detected package: $PACKAGE_NAME"
 
       # Python 3.12 is intentionally used here — it is BELOW the package floor
-      # (requires-python = ">=3.14" in pyproject.toml). This step is a negative
+      # (requires-python = ">=3.13" in pyproject.toml). This step is a negative
       # test: it verifies that pip correctly rejects installation on unsupported
-      # Python versions. This is not a leftover from earlier support; 3.12 is
-      # chosen because it is the newest Python version available on GitHub Actions
-      # runners by default, ensuring the floor check runs against a real interpreter.
+      # Python versions. 3.12 is chosen because it is the newest Python version
+      # available on GitHub Actions runners by default.
       # GitHub Actions runners ship with Python 3.12 as their system Python as of 2025.
       - name: Set up Python 3.12
         uses: actions/setup-python@v5

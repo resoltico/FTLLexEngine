@@ -4,7 +4,6 @@ This package provides reusable strategies for generating test data
 across multiple test modules. Strategies are organized by domain:
 
 - ftl: FTL syntax, AST nodes, and parser-related strategies
-- fiscal: FiscalCalendar, FiscalDelta, and date strategies
 - iso: Territory codes, currency codes, and locale strategies
 - diagnostics: Diagnostic codes, errors, validation, and formatter strategies
 - currency: Currency parsing strategies (amounts, symbols, ISO codes)
@@ -12,7 +11,6 @@ across multiple test modules. Strategies are organized by domain:
 
 Usage:
     from tests.strategies import ftl_identifiers, territory_codes
-    from tests.strategies.fiscal import reasonable_dates, fiscal_deltas
     from tests.strategies.iso import territory_codes, currency_codes
     from tests.strategies.ftl import ftl_message_nodes, ftl_patterns
     from tests.strategies.diagnostics import diagnostics, source_spans
@@ -25,7 +23,6 @@ Event-Emitting Strategies (HypoFuzz-Optimized):
     - ftl_boundary_depth_placeables, ftl_reference_placeables
     - ftl_circular_references, ftl_semantically_broken, ftl_invalid_ftl
     - ftl_financial_numbers, ftl_attribute_nodes
-    - fiscal_delta_by_magnitude, date_by_boundary, fiscal_calendar_by_type
     - currency_by_decimals, territory_by_region, locale_by_script
     - currency_amounts, unambiguous_currency_inputs, ambiguous_currency_inputs
     - iso_code_currency_inputs, invalid_currency_inputs
@@ -58,20 +55,6 @@ from .diagnostics import (
     validation_errors,
     validation_results,
     validation_warnings,
-)
-
-# Fiscal calendar strategies
-from .fiscal import (
-    date_by_boundary,
-    fiscal_boundary_crossing_pair,
-    fiscal_calendar_by_type,
-    fiscal_calendars,
-    fiscal_delta_by_magnitude,
-    fiscal_deltas,
-    fiscal_periods,
-    month_end_policies,
-    month_end_policy_with_event,
-    reasonable_dates,
 )
 from .ftl import (
     # Constants
@@ -318,16 +301,6 @@ __all__ = [
     "ftl_boundary_depth_messages",
     "ftl_circular_references",
     "ftl_semantically_broken",
-    # Fiscal strategies
-    "fiscal_calendars",
-    "fiscal_deltas",
-    "month_end_policies",
-    "reasonable_dates",
-    # Fiscal HypoFuzz-optimized event-emitting strategies
-    "fiscal_delta_by_magnitude",
-    "date_by_boundary",
-    "fiscal_calendar_by_type",
-    "month_end_policy_with_event",
     # ISO strategies
     "territory_codes",
     "all_alpha2_codes",
@@ -347,9 +320,6 @@ __all__ = [
     # Locale-formatted number strategies
     "locale_formatted_numbers",
     "locale_formatted_decimals",
-    # Fiscal additional strategies
-    "fiscal_periods",
-    "fiscal_boundary_crossing_pair",
     # Diagnostics strategies
     "source_spans",
     "frozen_error_contexts",

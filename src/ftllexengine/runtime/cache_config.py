@@ -5,7 +5,7 @@ parameters. Replaces seven individual constructor parameters with one
 typed object, reducing API surface and eliminating parameter duplication
 between FluentBundle and IntegrityCache.
 
-Python 3.14+. Zero external dependencies.
+Python 3.13+. Zero external dependencies.
 """
 
 from __future__ import annotations

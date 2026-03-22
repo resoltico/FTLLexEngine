@@ -5,7 +5,7 @@ to a thread pool via asyncio.to_thread(), keeping the event loop unblocked.
 The underlying FluentBundle handles all concurrency via its internal RWLock;
 this module is purely an asyncio adapter layer.
 
-Python 3.14+.
+Python 3.13+.
 """
 
 from __future__ import annotations

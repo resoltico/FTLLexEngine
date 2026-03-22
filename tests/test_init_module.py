@@ -95,16 +95,6 @@ class TestBabelOptionalSymbolAccess:
         assert fn("EUR") == 2
         assert fn("JPY") == 0
 
-    def test_interpreter_pool_is_accessible(self) -> None:
-        """InterpreterPool resolves to the class in runtime.interpreter_pool."""
-        import ftllexengine
-
-        assert hasattr(ftllexengine, "InterpreterPool")
-        from ftllexengine.runtime.interpreter_pool import InterpreterPool as Direct
-
-        assert ftllexengine.InterpreterPool is Direct
-
-
 class TestParseResultBabelIndependent:
     """ParseResult is defined in diagnostics and importable without Babel."""
 
@@ -156,7 +146,6 @@ class TestBabelOptionalAttrsSet:
             "FluentNumber",
             "FluentLocalization",
             "FluentValue",
-            "InterpreterPool",
             "LoadSummary",
             "LocalizationBootConfig",
             "LocalizationCacheStats",
@@ -406,7 +395,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 80
+        assert len(ftllexengine.__all__) == 57
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
@@ -442,8 +431,6 @@ class TestInitModuleExports:
             "ImmutabilityViolationError",
             "IntegrityCheckFailedError",
             "IntegrityContext",
-            "LedgerInvariantError",
-            "PersistenceIntegrityError",
             "SyntaxIntegrityError",
             "WriteConflictError",
         ):
@@ -471,8 +458,6 @@ class TestInitModuleExports:
         for name in (
             "require_date",
             "require_datetime",
-            "require_fiscal_calendar",
-            "require_fiscal_period",
             "require_fluent_number",
             "require_currency_code",
             "require_territory_code",

@@ -78,13 +78,7 @@ def get_process() -> psutil.Process:
 _DEFAULT_INSTALL_HINT = "Install with: uv sync --group atheris"
 
 # Per-dependency hints for modules that are not pip-installable.
-_DEPENDENCY_HINTS: dict[str, str] = {
-    "concurrent.interpreters": (
-        "concurrent.interpreters is stdlib in Python 3.14+ (PEP 734). "
-        "Atheris requires Python <= 3.13. These constraints are mutually exclusive until "
-        "Atheris supports Python 3.14. Use fuzz_interpreter_pool via the main runtime instead."
-    ),
-}
+_DEPENDENCY_HINTS: dict[str, str] = {}
 
 
 def check_dependencies(dep_names: Sequence[str], dep_modules: Sequence[Any]) -> None:

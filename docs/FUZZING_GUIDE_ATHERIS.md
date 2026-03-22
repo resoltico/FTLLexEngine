@@ -76,17 +76,16 @@ architectural constraint:
 | Constraint | Detail |
 |:-----------|:-------|
 | Atheris Python | <= 3.13 (Atheris does not support Python 3.14+) |
-| Project baseline | Python 3.14 (`requires-python = ">=3.14"` in `pyproject.toml`) |
-| Consequence | uv refuses to create a Python 3.13 venv for a project that requires 3.14 |
+| Project baseline | Python 3.13 (`requires-python = ">=3.13"` in `pyproject.toml`) |
+| Consequence | Atheris and the project baseline are aligned on 3.13 — no bypass needed |
 
-**Solution**: the script bypasses uv entirely for venv creation. On every run,
-`ensure_atheris_venv` checks `.venv-atheris`:
+**Solution**: the script uses `.venv-atheris` managed independently of uv's project
+system. On every run, `ensure_atheris_venv` checks `.venv-atheris`:
 
 1. If it exists with Python 3.13 — proceed immediately.
 2. If it is missing or has the wrong Python — locate Python 3.13 via pyenv (or
    `python3.13`), create the venv directly with `python3.13 -m venv`, then install
-   `atheris`, `psutil`, and `ftllexengine[babel]` via pip with
-   `--ignore-requires-python` to bypass the project's `requires-python >= 3.14`.
+   `atheris`, `psutil`, and `ftllexengine[babel]` via pip.
 
 **`UV_PROJECT_ENVIRONMENT` must not be set** for `fuzz_atheris.sh`. If it were set to
 `.venv-atheris`, uv would silently recreate that venv with Python 3.14 on each run,
@@ -107,7 +106,6 @@ execution path.
 | `./scripts/fuzz_atheris.sh structured` | Grammar-aware FTL fuzzing |
 | `./scripts/fuzz_atheris.sh perf` | Performance/ReDoS fuzzing |
 | `./scripts/fuzz_atheris.sh iso` | ISO introspection fuzzing |
-| `./scripts/fuzz_atheris.sh fiscal` | Fiscal calendar fuzzing |
 | `./scripts/fuzz_atheris.sh graph` | Dependency graph algorithm fuzzing |
 | `./scripts/fuzz_atheris.sh builtins` | Built-in function rounding oracle fuzzing |
 | `./scripts/fuzz_atheris.sh --list` | List crashes and findings |
@@ -130,9 +128,7 @@ Targets are dynamically discovered from `fuzz_atheris/fuzz_*.py` files:
 | `structured` | Structured | Syntactically plausible FTL for deeper paths |
 | `perf` | Performance | Algorithmic complexity, ReDoS vulnerabilities |
 | `iso` | Introspection | ISO 3166/4217 lookups, type guards, cache |
-| `fiscal` | Arithmetic | Fiscal calendar date operations |
 | `integrity` | Validation | IntegrityCache hash verification |
-| `interpreter_pool` | Concurrency | InterpreterPool lifecycle, acquire/release, ExecutionFailed isolation -- INACTIVE: requires Python 3.14+ (`concurrent.interpreters`, PEP 734); Atheris requires Python <= 3.13 |
 | `lock` | Concurrency | RWLock timeout and contention paths |
 | `roundtrip` | Convergence | Parser-serializer round-trip consistency |
 | `serializer` | AST-construction | Serializer idempotence via programmatic AST |
@@ -290,7 +286,7 @@ Reports:
 
 ### Binary Seeds
 
-For ISO/fiscal fuzzers that expect structured binary input:
+For ISO fuzzers that expect structured binary input:
 
 ```python
 # Example: ISO seed
@@ -342,20 +338,6 @@ All `fuzz_atheris/fuzz_*.py` files must include:
 ---
 
 ## Troubleshooting
-
-### `concurrent.interpreters` missing (interpreter_pool target)
-
-The `interpreter_pool` fuzzer requires `concurrent.interpreters`, which is stdlib only in
-Python 3.14+ (PEP 734). Atheris requires Python <= 3.13. These constraints are mutually
-exclusive — there is no heal path.
-
-The fuzzer is preserved as `_inactive_fuzz_interpreter_pool.py` (excluded from plugin
-discovery via the `_inactive_` prefix). It will become active once Atheris supports Python 3.14.
-
-```
-./scripts/fuzz_atheris.sh interpreter_pool
-# Exits with code 3 and an informational message — no action needed.
-```
 
 ### ImportError: symbol not found (LLVM mismatch)
 
@@ -493,10 +475,8 @@ fuzz_atheris/
 ├── fuzz_currency.py              # Currency symbol extraction
 ├── fuzz_dates.py                 # Date/datetime locale-aware parsing
 ├── fuzz_diagnostics_formatter.py # DiagnosticFormatter output/escaping
-├── fuzz_fiscal.py                # Fiscal calendar fuzzer
 ├── fuzz_graph.py                 # Dependency graph
 ├── fuzz_integrity.py             # Semantic validation + strict mode
-├── _inactive_fuzz_interpreter_pool.py  # InterpreterPool lifecycle (inactive: needs Python 3.14+)
 ├── fuzz_introspection.py         # IntrospectionVisitor + ReferenceExtractor
 ├── fuzz_iso.py                   # ISO 3166/4217 introspection
 ├── fuzz_locale_context.py        # LocaleContext direct formatting API

@@ -3,7 +3,7 @@
 Provides parser, AST definitions, visitor pattern, and serialization.
 Separate from runtime to enable tooling (linters, formatters, IDE plugins).
 
-Python 3.14+.
+Python 3.13+.
 """
 
 from __future__ import annotations

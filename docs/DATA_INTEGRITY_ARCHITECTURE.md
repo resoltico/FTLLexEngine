@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.153.0"
+version: "0.161.0"
 domain: "architecture"
-updated: "2026-03-13"
+updated: "2026-03-21"
 route:
   keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCache, CacheCorruptionError, WriteConflictError, BLAKE2b, checksum, write-once, idempotent, RWLock, security, FormattingIntegrityError, SyntaxIntegrityError]
   questions: ["how does data integrity work?", "what is strict mode?", "how does cache checksum verification work?", "what is write-once mode?", "how to detect cache corruption?", "what is the data integrity architecture?"]
@@ -259,7 +259,7 @@ DataIntegrityError (base - immutable after construction)
 +-- CacheCorruptionError       - Checksum mismatch detected
 +-- FormattingIntegrityError   - Strict mode formatting failure
 +-- ImmutabilityViolationError - Mutation attempt on frozen object
-+-- IntegrityCheckFailedError  - Generic verification failure
++-- IntegrityCheckFailedError  - Generic verification failure (boot/load)
 +-- SyntaxIntegrityError       - Strict mode syntax error during resource loading
 +-- WriteConflictError         - Write-once cache violation
 ```

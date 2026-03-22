@@ -22,13 +22,12 @@ is distinct from:
 - fuzz_runtime: Resolver/cache stack (runtime, not validation)
 - fuzz_graph: Direct cycle detection API (algorithm, not integration)
 
-Pattern categories (31 patterns):
+Pattern categories (29 patterns):
 - VALIDATION (10): Standalone validate_resource() with various inputs
 - SEMANTIC (6): SemanticValidator (E0001-E0013) targeted violations
 - STRICT_MODE (5): DataIntegrityError triggering in strict FluentBundle
 - CROSS_RESOURCE (4): Multi-resource dependency and conflict scenarios
 - FROZEN_ERROR (4): FrozenFluentError integrity, immutability, sealed type, hash stability
-- DOMAIN_INTEGRITY (2): LedgerInvariantError and PersistenceIntegrityError construction
 
 Metrics:
 - Validation code classification (VALIDATION_*, E0001-E0013)
@@ -103,8 +102,6 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         DataIntegrityError,
         FormattingIntegrityError,
         ImmutabilityViolationError,
-        LedgerInvariantError,
-        PersistenceIntegrityError,
         SyntaxIntegrityError,
     )
     from ftllexengine.runtime.bundle import FluentBundle
@@ -167,7 +164,7 @@ _parser = FluentParserV1(max_source_size=1024 * 1024, max_nesting_depth=100)
 
 
 # --- Pattern Weights ---
-# 31 patterns across 6 categories
+# 29 patterns across 5 categories
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     # VALIDATION (10 patterns) - Standalone validate_resource()
     ("valid_simple", 8),
@@ -203,9 +200,6 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("frozen_error_immutability", 8),
     ("frozen_error_sealed", 6),
     ("frozen_error_hash_stability", 6),
-    # DOMAIN_INTEGRITY (2 patterns) - LedgerInvariantError, PersistenceIntegrityError
-    ("domain_integrity_ledger", 6),
-    ("domain_integrity_persistence", 6),
 )
 
 _PATTERN_NAMES = tuple(name for name, _ in _PATTERN_WEIGHTS)
@@ -750,119 +744,6 @@ def _pattern_frozen_error_hash_stability(fdp: atheris.FuzzedDataProvider) -> Non
     _domain.frozen_error_hash_stable_checks += 1
 
 
-# DOMAIN_INTEGRITY patterns (LedgerInvariantError, PersistenceIntegrityError)
-
-_LEDGER_INVARIANT_CODES: tuple[str, ...] = (
-    "BALANCE",
-    "DUPLICATE_ACCOUNT",
-    "PERIOD_OVERLAP",
-    "MISSING_DEBIT",
-    "SIGN_ERROR",
-)
-
-
-def _check_ledger_basic_construction(fdp: atheris.FuzzedDataProvider) -> None:
-    """LedgerInvariantError: basic construction and invariant_code property access."""
-    msg = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 80))
-    code = fdp.PickValueInList(list(_LEDGER_INVARIANT_CODES))
-    err = LedgerInvariantError(msg, invariant_code=code)
-    assert err.invariant_code == code
-    assert err.entity_ref is None
-    _domain.data_integrity_errors += 1
-
-
-def _check_ledger_entity_ref_set(fdp: atheris.FuzzedDataProvider) -> None:
-    """LedgerInvariantError: entity_ref non-None set and retrieved correctly."""
-    msg = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 80))
-    code = fdp.PickValueInList(list(_LEDGER_INVARIANT_CODES))
-    ref = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 40)) or "TX-001"
-    err = LedgerInvariantError(msg, invariant_code=code, entity_ref=ref)
-    assert err.entity_ref == ref
-    assert err.invariant_code == code
-    _domain.data_integrity_errors += 1
-
-
-def _check_ledger_immutability(fdp: atheris.FuzzedDataProvider) -> None:
-    """LedgerInvariantError: setattr raises ImmutabilityViolationError after construction."""
-    code = fdp.PickValueInList(list(_LEDGER_INVARIANT_CODES))
-    err = LedgerInvariantError("probe", invariant_code=code)
-    raised = False
-    try:
-        err._invariant_code = "mutated"
-    except ImmutabilityViolationError:
-        raised = True
-    if not raised:
-        probe_msg = "setattr on LedgerInvariantError did not raise ImmutabilityViolationError"
-        raise RuntimeError(probe_msg)
-    _domain.immutability_violations += 1
-
-
-def _check_ledger_isinstance(fdp: atheris.FuzzedDataProvider) -> None:
-    """LedgerInvariantError: isinstance DataIntegrityError and Exception subtype check."""
-    code = fdp.PickValueInList(list(_LEDGER_INVARIANT_CODES))
-    err = LedgerInvariantError("chain-check", invariant_code=code)
-    assert isinstance(err, DataIntegrityError)
-    assert isinstance(err, Exception)
-    _domain.data_integrity_errors += 1
-
-
-def _pattern_domain_integrity_ledger(fdp: atheris.FuzzedDataProvider) -> None:
-    """LedgerInvariantError: construction, fields, immutability, and type hierarchy."""
-    handlers = (
-        _check_ledger_basic_construction,
-        _check_ledger_entity_ref_set,
-        _check_ledger_immutability,
-        _check_ledger_isinstance,
-    )
-    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
-    handler(fdp)
-
-
-def _check_persistence_basic_construction(fdp: atheris.FuzzedDataProvider) -> None:
-    """PersistenceIntegrityError: basic construction and DataIntegrityError contract."""
-    msg = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 80))
-    err = PersistenceIntegrityError(msg)
-    assert str(err) == msg
-    _domain.data_integrity_errors += 1
-
-
-def _check_persistence_immutability(fdp: atheris.FuzzedDataProvider) -> None:
-    """PersistenceIntegrityError: setattr raises ImmutabilityViolationError."""
-    msg = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 40))
-    err = PersistenceIntegrityError(msg)
-    raised = False
-    try:
-        err._context = None
-    except ImmutabilityViolationError:
-        raised = True
-    if not raised:
-        probe_msg = (
-            "setattr on PersistenceIntegrityError did not raise ImmutabilityViolationError"
-        )
-        raise RuntimeError(probe_msg)
-    _domain.immutability_violations += 1
-
-
-def _check_persistence_isinstance(fdp: atheris.FuzzedDataProvider) -> None:
-    """PersistenceIntegrityError: isinstance DataIntegrityError and Exception."""
-    msg = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(0, 40))
-    err = PersistenceIntegrityError(msg)
-    assert isinstance(err, DataIntegrityError)
-    assert isinstance(err, Exception)
-    _domain.data_integrity_errors += 1
-
-
-def _pattern_domain_integrity_persistence(fdp: atheris.FuzzedDataProvider) -> None:
-    """PersistenceIntegrityError: construction, immutability, and type hierarchy."""
-    handlers = (
-        _check_persistence_basic_construction,
-        _check_persistence_immutability,
-        _check_persistence_isinstance,
-    )
-    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
-    handler(fdp)
-
-
 # --- Pattern Dispatch ---
 _PATTERN_DISPATCH: dict[str, Any] = {
     # VALIDATION
@@ -899,9 +780,6 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "frozen_error_immutability": _pattern_frozen_error_immutability,
     "frozen_error_sealed": _pattern_frozen_error_sealed,
     "frozen_error_hash_stability": _pattern_frozen_error_hash_stability,
-    # DOMAIN_INTEGRITY
-    "domain_integrity_ledger": _pattern_domain_integrity_ledger,
-    "domain_integrity_persistence": _pattern_domain_integrity_persistence,
 }
 
 
@@ -914,8 +792,6 @@ ALLOWED_EXCEPTIONS = (
     MemoryError,
     DataIntegrityError,
     FrozenFluentError,
-    LedgerInvariantError,
-    PersistenceIntegrityError,
 )
 
 
@@ -929,8 +805,7 @@ def test_one_input(data: bytes) -> None:
     - Validation: Error/warning/annotation code tracking
     - DataIntegrity: Exception type counting
     - FrozenFluentError: Error Layer integrity, immutability, sealed type, hash stability
-    - DomainIntegrity: LedgerInvariantError and PersistenceIntegrityError construction
-    - Patterns: 31 integrity-focused pattern types
+    - Patterns: 29 integrity-focused pattern types
     """
     if _state.iterations == 0:
         _state.initial_memory_mb = get_process().memory_info().rss / (1024 * 1024)
@@ -963,7 +838,7 @@ def test_one_input(data: bytes) -> None:
 
     finally:
         is_interesting = (
-            pattern.startswith(("strict_", "cross_", "frozen_error_", "domain_integrity_"))
+            pattern.startswith(("strict_", "cross_", "frozen_error_"))
             or "chain_depth" in pattern
             or (time.perf_counter() - start_time) * 1000 > 10.0
         )

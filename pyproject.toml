@@ -36,10 +36,10 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.160.0"
-description = "Fluent (FTL) i18n infrastructure library: bidirectional parsing, locale-aware numbers/dates/currency, strict-mode boot validation, and Decimal precision"
+version = "0.161.0"
+description = "Python runtime for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware formatting, and compliance-grade boot validation"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 license = "MIT"
 authors = [
     {name = "Ervins Strauhmanis"},
@@ -68,7 +68,7 @@ keywords = [
     "plurals",
     "formatting",
     "thread-safe",
-    # Infrastructure
+    # Compliance
     "strict-mode",
     "boot-validation",
     "audit",
@@ -81,6 +81,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Internationalization",
@@ -210,7 +211,7 @@ exclude_lines = [
 
 # Mypy configuration
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -234,19 +235,6 @@ module = "babel.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# concurrent.interpreters is a C-extension module (PEP 734, Python 3.14+); typeshed stubs
-# are not yet complete. Runtime availability is guaranteed by the Python 3.14+ requirement.
-module = "concurrent.interpreters"
-ignore_missing_imports = true
-follow_untyped_imports = true
-
-[[tool.mypy.overrides]]
-# All calls into concurrent.interpreters (PEP 734, Python 3.14+) are untyped at the mypy
-# level because the module is a C-extension without complete typeshed stubs.
-module = "ftllexengine.runtime.interpreter_pool"
-disable_error_code = ["no-untyped-call"]
-
-[[tool.mypy.overrides]]
 module = "atheris"
 ignore_missing_imports = true
 follow_untyped_imports = true
@@ -260,7 +248,7 @@ disable_error_code = ["import-untyped", "attr-defined", "unreachable", "unused-i
 # Ruff configuration
 [tool.ruff]
 line-length = 100
-target-version = "py314"  # Match minimum requires-python version
+target-version = "py313"  # Match minimum requires-python version
 
 [tool.ruff.lint]
 # select = ["ALL"] is the strictest posture: new Ruff rules automatically apply.

@@ -15,15 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     # Force all uv commands (sync, run, etc.) to use the same versioned venv as the
     # scripts. Without this, bare "uv sync" creates the default ".venv" while the
-    # scripts pivot to ".venv-3.14", wasting ~150 MiB on a duplicate environment.
+    # scripts pivot to ".venv-<version>", wasting ~150 MiB on a duplicate environment.
     env:
-      UV_PROJECT_ENVIRONMENT: .venv-3.14
+      UV_PROJECT_ENVIRONMENT: .venv-${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
-        # Python 3.14 is the minimum supported version (requires-python = ">=3.14").
-        # When Python 3.15 releases (~late 2026), add "3.15" here to validate forward compatibility.
-        python-version: ["3.14"]
+        # 3.13 is the minimum supported version (requires-python = ">=3.13").
+        # 3.14 validates forward compatibility.
+        # When Python 3.15 releases (~late 2026), add "3.15" here.
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 

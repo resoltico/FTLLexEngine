@@ -33,35 +33,13 @@ Locale Utilities (no Babel dependency):
     normalize_locale - Convert BCP-47 to canonical lowercase POSIX form
     get_system_locale - Detect locale from OS environment variables
 
-Boundary Validators (no Babel dependency):
-    coerce_tuple - Coerce a non-str Sequence to an immutable tuple
-    normalize_optional_decimal_range - None passthrough over require_decimal_range
-    normalize_optional_str - None passthrough over require_non_empty_str
+Domain Validators (no Babel dependency):
     require_currency_code - Validate and normalize an ISO 4217 currency code (requires Babel)
     require_date - Validate that a boundary value is a date (not datetime)
     require_datetime - Validate that a boundary value is a datetime
-    require_decimal_range - Validate that a boundary Decimal is finite and within a range
-    require_fiscal_calendar - Validate that a boundary value is a FiscalCalendar
-    require_fiscal_period - Validate that a boundary value is a FiscalPeriod
     require_fluent_number - Validate that a boundary value is a FluentNumber
-    require_int - Validate that a boundary value is an integer (no range check)
-    require_int_in_range - Validate that a boundary integer is within an inclusive range
     require_locale_code - Validate and canonicalize a locale code at a system boundary
-    require_non_empty_str - Validate that a boundary value is a non-blank string
-    require_non_negative_int - Validate that a boundary value is an int >= 0
-    require_positive_int - Validate that a boundary value is a positive integer
     require_territory_code - Validate and normalize an ISO 3166-1 alpha-2 territory code
-
-Fiscal Calendar (no Babel dependency):
-    FiscalCalendar - Configuration for fiscal year boundaries
-    FiscalDelta - Immutable fiscal period delta for date arithmetic
-    FiscalPeriod - Immutable fiscal period identifier (year, quarter, month)
-    MonthEndPolicy - Enum for month-end date handling in arithmetic
-    fiscal_quarter - Fiscal quarter for a date
-    fiscal_year - Fiscal year for a date
-    fiscal_month - Fiscal month for a date
-    fiscal_year_start - First day of a fiscal year
-    fiscal_year_end - Last day of a fiscal year
 
 Parsing Return Type (no Babel dependency):
     ParseResult[T] - Return type alias for parse_* functions:
@@ -97,24 +75,18 @@ Data Integrity:
     FormattingIntegrityError - Strict mode formatting failure
     ImmutabilityViolationError - Mutation attempt on frozen object
     IntegrityCheckFailedError - Generic verification failure
-    LedgerInvariantError - Financial domain invariant violated in persisted data
-    PersistenceIntegrityError - Storage-layer read produced structurally invalid data
     SyntaxIntegrityError - Strict mode syntax error during resource loading
     WriteConflictError - Write-once violation in cache
-
-Concurrency:
-    InterpreterPool - Thread-safe pool of reusable PEP 734 subinterpreters (requires Babel install)
 
 Submodules:
     ftllexengine.syntax - Parser and AST (no Babel dependency)
     ftllexengine.syntax.ast - AST node types (Resource, Message, Term, Pattern, etc.)
-    ftllexengine.core.fiscal - Fiscal calendar arithmetic (no Babel dependency)
     ftllexengine.introspection - Message introspection and variable extraction
     ftllexengine.parsing - Bidirectional parsing (requires Babel)
     ftllexengine.diagnostics - Error types and validation results
     ftllexengine.localization - Resource loaders and type aliases (requires Babel)
     ftllexengine.runtime - Bundle and resolver (requires Babel)
-    ftllexengine.integrity - Data integrity exceptions (financial-grade safety)
+    ftllexengine.integrity - Data integrity exceptions (compliance-grade safety)
 
 Installation:
     # Parser-only (no external dependencies):
@@ -130,37 +102,13 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _get_version
 
 from .analysis import detect_cycles
-
-# Fiscal calendar - no Babel dependency; imported after diagnostics to avoid circular import
-from .core.fiscal import (
-    FiscalCalendar,
-    FiscalDelta,
-    FiscalPeriod,
-    MonthEndPolicy,
-    fiscal_month,
-    fiscal_quarter,
-    fiscal_year,
-    fiscal_year_end,
-    fiscal_year_start,
-)
 from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
 
-# Boundary validators - no Babel dependency; no circular import risk
+# Domain validators - no Babel dependency; no circular import risk
 from .core.validators import (
-    coerce_tuple,
-    normalize_optional_decimal_range,
-    normalize_optional_str,
     require_date,
     require_datetime,
-    require_decimal_range,
-    require_fiscal_calendar,
-    require_fiscal_period,
     require_fluent_number,
-    require_int,
-    require_int_in_range,
-    require_non_empty_str,
-    require_non_negative_int,
-    require_positive_int,
 )
 
 # Error types must load before core to avoid circular import:
@@ -182,8 +130,6 @@ from .integrity import (
     ImmutabilityViolationError,
     IntegrityCheckFailedError,
     IntegrityContext,
-    LedgerInvariantError,
-    PersistenceIntegrityError,
     SyntaxIntegrityError,
     WriteConflictError,
 )
@@ -244,14 +190,6 @@ try:
     from .runtime import (
         FluentNumber as FluentNumber,
     )
-
-    # InterpreterPool has no Babel dependency (concurrent.interpreters is PEP 734 stdlib),
-    # but ftllexengine.runtime requires Babel to initialize (FluentBundle etc. are eager
-    # imports). On parser-only installs runtime/__init__.py cannot load, so InterpreterPool
-    # is unavailable through this import path. Users on full installs access it unconditionally.
-    from .runtime import (
-        InterpreterPool as InterpreterPool,
-    )
     from .runtime import (
         fluent_function as fluent_function,
     )
@@ -275,7 +213,6 @@ _BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
-    "InterpreterPool",
     "LoadSummary",
     "LocalizationBootConfig",
     "LocalizationCacheStats",
@@ -438,7 +375,6 @@ __all__ = [
     "FluentNumber",
     "FluentLocalization",
     "FluentValue",
-    "InterpreterPool",
     "LoadSummary",
     "LocalizationBootConfig",
     "LocalizationCacheStats",
@@ -461,40 +397,19 @@ __all__ = [
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
-    "LedgerInvariantError",
-    "PersistenceIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
     # Locale utilities (no Babel dependency)
     "LocaleCode",
     "get_system_locale",
     "normalize_locale",
-    # Boundary validators (no Babel dependency)
-    "coerce_tuple",
-    "normalize_optional_decimal_range",
-    "normalize_optional_str",
+    # Domain validators (no Babel dependency)
+    "require_currency_code",
     "require_date",
     "require_datetime",
-    "require_decimal_range",
-    "require_fiscal_calendar",
-    "require_fiscal_period",
     "require_fluent_number",
-    "require_int",
-    "require_int_in_range",
     "require_locale_code",
-    "require_non_empty_str",
-    "require_non_negative_int",
-    "require_positive_int",
-    # Fiscal calendar (no Babel dependency)
-    "FiscalCalendar",
-    "FiscalDelta",
-    "FiscalPeriod",
-    "MonthEndPolicy",
-    "fiscal_month",
-    "fiscal_quarter",
-    "fiscal_year",
-    "fiscal_year_end",
-    "fiscal_year_start",
+    "require_territory_code",
     # Parsing return type (no Babel dependency; lazy for init overhead)
     "ParseResult",
     # Introspection (no Babel dependency)
@@ -507,8 +422,6 @@ __all__ = [
     "get_currency_decimal_digits",
     "is_valid_currency_code",
     "is_valid_territory_code",
-    "require_currency_code",
-    "require_territory_code",
     # Diagnostics
     "WarningSeverity",
     # Graph analysis

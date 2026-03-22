@@ -1,11 +1,11 @@
 ---
 afad: "3.3"
-version: "0.155.0"
+version: "0.161.0"
 domain: RUNTIME
-updated: "2026-03-16"
+updated: "2026-03-21"
 route:
-  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentResolver, FluentNumber, fluent_function, formatting, locale, RWLock, timeout, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key, InterpreterPool, subinterpreter, concurrent_interpreters, required_messages, clear_module_caches, component_filter]
-  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is RWLock?", "how to set RWLock timeout?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?", "what is InterpreterPool?", "how do I create a subinterpreter pool?", "how do I call a function in a subinterpreter?", "what is required_messages in LocalizationBootConfig?", "how do I clear specific caches?"]
+  keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentNumber, fluent_function, formatting, locale, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key, required_messages, clear_module_caches, component_filter]
+  questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?", "what is required_messages in LocalizationBootConfig?", "how do I clear specific caches?"]
 ---
 
 # Runtime Reference
@@ -690,10 +690,9 @@ class ResolutionContext:
 
 ### Constraints
 - Thread: Safe (explicit parameter passing, no global state).
-- Purpose: Replaces thread-local state for async/concurrent compatibility.
+- Purpose: Internal resolver state; created fresh per resolution call in FluentBundle.
 - Complexity: contains() is O(1) via _seen set.
 - Expansion: track_expansion() raises EXPANSION_BUDGET_EXCEEDED when total_chars exceeds max_expansion_size.
-- Import: `from ftllexengine.runtime import ResolutionContext`
 - Constants: `MAX_DEPTH`, `DEFAULT_MAX_EXPANSION_SIZE` from `ftllexengine.constants`
 
 ---
@@ -893,7 +892,7 @@ class FluentResolver:
 - Return: Resolver instance.
 - State: Immutable after construction.
 - Thread: Safe (uses explicit context).
-- Import: `from ftllexengine.runtime import FluentResolver`
+- Internal: `FluentResolver` is an implementation detail of `FluentBundle`; callers do not instantiate it directly.
 
 ---
 
@@ -1724,93 +1723,6 @@ Static factory. `base_path` accepts `str` or `pathlib.Path` (converted to POSIX 
 - Thread: Safe. Each `boot()` call creates a new `FluentLocalization` instance.
 - Version: `required_messages` field added in v0.155.0; `boot()` returns 3-tuple as of v0.155.0 (was `FluentLocalization`).
 - Import: `from ftllexengine import LocalizationBootConfig` or `from ftllexengine.localization import LocalizationBootConfig`.
-
----
-
-## `InterpreterPool`
-
-Thread-safe bounded pool of reusable `concurrent.interpreters` subinterpreters.
-
-Pre-warms `min_size` interpreters at construction. Additional interpreters are created on
-demand up to `max_size`. When all interpreters are checked out and the pool is at `max_size`,
-`acquire()` blocks until one is returned or `acquire_timeout` expires.
-
-### Signature
-```python
-@dataclass(slots=True, weakref_slot=True)
-class InterpreterPool:
-    min_size: int = 2
-    max_size: int = 8
-    acquire_timeout: float | None = 10.0
-```
-
-### Parameters
-| Field | Type | Req | Description |
-|:------|:-----|:----|:------------|
-| `min_size` | `int` | N | Interpreters pre-warmed at construction time (default: 2). |
-| `max_size` | `int` | N | Maximum total interpreters (idle + checked out) (default: 8). |
-| `acquire_timeout` | `float \| None` | N | Seconds to wait when exhausted; `None` blocks indefinitely (default: 10.0). |
-
-### Methods
-
-#### `acquire() -> _PooledInterpreter`
-Acquire a subinterpreter from the pool. Returns immediately when idle or below `max_size`;
-blocks when all `max_size` interpreters are checked out. Always use as a context manager:
-```python
-with pool.acquire() as interp:
-    result = interp.call(my_function, arg1, arg2)
-```
-
-#### `release(pooled, *, healthy=True) -> None`
-Return a checked-out interpreter. Called automatically by `_PooledInterpreter.__exit__`.
-Pass `healthy=False` to trigger replacement with a fresh interpreter.
-
-#### `close() -> None`
-Close all idle interpreters and mark the pool as closed. Idempotent.
-
-### Constraints
-- Raises (`__post_init__`): `ValueError` if `min_size < 1` or `max_size < min_size`.
-- Raises (`acquire`): `TimeoutError` if `acquire_timeout` expires; `RuntimeError` if pool is closed.
-- Crash Isolation: `ExecutionFailed` (user code raised) leaves interpreter healthy and returned to pool. `InterpreterError` (interpreter corrupted) triggers replacement.
-- Thread: Safe. All state protected by `threading.Condition`.
-- Python: 3.14+ required (`concurrent.interpreters` is PEP 734 stdlib from 3.14).
-- Context Manager: Supports `with InterpreterPool(...) as pool:` — calls `close()` on exit.
-- Version: Added in v0.155.0.
-- Import: `from ftllexengine import InterpreterPool` or `from ftllexengine.runtime import InterpreterPool`
-
----
-
-## `InterpreterPool.acquire` / `_PooledInterpreter`
-
-Context-manager wrapper for a subinterpreter checked out from `InterpreterPool`.
-
-### Signature
-```python
-class _PooledInterpreter:
-    @property
-    def interpreter(self) -> concurrent.interpreters.Interpreter: ...
-
-    def call(
-        self,
-        callable_: Callable[..., object],
-        /,
-        *args: object,
-        **kwargs: object,
-    ) -> object: ...
-```
-
-### Parameters
-| Parameter | Type | Description |
-|:----------|:-----|:------------|
-| `callable_` | `Callable` | Module-level callable to invoke inside the subinterpreter. |
-| `*args` | `object` | Positional arguments forwarded to the callable. |
-| `**kwargs` | `object` | Keyword arguments forwarded to the callable. |
-
-### Constraints
-- Callable Constraint: Must be importable by name in the subinterpreter context (module-level function, not lambda or closure).
-- Argument Types: Arguments and return values must be picklable or natively shareable across interpreter boundaries.
-- Raises: `concurrent.interpreters.ExecutionFailed` if user code raised; interpreter stays healthy. `concurrent.interpreters.InterpreterError` if interpreter corrupted; pool replaces on release.
-- Usage: Always use via `with pool.acquire() as interp:` — direct construction is prohibited.
 
 ---
 

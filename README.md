@@ -1,7 +1,7 @@
 <!--
 RETRIEVAL_HINTS:
-  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, numbers, dates, currency, thread-safe, fiscal, iso, territory, decimal-digits, infrastructure, boot-validation, strict-mode, LocalizationBootConfig, require_clean, compliance, audit, regulated, bidirectional, FluentBundle, FluentLocalization, FluentNumber, InterpreterPool, subinterpreter, LedgerInvariantError, PersistenceIntegrityError, required_messages, clear_module_caches]
-  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, number parsing, thread safety, fiscal calendar, iso introspection, territory currency, boot validation, production localization, strict mode, require_clean, LocalizationBootConfig, regulated deployments, audit trail, infrastructure library, bidirectional parsing, locale-aware formatting, subinterpreter pool, financial integrity errors]
+  keywords: [ftllexengine, fluent, localization, i18n, l10n, ftl, translation, plurals, babel, cldr, python, parsing, numbers, dates, currency, thread-safe, iso, territory, decimal-digits, ftl-spec-runtime, boot-validation, strict-mode, LocalizationBootConfig, require_clean, compliance, audit, regulated, bidirectional, FluentBundle, FluentLocalization, FluentNumber, required_messages, clear_module_caches]
+  answers: [what is ftllexengine, how to install, quick start, fluent python, localization library, currency parsing, date parsing, number parsing, thread safety, iso introspection, territory currency, boot validation, production localization, strict mode, require_clean, LocalizationBootConfig, regulated deployments, audit trail, ftl spec runtime, bidirectional parsing, locale-aware formatting]
   related: [docs/QUICK_REFERENCE.md, docs/DOC_00_Index.md, docs/PARSING_GUIDE.md, docs/TERMINOLOGY.md]
 -->
 
@@ -18,7 +18,7 @@ RETRIEVAL_HINTS:
 
 # FTLLexEngine
 
-**Fluent (FTL) i18n infrastructure for Python. Locale-aware numbers, dates, and currency — bidirectional, thread-safe, strict-mode validated, Decimal-precise — in `.ftl` files, not your code.**
+**Python runtime for the Fluent (FTL) specification. Locale-aware numbers, dates, and currency — bidirectional, thread-safe, strict-mode validated, Decimal-precise — in `.ftl` files, not your code.**
 
 ## Why FTLLexEngine?
 
@@ -83,7 +83,7 @@ if not errors:
 - [Async Applications — Non-Blocking Formatting](#async-applications--non-blocking-formatting)
 - [Message Introspection — Pre-Flight Checks](#message-introspection--pre-flight-checks)
 - [Production Boot Validation — Systems That Accept Traffic Safely](#production-boot-validation--systems-that-accept-traffic-safely)
-- [Currency and Fiscal Data — Operations Across Borders](#currency-and-fiscal-data--operations-across-borders)
+- [Currency Data — Operations Across Borders](#currency-data--operations-across-borders)
 - [Architecture at a Glance](#architecture-at-a-glance)
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
@@ -104,7 +104,7 @@ Or with pip:
 pip install ftllexengine[babel]
 ```
 
-**Requirements**: Python >= 3.14 | Babel >= 2.18
+**Requirements**: Python >= 3.13 | Babel >= 2.18
 
 <details>
 <summary>Parser-only installation (no Babel dependency)</summary>
@@ -530,13 +530,9 @@ l10n = cfg.boot_simple()  # raises on failure, discards audit evidence
 
 ---
 
-## Currency and Fiscal Data — Operations Across Borders
+## Currency Data — Operations Across Borders
 
-Alice sources beans from Colombia, Ethiopia, and Brazil. She sells to importers in Japan, Germany, and the US. Each country uses different currencies with different decimal places. Each has different fiscal years for compliance reporting.
-
-Bob faces the same complexity on Mars: colony expenditures reported to three national space agencies, each with its own fiscal calendar.
-
-### Currency Data
+Alice sources beans from Colombia, Ethiopia, and Brazil. She sells to importers in Japan, Germany, and the US. Each country uses different currencies with different decimal places.
 
 ```python
 from ftllexengine.introspection.iso import get_territory_currencies, get_currency
@@ -562,35 +558,6 @@ panama_currencies = get_territory_currencies("PA")
 
 Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New York.
 
-### Fiscal Calendars
-
-```python
-from datetime import date
-from ftllexengine import FiscalCalendar, fiscal_quarter
-
-# UK importer: fiscal year starts April
-uk_calendar = FiscalCalendar(start_month=4)
-
-# US operations: calendar year
-us_calendar = FiscalCalendar(start_month=1)
-
-today = date(2026, 5, 15)
-
-# Same calendar date, different fiscal years
-uk_calendar.fiscal_year(today)  # 2027 (UK FY2027 runs Apr 2026 - Mar 2027)
-us_calendar.fiscal_year(today)  # 2026
-
-# Quick quarter lookup without creating a calendar object
-fiscal_quarter(today, start_month=4)  # 1  (Apr-Jun is Q1)
-fiscal_quarter(today, start_month=1)  # 2  (Apr-Jun is Q2 of calendar year)
-
-# When does UK Q4 end for filing?
-uk_calendar.quarter_end_date(2027, 4)
-# date(2027, 3, 31)
-```
-
-Alice's compliance team in London, New York, and Tokyo each see the correct fiscal periods for their jurisdiction. Bob reports colony expenditures on all three calendars simultaneously.
-
 ---
 
 ## Architecture at a Glance
@@ -598,10 +565,9 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 | Component | What It Does | Requires Babel? |
 |:----------|:-------------|:----------------|
 | **Syntax** — `ftllexengine.syntax` | FTL parser, AST, serializer, visitor pattern | No |
-| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`); `InterpreterPool` for reusable PEP 734 subinterpreter pools | Yes |
+| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`) | Yes |
 | **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains; `LocalizationBootConfig` strict-mode production boot | Yes |
 | **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
-| **Fiscal** — `ftllexengine.core.fiscal` | Fiscal calendar arithmetic, quarter calculations | No |
 | **Introspection** — `ftllexengine.introspection` | Message variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
 | **Validation** — `ftllexengine.validation` | Cycle detection, reference validation, semantic checks | No |
 | **Diagnostics** — `ftllexengine.diagnostics` | Structured error types, error codes, formatting | No |
@@ -623,7 +589,6 @@ Alice's compliance team in London, New York, and Tokyo each see the correct fisc
 | **Complex plurals** | Polish has 4 forms. Arabic has 6. Handle them declaratively. |
 | **Multi-locale apps** | 200+ locales. CLDR-compliant. |
 | **Multi-currency operations** | ISO 4217 data. Territory-to-currency mapping. Correct decimal places. |
-| **Cross-border compliance** | UK/Japan/US fiscal years. Quarter calculations. |
 | **AI integrations** | Introspect messages before formatting. |
 | **Content/code separation** | Translators edit `.ftl` files. Developers ship code. |
 

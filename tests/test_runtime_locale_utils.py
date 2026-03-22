@@ -4,7 +4,7 @@ Covers normalize_locale, get_babel_locale, get_system_locale, and
 LocaleCode facade export functions.
 Includes property-based tests with Hypothesis for locale normalization.
 
-Python 3.14+.
+Python 3.13+.
 """
 
 import builtins
