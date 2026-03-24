@@ -15,7 +15,7 @@ Python 3.13+. Zero external dependencies.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -97,6 +97,12 @@ class LocalizationBootConfig:
     use_isolating: bool = True
     cache: CacheConfig | None = None
     on_fallback: Callable[[FallbackInfo], None] | None = None
+    # One-shot guard: False until boot() is called, then permanently True.
+    # object.__setattr__ is used in boot() to bypass the frozen constraint for
+    # this single transition. Config fields (locales, resource_ids, etc.) remain
+    # effectively immutable; only this guard transitions (False -> True, once).
+    # This is a permanent architectural pattern — see Known Waiver Registry.
+    _booted: bool = field(default=False, init=False, repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         """Validate boot configuration invariants.
@@ -229,6 +235,15 @@ class LocalizationBootConfig:
             ValueError: Propagated from PathResourceLoader when base_path
                 lacks the required {locale} placeholder.
         """
+        if self._booted:
+            msg = (
+                "LocalizationBootConfig.boot() has already been called on this instance. "
+                "LocalizationBootConfig is a one-shot boot coordinator — create a new "
+                "instance to run boot again."
+            )
+            raise RuntimeError(msg)
+        object.__setattr__(self, "_booted", True)
+
         loader = self._resolve_loader()
 
         l10n = FluentLocalization(

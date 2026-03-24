@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.161.0"
+version: "0.162.0"
 domain: RUNTIME
-updated: "2026-03-21"
+updated: "2026-03-23"
 route:
   keywords: [number_format, datetime_format, currency_format, make_fluent_number, FluentNumber, fluent_function, formatting, locale, IntegrityCache, CacheConfig, CacheStats, LocalizationCacheStats, CacheAuditLogEntry, WriteLogEntry, audit-log, NaN, idempotent_writes, content_hash, IntegrityCacheEntry, detect_cycles, entry_dependency_set, make_cycle_key, required_messages, clear_module_caches, component_filter]
   questions: ["how to format numbers?", "how to format dates?", "how to format currency?", "what is FluentNumber?", "how do I construct a FluentNumber manually?", "how do I register a custom Fluent function?", "what is IntegrityCache?", "how to enable cache audit?", "how do I read the cache audit log?", "how does cache handle NaN?", "what is idempotent write?", "how does thundering herd work?", "how to detect dependency cycles?", "what is CacheStats?", "what fields does get_cache_stats return?", "what is required_messages in LocalizationBootConfig?", "how do I clear specific caches?"]
@@ -92,6 +92,7 @@ def number_format(
     maximum_fraction_digits: int = 3,
     use_grouping: bool = True,
     pattern: str | None = None,
+    numbering_system: str = "latn",
 ) -> FluentNumber:
 ```
 
@@ -104,6 +105,7 @@ def number_format(
 | `maximum_fraction_digits` | `int` | N | Maximum decimal places. |
 | `use_grouping` | `bool` | N | Use thousands separator. |
 | `pattern` | `str \| None` | N | Custom Babel number pattern. |
+| `numbering_system` | `str` | N | CLDR numbering system (e.g. `"arab"`, `"deva"`). Default: `"latn"`. |
 
 ### Constraints
 - Return: `FluentNumber` with formatted string, original numeric value, and precision metadata.
@@ -114,7 +116,7 @@ def number_format(
 - Plural: Original value and precision preserved for correct CLDR plural category matching in select expressions. Precision parameter affects plural category selection (e.g., "1.00" with minimum_fraction_digits=2 selects "other" category due to v=2, not "one").
 - Bounds: Fraction digit parameters clamped to `MAX_FORMAT_DIGITS` (100). Values exceeding the limit are rejected with `ValueError`.
 - Clamp: When `minimum_fraction_digits > maximum_fraction_digits`, `maximum` is silently raised to `minimum`. Matches JavaScript `Intl.NumberFormat` semantics: `NUMBER($n, minimumFractionDigits: 4)` yields 4 decimal places, not an error.
-- Rounding: Pre-quantizes with `ROUND_HALF_UP` to exact display precision before passing to Babel. Babel's default `ROUND_HALF_EVEN` (banker's rounding) is bypassed entirely. Midpoint values round away from zero: `Decimal("1.225")` → `"1.23"`. Non-finite `Decimal` values (`Infinity`, `NaN`) bypass quantization.
+- Rounding: Delegates to Babel `format_decimal` with `decimal_quantization=True` (default). Uses `ROUND_HALF_EVEN` (IEEE 754 banker's rounding). Non-finite `Decimal` values (`Infinity`, `NaN`) are forwarded as-is; behaviour is locale-defined.
 
 ---
 
@@ -162,6 +164,9 @@ def currency_format(
     currency: str,
     currency_display: Literal["symbol", "code", "name"] = "symbol",
     pattern: str | None = None,
+    use_grouping: bool = True,
+    currency_digits: bool = True,
+    numbering_system: str = "latn",
 ) -> FluentNumber:
 ```
 
@@ -171,8 +176,11 @@ def currency_format(
 | `value` | `int \| Decimal` | Y | Monetary amount. |
 | `locale_code` | `str` | N | BCP 47 locale code. |
 | `currency` | `str` | Y | ISO 4217 currency code. |
-| `currency_display` | `Literal[...]` | N | Display style. |
+| `currency_display` | `Literal[...]` | N | Display style: `"symbol"`, `"code"`, or `"name"`. |
 | `pattern` | `str \| None` | N | Custom CLDR currency pattern. |
+| `use_grouping` | `bool` | N | Use thousands separator. Default: `True`. |
+| `currency_digits` | `bool` | N | Apply ISO 4217 decimal digit count (e.g. JPY=0, BHD=3). Ignored when `pattern` is set. Default: `True`. |
+| `numbering_system` | `str` | N | CLDR numbering system (e.g. `"arab"`, `"deva"`). Default: `"latn"`. |
 
 ### Constraints
 - Return: `FluentNumber` with formatted currency string and computed precision. Enables CURRENCY results as selectors in plural/select expressions.
@@ -180,7 +188,7 @@ def currency_format(
 - Raises: Unknown but structurally valid locales fall back to en_US with a logged warning.
 - State: None.
 - Thread: Safe.
-- Rounding: Pre-quantizes with `ROUND_HALF_UP` to exact display precision before passing to Babel. For standard format: uses `get_currency_precision(currency)` (CLDR digit count, e.g., 0 for JPY, 3 for BHD, 2 for USD). For custom `pattern`: extracts max fraction digits from the pattern via `parse_pattern`. Babel's default `ROUND_HALF_EVEN` is bypassed. Midpoint values round away from zero: `Decimal("123.445")` in USD → `"$123.45"`. Non-finite `Decimal` values bypass quantization.
+- Rounding: Delegates to Babel `format_currency` with `decimal_quantization=True` (default). Uses `ROUND_HALF_EVEN`. `currency_digits=True` (default) applies ISO 4217 digit counts before formatting. `currency_digits` is ignored when `pattern` is provided — the pattern controls precision.
 
 ---
 
@@ -538,6 +546,8 @@ def select_plural_category(
     n: int | Decimal,
     locale: str,
     precision: int | None = None,
+    *,
+    ordinal: bool = False,
 ) -> str:
 ```
 
@@ -547,13 +557,15 @@ def select_plural_category(
 | `n` | `int \| Decimal` | Y | Number to categorize |
 | `locale` | `str` | Y | BCP-47 or POSIX locale code |
 | `precision` | `int \| None` | N | Fraction digits for CLDR v operand |
+| `ordinal` | `bool` | N | Use ordinal rules (1st/2nd/3rd); default `False` = cardinal |
 
 ### Constraints
 - Return: CLDR plural category (`"zero"`, `"one"`, `"two"`, `"few"`, `"many"`, `"other"`).
 - Raises: `BabelImportError` if Babel not installed. Returns `"other"` on invalid locale.
 - State: Read-only.
 - Thread: Safe.
-- Rounding: Uses `ROUND_HALF_UP` when `precision` is set, matching `format_number()` rounding.
+- Rounding: Uses `ROUND_HALF_EVEN` when `precision` is set, matching Babel's default rounding.
+- Ordinal: When `ordinal=True`, uses `Locale.ordinal_form` (rank context: "1st", "2nd", "3rd") instead of `Locale.plural_form` (count context: "1 item", "2 items").
 
 ---
 
@@ -561,9 +573,9 @@ def select_plural_category(
 
 | FTL Name | Python Function | Parameter Mapping |
 |:---------|:----------------|:------------------|
-| `NUMBER` | `number_format` | minimumFractionDigits -> minimum_fraction_digits |
+| `NUMBER` | `number_format` | minimumFractionDigits -> minimum_fraction_digits, useGrouping -> use_grouping, numberingSystem -> numbering_system |
 | `DATETIME` | `datetime_format` | dateStyle -> date_style, timeStyle -> time_style |
-| `CURRENCY` | `currency_format` | currencyDisplay -> currency_display |
+| `CURRENCY` | `currency_format` | currencyDisplay -> currency_display, useGrouping -> use_grouping, currencyDigits -> currency_digits, numberingSystem -> numbering_system |
 
 ---
 

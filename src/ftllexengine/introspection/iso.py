@@ -32,8 +32,8 @@ from ftllexengine.constants import (
 )
 from ftllexengine.core.babel_compat import (
     BabelImportError,
+    get_babel_languages,
     get_babel_numbers,
-    get_global_data_func,
     get_locale_class,
     get_unknown_locale_error_class,
 )
@@ -107,11 +107,15 @@ class TerritoryInfo:
         currencies: All active legal tender currencies for this territory.
             Multi-currency territories (e.g., Panama: PAB, USD) have multiple entries.
             Empty tuple if no currency data available.
+        official_languages: BCP-47 language codes of official languages for this
+            territory (e.g., ('en',) for 'US', ('fr', 'nl', 'de') for 'BE').
+            Empty tuple if no language data is available in CLDR.
     """
 
     alpha2: TerritoryCode
     name: str
     currencies: tuple[CurrencyCode, ...]
+    official_languages: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,20 +235,29 @@ def _get_babel_territory_currencies(territory: str) -> list[str]:
     """Get currencies used by a territory from Babel.
 
     Returns list of currently active legal tender currencies.
+    Uses babel.numbers.get_territory_currencies() — the stable public API —
+    rather than accessing the raw CLDR data table via get_global().
     """
-    get_global = get_global_data_func()
+    babel_numbers = get_babel_numbers()
     try:
-        # Data format: list of (code, start_date, end_date, tender)
-        # end_date=None means still active; tender=True means legal tender
-        territory_currencies = get_global("territory_currencies")
-        currencies_info = territory_currencies.get(territory, [])
-
-        # Return currently active tender currencies (end_date is None, tender is True)
-        return [c[0] for c in currencies_info if c[2] is None and c[3]]
+        return list(babel_numbers.get_territory_currencies(territory, tender=True))
     except (ValueError, LookupError, KeyError, AttributeError):
-        # Babel raises ValueError/LookupError for invalid locales,
-        # KeyError/AttributeError for data access. Logic bugs propagate.
         return []
+
+
+def _get_babel_official_languages(territory: str) -> tuple[str, ...]:
+    """Get official language codes for a territory from Babel CLDR data.
+
+    Returns BCP-47 language codes of officially recognized languages.
+    Uses babel.languages.get_official_languages() — the stable public API.
+
+    Returns empty tuple if the territory is unknown or no language data exists.
+    """
+    babel_languages = get_babel_languages()
+    try:
+        return tuple(babel_languages.get_official_languages(territory))
+    except (ValueError, LookupError, KeyError, AttributeError):
+        return ()
 
 
 # ============================================================================
@@ -273,11 +286,13 @@ def _get_territory_impl(
 
     name = territories[code_upper]
     currencies = get_territory_currencies(code_upper)
+    official_languages = _get_babel_official_languages(code_upper)
 
     return TerritoryInfo(
         alpha2=TerritoryCode(code_upper),
         name=name,
         currencies=currencies,
+        official_languages=official_languages,
     )
 
 
@@ -459,11 +474,13 @@ def _list_territories_impl(
         # Filter to alpha-2 codes only (2 uppercase letters)
         if len(code) == 2 and code.isalpha() and code.isupper():
             currencies = get_territory_currencies(code)
+            official_languages = _get_babel_official_languages(code)
             result.add(
                 TerritoryInfo(
                     alpha2=TerritoryCode(code),
                     name=name,
                     currencies=currencies,
+                    official_languages=official_languages,
                 )
             )
 

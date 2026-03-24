@@ -48,7 +48,7 @@ FTLLexEngine keeps their systems coherent. Built on the [Fluent specification](h
 ```python
 from ftllexengine import FluentBundle
 
-bundle = FluentBundle("en_US")
+bundle = FluentBundle("en_US", use_isolating=False)
 bundle.add_resource("""
 coffee-order = { $bags ->
     [one]   1 bag of { $origin } coffee
@@ -59,6 +59,8 @@ coffee-order = { $bags ->
 result, errors = bundle.format_pattern("coffee-order", {"bags": 500, "origin": "Ethiopian"})
 # "500 bags of Ethiopian coffee"
 ```
+
+> `use_isolating=False` removes Unicode bidi isolation markers from output, making strings suitable for direct comparison and logging. The default `use_isolating=True` wraps each placeable in U+2068/U+2069 markers for correct bidirectional text rendering in UI contexts.
 
 **Parse user input back to Python types:**
 
@@ -139,7 +141,7 @@ Alice's invoices go to Tokyo, Hamburg, and New York. Same data, different langua
 from decimal import Decimal
 from ftllexengine import FluentBundle
 
-bundle = FluentBundle("en_US")
+bundle = FluentBundle("en_US", use_isolating=False)
 bundle.add_resource("""
 shipment-line = { $bags ->
     [0]     No bags shipped
@@ -160,7 +162,7 @@ result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00
 **German (Hamburg buyer):**
 
 ```python
-bundle_de = FluentBundle("de_DE")
+bundle_de = FluentBundle("de_DE", use_isolating=False)
 bundle_de.add_resource("""
 shipment-line = { $bags ->
     [0]     Keine Saecke versandt
@@ -181,7 +183,7 @@ result, _ = bundle_de.format_pattern("invoice-total", {"amount": Decimal("187500
 **Japanese (Tokyo buyer):**
 
 ```python
-bundle_ja = FluentBundle("ja_JP")
+bundle_ja = FluentBundle("ja_JP", use_isolating=False)
 bundle_ja.add_resource("""
 shipment-line = { $bags ->
     [0]     出荷なし
@@ -302,7 +304,7 @@ from decimal import Decimal
 from ftllexengine import CacheConfig, FluentBundle, FormattingIntegrityError
 
 # strict=True is the DEFAULT: raises FormattingIntegrityError on ANY formatting error
-bundle = FluentBundle("en_US", cache=CacheConfig())
+bundle = FluentBundle("en_US", cache=CacheConfig(), use_isolating=False)
 bundle.add_resource('confirm = Contract: { $bags } bags at { CURRENCY($price, currency: "USD") }/lb')
 
 # Works normally when all variables are provided
@@ -318,7 +320,7 @@ except FormattingIntegrityError as e:
     # e.fluent_errors = (FrozenFluentError(...),)
 
 # For soft error recovery, opt in with strict=False
-soft_bundle = FluentBundle("en_US", strict=False)
+soft_bundle = FluentBundle("en_US", strict=False, use_isolating=False)
 soft_result, soft_errors = soft_bundle.format_pattern("missing-message", {})
 # soft_result = "{missing-message}"  (fallback: key wrapped in braces)
 # soft_errors = (FrozenFluentError(...),)
@@ -340,9 +342,9 @@ from decimal import Decimal
 from ftllexengine import FluentBundle
 
 # Create locale-specific bundles (typically done once at startup)
-de_bundle = FluentBundle("de_DE")
-es_bundle = FluentBundle("es_CO")
-ja_bundle = FluentBundle("ja_JP")
+de_bundle = FluentBundle("de_DE", use_isolating=False)
+es_bundle = FluentBundle("es_CO", use_isolating=False)
+ja_bundle = FluentBundle("ja_JP", use_isolating=False)
 
 ftl_source = 'confirm = { CURRENCY($amount, currency: "USD") } per { $unit }'
 de_bundle.add_resource(ftl_source)
@@ -453,7 +455,7 @@ Alice's compliance team uses the same introspection to catch missing variables a
 ```python
 from ftllexengine import FluentBundle
 
-bundle = FluentBundle("en_US")
+bundle = FluentBundle("en_US", use_isolating=False)
 bundle.add_resource("""
 contract = { $buyer } purchases { $bags ->
         [one] 1 bag

@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.161.0"
+version: "0.162.0"
 domain: CHANGELOG
-updated: "2026-03-22"
+updated: "2026-03-24"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -15,6 +15,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.162.0] - 2026-03-24
+
+### Breaking Changes
+
+**`LocalizationBootConfig.boot()` is now a one-shot operation.**
+
+Calling `boot()` or `boot_simple()` a second time on the same instance raises
+`RuntimeError("LocalizationBootConfig.boot() has already been called on this instance.")`.
+The contract was previously documented but not enforced.
+
+`LocalizationBootConfig` is a startup coordinator — it runs once before traffic starts
+and is then discarded. A second call was always a programmer error (accidental retry or
+shared instance across call sites), never a valid use case. Create a new instance to run
+boot again.
+
+**`format_number` and `format_currency` no longer apply ROUND_HALF_UP pre-quantization.**
+
+`LocaleContext.format_number()`, `LocaleContext.format_currency()`,
+`number_format()`, and `currency_format()` previously quantized the input
+value with `ROUND_HALF_UP` before passing it to Babel. This imposed financial
+rounding (midpoints always round away from zero) as a library default, which
+is a caller-domain concern, not a CLDR/FTL concern.
+
+Pre-quantization has been removed. Babel's default `decimal_quantization=True`
+behaviour — which uses `ROUND_HALF_EVEN` (IEEE 754 banker's rounding) — now applies.
+`select_plural_category()` in `plural_rules` is updated in lockstep: it used
+`ROUND_HALF_UP` to compute the CLDR `v` operand for plural selection; it now uses
+`ROUND_HALF_EVEN` so the category always agrees with the displayed value.
+
+### Features
+
+- **`numbering_system` parameter on `number_format`, `currency_format`,
+  `LocaleContext.format_number`, and `LocaleContext.format_currency`.**
+  Accepts a CLDR numbering system identifier (default `"latn"`). Non-Latin
+  digit systems such as `"arab"` (Arabic-Indic) and `"deva"` (Devanagari) are
+  now supported. The active numbering system is also forwarded to
+  `get_decimal_symbol()` so precision extraction uses the correct decimal
+  separator (e.g. U+066B for Arabic-Indic, not ASCII period). Example:
+  ```python
+  number_format(Decimal("1234.56"), "ar-SA", numbering_system="arab")
+  # "١٬٢٣٤٫٥٦"
+  ```
+  In FTL: `{ NUMBER($n, numberingSystem: "arab") }`.
+
+- **`use_grouping` parameter on `currency_format` and
+  `LocaleContext.format_currency`** (parity with `number_format`).
+  When `False`, the locale grouping separator (e.g. comma in `en-US`, period
+  in `de-DE`) is suppressed. Default: `True`. Example:
+  ```python
+  currency_format(Decimal("1234.56"), "en-US", currency="USD", use_grouping=False)
+  # "$1234.56"
+  ```
+  In FTL: `{ CURRENCY($n, currency: "USD", useGrouping: "false") }`.
+
+- **`currency_digits` parameter on `currency_format` and
+  `LocaleContext.format_currency`.**
+  When `True` (default), the ISO 4217 decimal digit count for the currency
+  overrides `minimum_fraction_digits`/`maximum_fraction_digits` (e.g. JPY=0,
+  BHD=3, USD=2). When `False`, no automatic ISO 4217 adjustment is applied.
+  This parameter is ignored when a custom `pattern` is provided — the pattern
+  controls precision. Example:
+  ```python
+  currency_format(Decimal("1000"), "en-US", currency="JPY", currency_digits=True)
+  # "¥1,000"
+  currency_format(Decimal("1000"), "en-US", currency="JPY", currency_digits=False)
+  # "¥1,000.00"  (default 2 fraction digits)
+  ```
+  In FTL: `{ CURRENCY($n, currency: "JPY", currencyDigits: "false") }`.
+
+- **`TerritoryInfo.official_languages` field.**
+  `get_territory()` now populates an `official_languages: tuple[str, ...]` field on
+  the returned `TerritoryInfo` dataclass. Values are BCP-47 language codes sourced
+  from `babel.languages.get_official_languages()` (CLDR data). Example:
+  ```python
+  info = get_territory("BE")  # Belgium
+  info.official_languages  # ('fr', 'nl', 'de')
+
+  info = get_territory("US")
+  info.official_languages  # ('en',)
+  ```
+  Empty tuple is returned for territories without CLDR language data. The field is
+  immutable, hashable, and preserves the CLDR priority order.
+
+  **Breaking change for callers constructing `TerritoryInfo` directly:** The
+  `official_languages` field is now required. Update any direct constructions:
+  ```python
+  # Before
+  TerritoryInfo(alpha2=TerritoryCode("US"), name="United States", currencies=(CurrencyCode("USD"),))
+  # After
+  TerritoryInfo(alpha2=TerritoryCode("US"), name="United States",
+                currencies=(CurrencyCode("USD"),), official_languages=("en",))
+  ```
+
+- **`ordinal` parameter on `select_plural_category`.**
+  `select_plural_category(n, locale, ordinal=True)` uses CLDR ordinal plural rules
+  (`Locale.ordinal_form`) instead of cardinal rules (`Locale.plural_form`). Ordinal
+  rules apply to rank/position contexts such as "1st", "2nd", "3rd" in English.
+  The parameter is keyword-only to avoid boolean-trap ambiguity. Example:
+  ```python
+  # Cardinal (default ordinal=False)
+  select_plural_category(2, "en")  # "other" (2 items)
+
+  # Ordinal
+  select_plural_category(1, "en", ordinal=True)   # "one"  (1st)
+  select_plural_category(2, "en", ordinal=True)   # "two"  (2nd)
+  select_plural_category(3, "en", ordinal=True)   # "few"  (3rd)
+  select_plural_category(11, "en", ordinal=True)  # "other" (11th)
+  ```
+
+- **`babel.numbers.get_territory_currencies` public API now used for territory currencies.**
+  The internal `_get_babel_territory_currencies()` helper previously accessed
+  `babel.core.get_global("territory_currencies")` to read the raw CLDR data table.
+  This function returns an internal tuple format `(code, start_date, end_date, tender)`
+  that Babel treats as an implementation detail — it could silently break between Babel
+  versions. The helper now calls `babel.numbers.get_territory_currencies(territory, tender=True)`,
+  the documented stable public API. No observable behavior change for callers.
+
+- **`get_babel_languages()` accessor added to `babel_compat`.**
+  `ftllexengine.core.babel_compat.get_babel_languages()` returns the `babel.languages`
+  module. All callers that need `babel.languages.get_official_languages()` must use
+  this gateway — direct `import babel.languages` in non-`babel_compat` modules is prohibited.
+
 ## [0.161.0] - 2026-03-22
 
 ### Breaking Changes
@@ -23,8 +145,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This release enforces the library's architectural identity: FTLLexEngine is the Python
 runtime for the Fluent Template Language specification, with CLDR-backed locale-aware
-formatting and compliance-grade boot validation. Its public surface is bounded by five
-domains — FTL specification, locale-aware formatting, compliance-grade boot/audit, ISO 4217
+formatting and fail-fast boot validation with structured audit evidence. Its public surface
+is bounded by five domains — FTL specification, locale-aware formatting, audited boot, ISO 4217
 currency data, and ISO 3166 territory data. Symbols outside these domains have been removed.
 
 **Removed from `ftllexengine` (root facade):**
@@ -108,7 +230,7 @@ own financial domain layer.
 
 - **Package description updated**: `pyproject.toml` description now reads "Python runtime
   for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware
-  formatting, and compliance-grade boot validation" — aligned with the library identity.
+  formatting, and fail-fast boot validation with structured audit evidence" — aligned with the library identity.
 
 ## [0.160.0] - 2026-03-21
 
@@ -449,7 +571,7 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
   - `boot_with_summary()` is REMOVED; callers must migrate to `boot()`
   - `boot_simple()` is the new name for the old `boot()` → `FluentLocalization` form (no
     structured evidence returned)
-  - Rationale: compliance-grade systems need audit evidence by default; returning only
+  - Rationale: systems requiring audit trails need boot evidence by default; returning only
     `FluentLocalization` was the wrong default for an infrastructure library
 
 - **`LedgerInvariantError`** (`ftllexengine.integrity`, `ftllexengine`):

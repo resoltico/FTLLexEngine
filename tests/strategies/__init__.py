@@ -172,6 +172,7 @@ from .iso import (
     malformed_locales,
     territory_by_region,
     territory_codes,
+    territory_with_official_languages,
     three_decimal_currencies,
     two_decimal_currencies,
     zero_decimal_currencies,
@@ -316,6 +317,7 @@ __all__ = [
     # ISO HypoFuzz-optimized event-emitting strategies
     "currency_by_decimals",
     "territory_by_region",
+    "territory_with_official_languages",
     "locale_by_script",
     # Locale-formatted number strategies
     "locale_formatted_numbers",

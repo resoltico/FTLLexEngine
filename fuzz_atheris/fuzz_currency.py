@@ -12,30 +12,34 @@ Concern boundary: This fuzzer provides deep oracle-based testing of the CURRENCY
 function's runtime formatting path. It is complementary to fuzz_builtins (which
 covers the full Babel boundary including NUMBER and DATETIME) and
 fuzz_locale_context (which covers LocaleContext.format_currency direct API with
-ROUND_HALF_UP oracle). This fuzzer specializes on CURRENCY-specific coverage gaps:
+ROUND_HALF_EVEN oracle). This fuzzer specializes on CURRENCY-specific coverage gaps:
 
-- Custom pattern= path oracle (highest priority): the v0.145.0 ROUND_HALF_EVEN bug
-  existed specifically on the format_currency(pattern=...) code path.
+- Custom pattern= path oracle (highest priority): provides dedicated oracle coverage
+  for the format_currency(pattern=...) execution path.
   fuzz_locale_context case 7 tests pattern= but WITHOUT an oracle.
   fuzz_builtins does not test currency pattern= at all.
 - 3-decimal currencies (BHD, KWD, OMR): rounding boundary at 3 decimal places
   (x.xxx5) is distinct from the 2-decimal case and must be verified independently.
-- 0-decimal currencies (JPY, KRW): rounding at 0 decimal places (x.5) must use
-  ROUND_HALF_UP; ROUND_HALF_EVEN would round 2.5 -> 2 incorrectly.
+- 0-decimal currencies (JPY, KRW): rounding at 0 decimal places (x.5) uses
+  ROUND_HALF_EVEN (0.5->0, 1.5->2, 2.5->2, 3.5->4).
 - Display mode value preservation: currency_format with display='code'/'name'
   must produce the same FluentNumber.precision as with display='symbol'.
 - Negative amounts and large amounts (>1e6) for each oracle path.
 - Locale matrix: same currency must produce consistent precision across locales.
+- use_grouping, currency_digits, numbering_system parameter coverage.
 
-Patterns (8):
-- currency_pattern_oracle: custom pattern= path with ROUND_HALF_UP oracle (weight 16)
+Patterns (11):
+- currency_pattern_oracle: custom pattern= path with ROUND_HALF_EVEN oracle (weight 16)
 - currency_boundary_values: x.y5 boundary values per currency precision (weight 15)
 - currency_3decimal_oracle: BHD/KWD/OMR with 3-decimal oracle (weight 13)
 - currency_0decimal_oracle: JPY/KRW with 0-decimal oracle (weight 12)
 - currency_display_preservation: display mode precision consistency (weight 11)
-- currency_negative_oracle: negative amounts with ROUND_HALF_UP (weight 11)
+- currency_negative_oracle: negative amounts with ROUND_HALF_EVEN (weight 11)
 - currency_large_oracle: amounts > 1e6 with oracle (weight 11)
 - currency_locale_matrix: same value/currency across multiple locales (weight 11)
+- currency_use_grouping: use_grouping=True/False parameter coverage (weight 8)
+- currency_digits_override: currency_digits=True/False parameter coverage (weight 8)
+- currency_numbering_system: non-Latin CLDR numbering systems (weight 7)
 
 Requires Python 3.13+ (uses PEP 695 type aliases).
 """
@@ -51,7 +55,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Literal, cast
 
 # --- Dependency Checks ---
@@ -130,6 +134,9 @@ _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("currency_negative_oracle", 11),
     ("currency_large_oracle", 11),
     ("currency_locale_matrix", 11),
+    ("currency_use_grouping", 8),
+    ("currency_digits_override", 8),
+    ("currency_numbering_system", 7),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -162,8 +169,8 @@ _ALL_CURRENCIES: tuple[str, ...] = (
 _DISPLAY_MODES: tuple[str, ...] = ("symbol", "code", "name")
 
 # Custom Babel currency patterns with known maximum fraction digit counts.
-# The pattern= code path calls parse_pattern() for pre-quantization (v0.145.0
-# fix). The oracle verifies ROUND_HALF_UP at the known max_frac precision.
+# The pattern= code path calls parse_pattern() for pre-quantization.
+# The oracle verifies ROUND_HALF_EVEN at the known max_frac precision.
 # Used with 2-decimal currencies (USD, EUR) where the pattern precision is known.
 _CURRENCY_PATTERNS_WITH_PREC: tuple[tuple[str, int], ...] = (
     ("#,##0.00 \u00a4", 2),
@@ -210,7 +217,7 @@ _state = BaseFuzzerState(
     checkpoint_interval=500,
     seed_corpus_max_size=500,
     fuzzer_name="currency",
-    fuzzer_target="currency_format (CURRENCY function ROUND_HALF_UP oracle)",
+    fuzzer_target="currency_format (CURRENCY function ROUND_HALF_EVEN oracle)",
     pattern_intended_weights={name: float(w) for name, w in _PATTERN_WEIGHTS},
 )
 _domain = CurrencyFormatMetrics()
@@ -303,7 +310,7 @@ def _run_oracle(
     currency: str,
     context: str,
 ) -> None:
-    """ROUND_HALF_UP oracle: formatted digits must match Decimal.quantize(ROUND_HALF_UP).
+    """ROUND_HALF_EVEN oracle: formatted digits must match Decimal.quantize(ROUND_HALF_EVEN).
 
     When precision is -1 (sentinel), derives the CLDR-standard decimal count via
     babel.numbers.get_currency_precision(currency). This sentinel avoids hardcoding
@@ -328,7 +335,7 @@ def _run_oracle(
 
     try:
         quantizer = Decimal(10) ** -precision
-        expected = abs(value).quantize(quantizer, rounding=ROUND_HALF_UP)
+        expected = abs(value).quantize(quantizer, rounding=ROUND_HALF_EVEN)
     except InvalidOperation:
         return  # Overflow -- skip
 
@@ -346,7 +353,7 @@ def _run_oracle(
         _domain.oracle_violations += 1
         _state.findings += 1
         msg = (
-            f"ROUND_HALF_UP violation (currency={currency}, {context}): "
+            f"ROUND_HALF_EVEN violation (currency={currency}, {context}): "
             f"value={value}, precision={precision}, locale={locale} "
             f"expected={expected}, got={actual} (raw='{formatted}')"
         )
@@ -357,11 +364,9 @@ def _run_oracle(
 
 
 def _pattern_currency_pattern_oracle(fdp: atheris.FuzzedDataProvider) -> None:
-    """Custom pattern= path with ROUND_HALF_UP oracle.
+    """Custom pattern= path with ROUND_HALF_EVEN oracle.
 
-    This is the CRITICAL coverage gap: the v0.145.0 ROUND_HALF_EVEN bug existed
-    specifically on the format_currency(pattern=...) code path. This pattern
-    provides dedicated oracle coverage for that execution path.
+    Provides dedicated oracle coverage for the custom pattern= execution path.
 
     fuzz_locale_context case 7 tests the pattern= path but without an oracle.
     fuzz_builtins does not test currency pattern= at all.
@@ -418,10 +423,10 @@ def _pattern_currency_boundary_values(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _pattern_currency_3decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
-    """BHD/KWD/OMR: 3-decimal ROUND_HALF_UP oracle.
+    """BHD/KWD/OMR: 3-decimal ROUND_HALF_EVEN oracle.
 
     3-decimal currencies have a rounding boundary at x.xxx5 that differs from
-    the 2-decimal case. The oracle verifies ROUND_HALF_UP at precision=3 across
+    the 2-decimal case. The oracle verifies ROUND_HALF_EVEN at precision=3 across
     all ASCII-digit locales.
     """
     locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
@@ -439,11 +444,11 @@ def _pattern_currency_3decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _pattern_currency_0decimal_oracle(fdp: atheris.FuzzedDataProvider) -> None:
-    """JPY/KRW: 0-decimal ROUND_HALF_UP oracle.
+    """JPY/KRW: 0-decimal ROUND_HALF_EVEN oracle.
 
-    0-decimal currencies round at x.5 boundaries. ROUND_HALF_EVEN would round
-    2.5 -> 2 (banker's rounding); ROUND_HALF_UP always rounds x.5 up.
-    The oracle verifies the latter for all x.5 inputs.
+    0-decimal currencies round at x.5 boundaries. ROUND_HALF_EVEN rounds
+    0.5->0, 1.5->2, 2.5->2, 3.5->4 (nearest even digit). The oracle verifies
+    this behavior for JPY and KRW.
     """
     locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
     currency = cast("str", fdp.PickValueInList(list(_CURRENCIES_0_DECIMAL)))
@@ -494,7 +499,7 @@ def _pattern_currency_display_preservation(fdp: atheris.FuzzedDataProvider) -> N
 
 
 def _pattern_currency_negative_oracle(fdp: atheris.FuzzedDataProvider) -> None:
-    """Negative amounts with ROUND_HALF_UP oracle.
+    """Negative amounts with ROUND_HALF_EVEN oracle.
 
     Verifies that negative currency amounts are handled correctly (oracle uses
     abs() before quantize, matching the formatting behavior).
@@ -513,7 +518,7 @@ def _pattern_currency_negative_oracle(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _pattern_currency_large_oracle(fdp: atheris.FuzzedDataProvider) -> None:
-    """Large amounts (> 1e6) with ROUND_HALF_UP oracle.
+    """Large amounts (> 1e6) with ROUND_HALF_EVEN oracle.
 
     Large amounts stress group-separator handling in _extract_oracle_digits.
     In de-DE, the group separator is '.' which conflicts with the decimal '.';
@@ -564,6 +569,98 @@ def _pattern_currency_locale_matrix(fdp: atheris.FuzzedDataProvider) -> None:
         raise CurrencyFuzzError(msg)
 
 
+def _pattern_currency_use_grouping(fdp: atheris.FuzzedDataProvider) -> None:
+    """use_grouping parameter on currency_format: True/False variations.
+
+    Verifies that currency_format respects the use_grouping parameter.
+    Large amounts (> 1000) are used to ensure the grouping separator
+    would appear with use_grouping=True.
+    """
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    value = Decimal(fdp.ConsumeIntInRange(1000, 9_999_999))
+    use_grouping = fdp.ConsumeBool()
+    _domain.currency_calls += 1
+    result = currency_format(value, locale, currency=currency, use_grouping=use_grouping)
+    if not isinstance(result, FluentNumber):
+        msg = (
+            f"currency_format(use_grouping={use_grouping}) "
+            f"returned {type(result).__name__}"
+        )
+        raise CurrencyFuzzError(msg)
+    if not result.formatted:
+        msg = (
+            f"currency_format({value}, {currency}, use_grouping={use_grouping}) "
+            f"returned empty formatted string for {locale}"
+        )
+        raise CurrencyFuzzError(msg)
+
+
+def _pattern_currency_digits_override(fdp: atheris.FuzzedDataProvider) -> None:
+    """currency_digits=True/False on currency_format.
+
+    When currency_digits=True (default), ISO 4217 decimal count overrides
+    min/max fraction digits (JPY=0, BHD=3, USD=2). When False, no automatic
+    ISO 4217 adjustment is applied, so the default 2 fraction digits are used.
+    Verifies non-crash and non-empty output for both modes.
+    """
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_part = fdp.ConsumeIntInRange(0, 99)
+    value = Decimal(f"{int_part}.{frac_part:02d}")
+    currency_digits = fdp.ConsumeBool()
+    _domain.currency_calls += 1
+    result = currency_format(
+        value, locale, currency=currency, currency_digits=currency_digits,
+    )
+    if not isinstance(result, FluentNumber):
+        msg = (
+            f"currency_format(currency_digits={currency_digits}) "
+            f"returned {type(result).__name__}"
+        )
+        raise CurrencyFuzzError(msg)
+    if not result.formatted:
+        msg = (
+            f"currency_format({value}, {currency}, "
+            f"currency_digits={currency_digits}) returned empty for {locale}"
+        )
+        raise CurrencyFuzzError(msg)
+
+
+def _pattern_currency_numbering_system(fdp: atheris.FuzzedDataProvider) -> None:
+    """Non-Latin numbering systems on currency_format.
+
+    Verifies that currency_format accepts a numbering_system parameter and
+    returns a non-empty FluentNumber for known-good CLDR numbering systems.
+    """
+    locale = cast("str", fdp.PickValueInList(list(_VALID_LOCALES)))
+    currency = cast("str", fdp.PickValueInList(list(_ALL_CURRENCIES)))
+    int_part = fdp.ConsumeIntInRange(0, 9999)
+    frac_part = fdp.ConsumeIntInRange(0, 99)
+    value = Decimal(f"{int_part}.{frac_part:02d}")
+    numbering_system = cast(
+        "str",
+        fdp.PickValueInList(["latn", "arab", "arabext", "deva", "beng"]),
+    )
+    _domain.currency_calls += 1
+    result = currency_format(
+        value, locale, currency=currency, numbering_system=numbering_system,
+    )
+    if not isinstance(result, FluentNumber):
+        msg = (
+            f"currency_format(numbering_system={numbering_system!r}) "
+            f"returned {type(result).__name__}"
+        )
+        raise CurrencyFuzzError(msg)
+    if not result.formatted:
+        msg = (
+            f"currency_format({value}, {currency}, "
+            f"numbering_system={numbering_system!r}) returned empty for {locale}"
+        )
+        raise CurrencyFuzzError(msg)
+
+
 # --- Pattern Dispatch ---
 
 _PATTERN_DISPATCH = {
@@ -575,6 +672,9 @@ _PATTERN_DISPATCH = {
     "currency_negative_oracle": _pattern_currency_negative_oracle,
     "currency_large_oracle": _pattern_currency_large_oracle,
     "currency_locale_matrix": _pattern_currency_locale_matrix,
+    "currency_use_grouping": _pattern_currency_use_grouping,
+    "currency_digits_override": _pattern_currency_digits_override,
+    "currency_numbering_system": _pattern_currency_numbering_system,
 }
 
 
@@ -582,7 +682,7 @@ _PATTERN_DISPATCH = {
 
 
 def test_one_input(data: bytes) -> None:
-    """Atheris entry point: Test CURRENCY function ROUND_HALF_UP formatting invariants."""
+    """Atheris entry point: Test CURRENCY function ROUND_HALF_EVEN formatting invariants."""
     if _state.iterations == 0:
         _state.initial_memory_mb = (
             get_process().memory_info().rss / (1024 * 1024)
@@ -671,7 +771,7 @@ def main() -> None:
             f" ({len(_CURRENCIES_0_DECIMAL)} zero-dec,"
             f" {len(_CURRENCIES_2_DECIMAL)} two-dec,"
             f" {len(_CURRENCIES_3_DECIMAL)} three-dec)",
-            "Oracle:     ROUND_HALF_UP via Decimal.quantize + CLDR precision",
+            "Oracle:     ROUND_HALF_EVEN via Decimal.quantize + CLDR precision",
         ],
     )
 

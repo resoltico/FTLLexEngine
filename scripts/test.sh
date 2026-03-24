@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # test.sh — Isolated Test Runner (Agent-Native Edition)
-# Version: 1.0.0
+# Version: 1.0.1
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+ (Optimized for 5.3)
 # ARCHITECTURAL INTENT: 
@@ -30,7 +30,7 @@ if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
 fi
 
 # Bash Settings
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.0.1"
 SCRIPT_NAME="test.sh"
 
 set -o errexit
@@ -100,7 +100,7 @@ format_bytes() {
 last_nonempty_log_line() {
     local log_file="$1"
     local last_line
-    last_line=$(awk 'NF { line = $0 } END { print line }' "$log_file")
+    last_line=$(awk 'NF { line = $0 } END { print line }' "$log_file" 2>/dev/null || true)
     last_line=${last_line//$'\r'/}
     if [[ -z "$last_line" ]]; then
         echo "awaiting first pytest output"
@@ -498,7 +498,7 @@ echo "[SUMMARY-JSON-END]"
 if [[ $EXIT_CODE -ne 0 && ${#FAILED_TEST_LIST[@]} -gt 0 ]]; then
     echo -e "\n${YELLOW}[DEBUG-SUGGESTION]${RESET}"
     echo "The following tests failed. Run this command to debug the first failure:"
-    echo "  uv run pytest ${FAILED_TEST_LIST[0]} --pdb"
+    echo "  uv run --python \"$PY_VERSION\" pytest ${FAILED_TEST_LIST[0]} --pdb"
 fi
 
 if [[ $EXIT_CODE -ne 0 ]]; then

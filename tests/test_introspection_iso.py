@@ -40,6 +40,7 @@ from ftllexengine.introspection.iso import (
     _get_babel_currencies,
     _get_babel_currency_name,
     _get_babel_currency_symbol,
+    _get_babel_official_languages,
     _get_babel_territory_currencies,
 )
 
@@ -51,7 +52,7 @@ class TestTerritoryInfo:
         """TerritoryInfo is immutable (frozen)."""
         info = TerritoryInfo(
             alpha2=TerritoryCode("US"), name="United States",
-            currencies=(CurrencyCode("USD"),),
+            currencies=(CurrencyCode("USD"),), official_languages=("en",),
         )
         with pytest.raises(AttributeError):
             info.alpha2 = TerritoryCode("CA")  # type: ignore[misc]
@@ -60,7 +61,7 @@ class TestTerritoryInfo:
         """TerritoryInfo is hashable (can be used in sets/dicts)."""
         info = TerritoryInfo(
             alpha2=TerritoryCode("US"), name="United States",
-            currencies=(CurrencyCode("USD"),),
+            currencies=(CurrencyCode("USD"),), official_languages=("en",),
         )
         assert hash(info) is not None
         territories = {info}
@@ -70,11 +71,11 @@ class TestTerritoryInfo:
         """TerritoryInfo instances with same values are equal."""
         info1 = TerritoryInfo(
             alpha2=TerritoryCode("US"), name="United States",
-            currencies=(CurrencyCode("USD"),),
+            currencies=(CurrencyCode("USD"),), official_languages=("en",),
         )
         info2 = TerritoryInfo(
             alpha2=TerritoryCode("US"), name="United States",
-            currencies=(CurrencyCode("USD"),),
+            currencies=(CurrencyCode("USD"),), official_languages=("en",),
         )
         assert info1 == info2
 
@@ -82,7 +83,7 @@ class TestTerritoryInfo:
         """TerritoryInfo uses __slots__ for memory efficiency."""
         info = TerritoryInfo(
             alpha2=TerritoryCode("US"), name="United States",
-            currencies=(CurrencyCode("USD"),),
+            currencies=(CurrencyCode("USD"),), official_languages=("en",),
         )
         assert not hasattr(info, "__dict__") or info.__dict__ == {}
 
@@ -91,6 +92,7 @@ class TestTerritoryInfo:
         info = TerritoryInfo(
             alpha2=TerritoryCode("PA"), name="Panama",
             currencies=(CurrencyCode("PAB"), CurrencyCode("USD")),
+            official_languages=("es",),
         )
         assert len(info.currencies) == 2
         assert CurrencyCode("PAB") in info.currencies
@@ -98,9 +100,30 @@ class TestTerritoryInfo:
 
     def test_empty_currencies_tuple(self) -> None:
         """TerritoryInfo supports empty currencies tuple for territories without currency data."""
-        info = TerritoryInfo(alpha2=TerritoryCode("AQ"), name="Antarctica", currencies=())
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("AQ"), name="Antarctica",
+            currencies=(), official_languages=(),
+        )
         assert info.currencies == ()
         assert len(info.currencies) == 0
+
+    def test_official_languages_field(self) -> None:
+        """TerritoryInfo stores official_languages as tuple of BCP-47 codes."""
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("BE"), name="Belgium",
+            currencies=(CurrencyCode("EUR"),),
+            official_languages=("fr", "nl", "de"),
+        )
+        assert info.official_languages == ("fr", "nl", "de")
+        assert isinstance(info.official_languages, tuple)
+
+    def test_official_languages_empty(self) -> None:
+        """TerritoryInfo accepts empty official_languages tuple."""
+        info = TerritoryInfo(
+            alpha2=TerritoryCode("AQ"), name="Antarctica",
+            currencies=(), official_languages=(),
+        )
+        assert info.official_languages == ()
 
 
 class TestCurrencyInfo:
@@ -184,6 +207,28 @@ class TestGetTerritory:
         result_jp = get_territory("JP")
         assert result_jp is not None
         assert "JPY" in result_jp.currencies
+
+    def test_includes_official_languages(self) -> None:
+        """get_territory populates official_languages from CLDR data."""
+        # GB has English as official language per CLDR
+        result_gb = get_territory("GB")
+        assert result_gb is not None
+        assert isinstance(result_gb.official_languages, tuple)
+        assert "en" in result_gb.official_languages
+
+        # Belgium has three official languages per CLDR
+        result_be = get_territory("BE")
+        assert result_be is not None
+        assert isinstance(result_be.official_languages, tuple)
+        assert len(result_be.official_languages) >= 2
+        for lang in result_be.official_languages:
+            assert isinstance(lang, str)
+            assert len(lang) > 0
+
+        # official_languages is always a tuple (may be empty for some territories)
+        result_us = get_territory("US")
+        assert result_us is not None
+        assert isinstance(result_us.official_languages, tuple)
 
     def test_various_territories(self) -> None:
         """get_territory works for various territory codes."""
@@ -888,24 +933,39 @@ class TestPrivateBabelWrappers:
             _bc._babel_available = None
 
     def test_get_babel_territory_currencies_exception_handling(self) -> None:
-        """_get_babel_territory_currencies returns empty list on Babel data errors."""
-        # This tests the exception handling path (lines 198-200)
-        # We need to trigger an exception in the data processing
-        # Mock get_global to return malformed data
-        from babel.core import get_global
+        """_get_babel_territory_currencies returns empty list on Babel API errors.
 
-        original_get_global = get_global
-
-        def mock_get_global(key: str) -> object:
-            if key == "territory_currencies":
-                # Return a dict with malformed data that will cause indexing errors
-                return {"XX": [("USD", None, None)]}  # Missing 4th element (tender flag)
-            return original_get_global(key)  # type: ignore[arg-type]
-
-        with patch("babel.core.get_global", side_effect=mock_get_global):
-            result = _get_babel_territory_currencies("XX")
-            # Should return empty list due to exception
+        The production code calls babel.numbers.get_territory_currencies() directly.
+        Patching that function to raise ValueError exercises the defensive except clause.
+        """
+        with patch(
+            "babel.numbers.get_territory_currencies",
+            side_effect=ValueError("simulated Babel data error"),
+        ):
+            result = _get_babel_territory_currencies("US")
             assert result == []
+
+    def test_get_babel_official_languages_exception_handling(self) -> None:
+        """_get_babel_official_languages returns empty tuple on Babel API errors.
+
+        The production code calls babel.languages.get_official_languages() directly.
+        Patching that function to raise ValueError exercises the defensive except clause.
+        """
+        with patch(
+            "babel.languages.get_official_languages",
+            side_effect=ValueError("simulated Babel data error"),
+        ):
+            result = _get_babel_official_languages("GB")
+            assert result == ()
+
+    def test_get_babel_official_languages_lookup_error(self) -> None:
+        """_get_babel_official_languages returns empty tuple on LookupError."""
+        with patch(
+            "babel.languages.get_official_languages",
+            side_effect=LookupError("unknown territory"),
+        ):
+            result = _get_babel_official_languages("XX")
+            assert result == ()
 
     def test_list_currencies_filters_invalid_codes(self) -> None:
         """list_currencies filters out invalid currency codes from Babel data."""

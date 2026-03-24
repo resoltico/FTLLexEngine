@@ -59,6 +59,7 @@ def number_format(
     maximum_fraction_digits: int = 3,
     use_grouping: bool = True,
     pattern: str | None = None,
+    numbering_system: str = "latn",
 ) -> FluentNumber:
     """Format number with locale-specific separators.
 
@@ -77,6 +78,10 @@ def number_format(
             - "#,##0.00": Always show 2 decimals
             - "#,##0.00;(#,##0.00)": Negatives in parentheses (accounting)
             - "0.000": Scientific notation with 3 decimals
+        numbering_system: CLDR numbering system identifier (default: "latn").
+            Controls which numeral glyphs are used in the output.
+            Examples: "latn" (0-9), "arab" (Arabic-Indic), "deva" (Devanagari).
+            FTL: NUMBER($n, numberingSystem: "arab")
 
     Returns:
         FluentNumber with formatted string and computed precision for plural matching
@@ -127,12 +132,13 @@ def number_format(
         maximum_fraction_digits=maximum_fraction_digits,
         use_grouping=use_grouping,
         pattern=pattern,
+        numbering_system=numbering_system,
     )
 
-    # Compute actual visible precision from formatted string (CLDR v operand)
-    # This is critical for correct plural category matching in select expressions.
-    # The precision must reflect the ACTUAL formatted output, not the minimum parameter.
-    decimal_symbol = get_decimal_symbol(ctx.babel_locale)
+    # Compute actual visible precision from formatted string (CLDR v operand).
+    # Use the decimal symbol for the active numbering system so precision counting
+    # is correct for non-Latin numeral systems (e.g., "arab" uses U+066B not ASCII dot).
+    decimal_symbol = get_decimal_symbol(ctx.babel_locale, numbering_system=numbering_system)
 
     # When a custom pattern is provided, extract max fraction digits from pattern
     # metadata to cap precision. This prevents literal digit suffixes (ICU
@@ -241,6 +247,9 @@ def currency_format(
     currency: str,
     currency_display: Literal["symbol", "code", "name"] = "symbol",
     pattern: str | None = None,
+    use_grouping: bool = True,
+    currency_digits: bool = True,
+    numbering_system: str = "latn",
 ) -> FluentNumber:
     """Format currency with locale-specific formatting.
 
@@ -258,6 +267,16 @@ def currency_format(
             - "name": Use currency name (euros, dollars, yen)
         pattern: Custom currency pattern (overrides currency_display).
             CLDR currency pattern placeholders per Babel/CLDR spec.
+        use_grouping: Use thousands separator (default: True).
+            FTL: CURRENCY($n, currency: "USD", useGrouping: false)
+        currency_digits: Use ISO 4217 decimal places for the currency
+            (default: True). When False, no automatic decimal place adjustment
+            is applied. Has no effect when ``pattern`` is provided.
+            FTL: CURRENCY($n, currency: "JPY", currencyDigits: false)
+        numbering_system: CLDR numbering system identifier (default: "latn").
+            Controls which numeral glyphs are used in the output.
+            Examples: "latn" (0-9), "arab" (Arabic-Indic), "deva" (Devanagari).
+            FTL: CURRENCY($n, currency: "USD", numberingSystem: "arab")
 
     Returns:
         FluentNumber with formatted currency string and computed precision.
@@ -315,12 +334,15 @@ def currency_format(
         currency=currency,
         currency_display=currency_display,
         pattern=pattern,
+        use_grouping=use_grouping,
+        currency_digits=currency_digits,
+        numbering_system=numbering_system,
     )
 
-    # Compute actual visible precision from formatted string (CLDR v operand)
-    # This is critical for correct plural category matching in select expressions.
-    # The precision must reflect the ACTUAL formatted output, not ISO 4217 defaults.
-    decimal_symbol = get_decimal_symbol(ctx.babel_locale)
+    # Compute actual visible precision from formatted string (CLDR v operand).
+    # Use the decimal symbol for the active numbering system so precision counting
+    # is correct for non-Latin numeral systems (e.g., "arab" uses U+066B not ASCII dot).
+    decimal_symbol = get_decimal_symbol(ctx.babel_locale, numbering_system=numbering_system)
 
     # When a custom pattern is provided, extract max fraction digits from pattern
     # metadata to cap precision. Same rationale as number_format().

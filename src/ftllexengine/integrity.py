@@ -1,4 +1,4 @@
-"""Data integrity exceptions for compliance-grade safety.
+"""Data integrity exceptions for fail-fast resource validation.
 
 These exceptions indicate SYSTEM FAILURES, not user-facing Fluent errors.
 They should propagate to the top level and trigger incident response.

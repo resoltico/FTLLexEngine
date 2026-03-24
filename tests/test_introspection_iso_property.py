@@ -33,6 +33,7 @@ from tests.strategies.iso import (
     malformed_locales,
     territory_by_region,
     territory_codes,
+    territory_with_official_languages,
     three_decimal_currencies,
     zero_decimal_currencies,
 )
@@ -764,3 +765,99 @@ class TestCachePollutionPrevention:
         # Verify code set caches were cleared
         assert _territory_codes_impl.cache_info().currsize == 0
         assert _currency_codes_impl.cache_info().currsize == 0
+
+
+# ============================================================================
+# OFFICIAL LANGUAGES PROPERTIES
+# ============================================================================
+
+
+@pytest.mark.fuzz
+class TestOfficialLanguagesProperties:
+    """Property-based tests for TerritoryInfo.official_languages field.
+
+    Covers CLDR official language data surfaced via
+    babel.languages.get_official_languages(). The field is populated for all
+    territories: may be empty (e.g. US — no federal official language in CLDR)
+    or non-empty (e.g. GB → ('en',), BE → ('nl', 'fr', 'de')).
+    """
+
+    @given(code=territory_codes)
+    def test_official_languages_is_tuple_of_strings(self, code: str) -> None:
+        """official_languages is always tuple[str, ...] — never None, list, or other type."""
+        result = get_territory(code)
+        assert result is not None
+        assert isinstance(result.official_languages, tuple)
+        for lang in result.official_languages:
+            assert isinstance(lang, str)
+            assert len(lang) > 0
+        has_langs = len(result.official_languages) > 0
+        event(f"has_official_languages={has_langs}")
+        event(f"code={code}")
+
+    @given(code=territory_with_official_languages())
+    def test_known_official_language_territories_non_empty(self, code: str) -> None:
+        """Territories with CLDR-documented official languages return non-empty tuple."""
+        result = get_territory(code)
+        assert result is not None
+        assert len(result.official_languages) >= 1
+        lang_count = len(result.official_languages)
+        event(f"lang_count={lang_count}")
+        event(f"code={code}")
+
+    @given(code=territory_with_official_languages())
+    def test_official_language_codes_are_bcp47_like(self, code: str) -> None:
+        """Language codes are BCP-47 format: lowercase alpha with optional subtags.
+
+        CLDR language tags use lowercase language subtags (e.g. 'en', 'zh-Hant').
+        Numeric-only or uppercase-only codes indicate a data error.
+        """
+        result = get_territory(code)
+        assert result is not None
+        for lang in result.official_languages:
+            # Language subtag must start with a lowercase letter
+            assert lang[0].isalpha(), f"Language code {lang!r} must start with alpha"
+            # May contain hyphens for subtags (e.g. 'zh-Hant', 'sr-Latn')
+            parts = lang.split("-")
+            assert len(parts) >= 1
+            assert all(len(p) > 0 for p in parts)
+        event(f"code={code}")
+
+    @given(code=territory_with_official_languages())
+    def test_official_languages_consistent_across_lookups(self, code: str) -> None:
+        """official_languages is identical on repeated lookups (cache identity)."""
+        result1 = get_territory(code)
+        result2 = get_territory(code)
+        assert result1 is not None
+        assert result2 is not None
+        assert result1 is result2  # Same cached object
+        assert result1.official_languages == result2.official_languages
+        event(f"lang_count={len(result1.official_languages)}")
+        event(f"code={code}")
+
+    @given(code=territory_codes)
+    def test_official_languages_in_list_territories(self, code: str) -> None:
+        """list_territories() entries all carry official_languages as tuple."""
+        territories = list_territories()
+        # Find the entry matching this code
+        matched = {t for t in territories if t.alpha2 == code.upper()}
+        assert len(matched) <= 1  # At most one entry per alpha2
+        for territory in matched:
+            assert isinstance(territory.official_languages, tuple)
+        event(f"found={bool(matched)}")
+        event(f"code={code}")
+
+    @given(code=territory_with_official_languages())
+    def test_territory_info_hashable_with_official_languages(self, code: str) -> None:
+        """TerritoryInfo with official_languages field is hashable and set-usable."""
+        result = get_territory(code)
+        assert result is not None
+        # Must not raise
+        h = hash(result)
+        assert isinstance(h, int)
+        container = {result}
+        assert len(container) == 1
+        assert result in container
+        lang_count = len(result.official_languages)
+        event(f"lang_count={lang_count}")
+        event(f"code={code}")

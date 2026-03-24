@@ -86,7 +86,7 @@ Submodules:
     ftllexengine.diagnostics - Error types and validation results
     ftllexengine.localization - Resource loaders and type aliases (requires Babel)
     ftllexengine.runtime - Bundle and resolver (requires Babel)
-    ftllexengine.integrity - Data integrity exceptions (compliance-grade safety)
+    ftllexengine.integrity - Data integrity exceptions (fail-fast validation)
 
 Installation:
     # Parser-only (no external dependencies):

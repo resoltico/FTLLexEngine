@@ -262,10 +262,12 @@ class TestBabelCompatModuleExports:
         # BabelNumbersProtocol and BabelDatesProtocol were removed in favour of
         # get_babel_numbers() and get_babel_dates() gateway functions.
         # get_unknown_locale_error (no "class" suffix) was renamed and never existed.
+        # get_global_data_func was removed; callers use get_babel_numbers() instead.
         removed = [
             "BabelNumbersProtocol",
             "BabelDatesProtocol",
             "get_unknown_locale_error",
+            "get_global_data_func",
         ]
         for name in removed:
             assert name not in babel_compat.__all__
@@ -277,9 +279,9 @@ class TestBabelCompatModuleExports:
         expected = [
             "BabelImportError",
             "get_babel_dates",
+            "get_babel_languages",
             "get_babel_numbers",
             "get_cldr_version",
-            "get_global_data_func",
             "get_locale_class",
             "get_locale_identifiers_func",
             "get_number_format_error_class",

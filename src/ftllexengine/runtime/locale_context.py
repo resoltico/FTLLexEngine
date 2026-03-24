@@ -36,7 +36,7 @@ import logging
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, Literal
 
@@ -384,6 +384,7 @@ class LocaleContext:
         maximum_fraction_digits: int = 3,
         use_grouping: bool = True,
         pattern: str | None = None,
+        numbering_system: str = "latn",
     ) -> str:
         """Format number with locale-specific separators.
 
@@ -396,6 +397,9 @@ class LocaleContext:
             maximum_fraction_digits: Maximum decimal places (default: 3)
             use_grouping: Use thousands separator (default: True)
             pattern: Custom number pattern (overrides other parameters)
+            numbering_system: CLDR numbering system identifier (default: "latn").
+                Controls which numeral glyphs are used in the output.
+                Examples: "latn" (0-9), "arab" (Arabic-Indic), "deva" (Devanagari).
 
         Returns:
             Formatted number string according to locale rules
@@ -445,75 +449,39 @@ class LocaleContext:
 
         try:
             # Use custom pattern if provided.
-            # Pre-quantize with ROUND_HALF_UP before passing to Babel to
-            # override Babel's default ROUND_HALF_EVEN rounding semantics.
-            # Financial applications expect ROUND_HALF_UP (e.g., 1.225 → 1.23,
-            # not 1.22). Babel does not expose a rounding mode parameter.
             if pattern is not None:
-                max_frac: int | None = None
-                try:
-                    max_frac = babel_numbers.parse_pattern(pattern).frac_prec[1]
-                except (ValueError, AttributeError, IndexError):
-                    logger.warning(
-                        "parse_pattern failed for NUMBER pattern %r; "
-                        "ROUND_HALF_UP pre-quantization skipped — "
-                        "Babel's default ROUND_HALF_EVEN will be used",
-                        pattern,
-                    )
-                is_special = isinstance(value, Decimal) and not value.is_finite()
-                if not is_special and max_frac is not None:
-                    value = Decimal(str(value)).quantize(
-                        Decimal(10) ** -max_frac, rounding=ROUND_HALF_UP
-                    )
                 return str(
                     babel_numbers.format_decimal(
                         value,
                         format=pattern,
                         locale=self.babel_locale,
+                        numbering_system=numbering_system,
                     )
                 )
 
-            # Build format pattern from parameters
-            # '#,##0' = integer with grouping
-            # '#,##0.0##' = 1-3 decimal places with grouping
-            # '0.00' = exactly 2 decimal places, no grouping
-
-            # Integer part
+            # Build format pattern from parameters.
+            # '#,##0' = integer with grouping; '0' = integer without grouping.
+            # '#,##0.0##' = 1-3 decimal places with grouping; '0.00' = fixed 2.
             integer_part = "#,##0" if use_grouping else "0"
 
-            # Decimal part
-            # Apply ROUND_HALF_UP quantization for all precision levels
-            # CLDR specifies half-up: 2.5→3, 3.5→4 (not 2.5→2, 3.5→4)
-            # This ensures consistent rounding across all precision levels
             if maximum_fraction_digits == 0:
-                # No decimals - round to integer
-                quantizer = Decimal(1)
                 format_pattern = integer_part
             elif minimum_fraction_digits == maximum_fraction_digits:
-                # Fixed decimals (e.g., '0.00' for exactly 2)
-                quantizer = Decimal(10) ** -maximum_fraction_digits
                 decimal_part = "0" * minimum_fraction_digits
                 format_pattern = f"{integer_part}.{decimal_part}"
             else:
-                # Variable decimals (e.g., '0.0##' for 1-3)
-                quantizer = Decimal(10) ** -maximum_fraction_digits
                 required = "0" * minimum_fraction_digits
                 optional = "#" * (maximum_fraction_digits - minimum_fraction_digits)
                 format_pattern = f"{integer_part}.{required}{optional}"
 
-            # Quantize value with ROUND_HALF_UP for consistent rounding.
-            # Skip quantization for non-finite Decimal values (Infinity, NaN).
-            # Keep as Decimal to preserve precision (Babel format_decimal accepts Decimal).
-            is_special = isinstance(value, Decimal) and not value.is_finite()
-            if not is_special:
-                value = Decimal(str(value)).quantize(quantizer, rounding=ROUND_HALF_UP)
-
-            # Format using Babel
+            # Babel's decimal_quantization=True (default) applies ROUND_HALF_EVEN,
+            # which is the IEEE 754 / CLDR-neutral rounding mode.
             return str(
                 babel_numbers.format_decimal(
                     value,
                     format=format_pattern,
                     locale=self.babel_locale,
+                    numbering_system=numbering_system,
                 )
             )
 
@@ -710,6 +678,9 @@ class LocaleContext:
         currency: str,
         currency_display: Literal["symbol", "code", "name"] = "symbol",
         pattern: str | None = None,
+        use_grouping: bool = True,
+        currency_digits: bool = True,
+        numbering_system: str = "latn",
     ) -> str:
         """Format currency with locale-specific rules.
 
@@ -727,6 +698,14 @@ class LocaleContext:
                 CLDR currency pattern placeholders:
                 - Use double currency sign for ISO code display
                 - Standard patterns use single currency sign for symbol
+            use_grouping: Use thousands separator (default: True)
+            currency_digits: Use ISO 4217 decimal places for the currency
+                (default: True). When False, no automatic decimal place adjustment
+                is made and the value is formatted as-is. Has no effect when
+                ``pattern`` is provided (pattern precision takes precedence).
+            numbering_system: CLDR numbering system identifier (default: "latn").
+                Controls which numeral glyphs are used in the output.
+                Examples: "latn" (0-9), "arab" (Arabic-Indic), "deva" (Devanagari).
 
         Returns:
             Formatted currency string according to locale rules
@@ -757,7 +736,8 @@ class LocaleContext:
         CLDR Compliance:
             Uses Babel's format_currency() which implements CLDR rules.
             Matches Intl.NumberFormat with style: 'currency'.
-            Automatically applies currency-specific decimal places:
+            Automatically applies currency-specific decimal places when
+            currency_digits=True (default):
             - JPY: 0 decimals
             - BHD, KWD, OMR: 3 decimals
             - Most others: 2 decimals
@@ -765,51 +745,9 @@ class LocaleContext:
         babel_numbers = get_babel_numbers()
 
         try:
-            # Pre-quantize with ROUND_HALF_UP before passing to Babel.
-            # Babel's format_currency() uses Python Decimal.quantize() internally
-            # with the default context rounding mode (ROUND_HALF_EVEN). Financial
-            # applications expect ROUND_HALF_UP for midpoint values (e.g., 1.225 →
-            # 1.23, not 1.22). Pre-quantizing to the exact display precision with
-            # ROUND_HALF_UP ensures Babel receives a value that needs no further
-            # rounding, making the displayed result deterministic and financially
-            # correct regardless of Babel's internal rounding mode.
-            is_special = isinstance(value, Decimal) and not value.is_finite()
-            if not is_special:
-                if pattern is not None:
-                    # Custom pattern: extract max fraction digits for pre-quantization.
-                    max_frac_c: int | None = None
-                    try:
-                        max_frac_c = babel_numbers.parse_pattern(pattern).frac_prec[1]
-                    except (ValueError, AttributeError, IndexError):
-                        logger.warning(
-                            "parse_pattern failed for CURRENCY pattern %r; "
-                            "ROUND_HALF_UP pre-quantization skipped — "
-                            "Babel's default ROUND_HALF_EVEN will be used",
-                            pattern,
-                        )
-                    if max_frac_c is not None:
-                        value = Decimal(str(value)).quantize(
-                            Decimal(10) ** -max_frac_c, rounding=ROUND_HALF_UP
-                        )
-                else:
-                    # Standard/name/code format: use CLDR currency precision.
-                    # get_currency_precision() returns the CLDR-defined number of
-                    # decimal places for this currency (e.g., 0 for JPY, 3 for BHD).
-                    prec = babel_numbers.get_currency_precision(currency)
-                    value = Decimal(str(value)).quantize(
-                        Decimal(10) ** -prec, rounding=ROUND_HALF_UP
-                    )
-
-            # Use custom pattern if provided (overrides currency_display).
-            # currency_digits=False: the caller has explicitly specified the format
-            # string; the pattern's decimal specification must be respected rather
-            # than overridden by CLDR currency precision (currency_digits=True default).
-            # Pre-quantization above already applied ROUND_HALF_UP at the pattern's
-            # declared precision, so the pre-quantization and formatting precisions
-            # are aligned. With currency_digits=True, Babel would override the
-            # pattern's decimal count with the CLDR value (e.g., AUD=2 overrides
-            # pattern "¤#,##0.000"=3), misaligning the two precisions and making
-            # ROUND_HALF_UP ineffective for values at the boundary.
+            # Custom pattern overrides currency_display.
+            # currency_digits=False: the pattern explicitly controls decimal places;
+            # CLDR ISO 4217 defaults must not override the pattern's precision.
             if pattern is not None:
                 return str(
                     babel_numbers.format_currency(
@@ -818,26 +756,28 @@ class LocaleContext:
                         format=pattern,
                         locale=self.babel_locale,
                         currency_digits=False,
+                        group_separator=use_grouping,
+                        numbering_system=numbering_system,
                     )
                 )
 
-            # Map currency_display to Babel's format_type parameter
-            # Babel format_type must be Literal["name", "standard", "accounting"]
+            # Map currency_display to Babel's format_type parameter.
             if currency_display == "name":
                 format_type: Literal["name", "standard", "accounting"] = "name"
-                # Name format type handles display natively
                 return str(
                     babel_numbers.format_currency(
                         value,
                         currency,
                         locale=self.babel_locale,
-                        currency_digits=True,
+                        currency_digits=currency_digits,
                         format_type=format_type,
+                        group_separator=use_grouping,
+                        numbering_system=numbering_system,
                     )
                 )
 
             if currency_display == "code":
-                # Try to get ISO code pattern (double currency sign per CLDR)
+                # Double currency sign (¤¤) per CLDR displays ISO code.
                 code_pattern = self._get_iso_code_pattern()
                 if code_pattern is not None:
                     return str(
@@ -846,19 +786,23 @@ class LocaleContext:
                             currency,
                             format=code_pattern,
                             locale=self.babel_locale,
-                            currency_digits=True,
+                            currency_digits=currency_digits,
+                            group_separator=use_grouping,
+                            numbering_system=numbering_system,
                         )
                     )
-                # Fallback: use standard format if pattern extraction fails
+                # Fallback: use standard format if pattern extraction fails.
 
-            # Default: symbol display using standard format
+            # Default: symbol display using standard format.
             return str(
                 babel_numbers.format_currency(
                     value,
                     currency,
                     locale=self.babel_locale,
-                    currency_digits=True,
+                    currency_digits=currency_digits,
                     format_type="standard",
+                    group_separator=use_grouping,
+                    numbering_system=numbering_system,
                 )
             )
 

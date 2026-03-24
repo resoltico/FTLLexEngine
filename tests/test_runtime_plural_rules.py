@@ -830,54 +830,56 @@ class TestPrecisionParameter:
 class TestRoundingConsistency:
     """Tests that plural selection rounding matches formatting rounding.
 
-    Both plural_rules.py and locale_context.py must use ROUND_HALF_UP
+    Both plural_rules.py and locale_context.py use ROUND_HALF_EVEN (Babel default)
     so that the displayed number and its plural form always agree.
-    Half-values (x.5) must round in the same direction in both paths.
+    Half-values (x.5) round to the nearest even digit in both paths.
     """
 
-    def test_half_value_rounds_up_for_plural(self) -> None:
-        """2.5 with precision=0 rounds to 3, selecting 'other' in English."""
-        # 2.5 -> 3 (ROUND_HALF_UP), which is 'other' in English (not 1)
+    def test_half_value_rounds_even_for_plural(self) -> None:
+        """2.5 with precision=0 rounds to 2, selecting 'other' in English."""
+        # 2.5 -> 2 (ROUND_HALF_EVEN: 2 is even), which is 'other' in English
         result = select_plural_category(Decimal("2.5"), "en_US", precision=0)
         assert result == "other"
 
     def test_half_value_3_5_rounds_up_for_plural(self) -> None:
         """3.5 with precision=0 rounds to 4, selecting 'other' in English."""
+        # 3.5 -> 4 (ROUND_HALF_EVEN: 4 is even)
         result = select_plural_category(Decimal("3.5"), "en_US", precision=0)
         assert result == "other"
 
-    def test_half_value_0_5_rounds_to_one_for_plural(self) -> None:
-        """0.5 with precision=0 rounds to 1, selecting 'one' in English."""
-        # 0.5 -> 1 (ROUND_HALF_UP), which is 'one' in English
+    def test_half_value_0_5_rounds_to_zero_for_plural(self) -> None:
+        """0.5 with precision=0 rounds to 0, selecting 'other' in English."""
+        # 0.5 -> 0 (ROUND_HALF_EVEN: 0 is even), which is 'other' in English
         result = select_plural_category(Decimal("0.5"), "en_US", precision=0)
-        assert result == "one"
+        assert result == "other"
 
     def test_half_value_1_5_rounds_up_for_plural(self) -> None:
         """1.5 with precision=0 rounds to 2, selecting 'other' in English."""
+        # 1.5 -> 2 (ROUND_HALF_EVEN: 2 is even)
         result = select_plural_category(Decimal("1.5"), "en_US", precision=0)
         assert result == "other"
 
     def test_rounding_matches_formatting_at_half_values(self) -> None:
-        """Verify that Decimal quantization uses ROUND_HALF_UP, matching formatting.
+        """Verify that Decimal quantization uses ROUND_HALF_EVEN, matching Babel.
 
         This is the core consistency property: the number displayed to the user
         and the plural category selected must agree on rounding direction.
         """
-        from decimal import ROUND_HALF_UP  # noqa: PLC0415 - import inside function
+        from decimal import ROUND_HALF_EVEN  # noqa: PLC0415 - import inside function
 
         test_cases = [
-            (Decimal("0.5"), 0, Decimal(1)),
+            (Decimal("0.5"), 0, Decimal(0)),
             (Decimal("1.5"), 0, Decimal(2)),
-            (Decimal("2.5"), 0, Decimal(3)),
+            (Decimal("2.5"), 0, Decimal(2)),
             (Decimal("3.5"), 0, Decimal(4)),
-            (Decimal("1.005"), 2, Decimal("1.01")),
+            (Decimal("1.005"), 2, Decimal("1.00")),
             (Decimal("1.015"), 2, Decimal("1.02")),
-            (Decimal("2.445"), 2, Decimal("2.45")),
+            (Decimal("2.445"), 2, Decimal("2.44")),
         ]
 
         for value, precision, expected_rounded in test_cases:
             quantizer = Decimal(10) ** -precision
-            rounded = value.quantize(quantizer, rounding=ROUND_HALF_UP)
+            rounded = value.quantize(quantizer, rounding=ROUND_HALF_EVEN)
             assert rounded == expected_rounded, (
                 f"Expected {value} with precision={precision} to round to "
                 f"{expected_rounded}, got {rounded}"
@@ -896,17 +898,17 @@ class TestRoundingConsistency:
     def test_plural_rounding_direction_property(
         self, n: Decimal, precision: int
     ) -> None:
-        """Plural rounding direction matches ROUND_HALF_UP for all inputs.
+        """Plural rounding direction matches ROUND_HALF_EVEN for all inputs.
 
         Property: The Decimal value used for plural selection must equal the
-        value obtained by ROUND_HALF_UP quantization.
+        value obtained by ROUND_HALF_EVEN quantization.
         """
-        from decimal import ROUND_HALF_UP  # noqa: PLC0415 - import inside function
+        from decimal import ROUND_HALF_EVEN  # noqa: PLC0415 - import inside function
 
         quantizer = Decimal(10) ** -precision
-        expected = n.quantize(quantizer, rounding=ROUND_HALF_UP)
+        expected = n.quantize(quantizer, rounding=ROUND_HALF_EVEN)
 
-        # The plural category must correspond to the ROUND_HALF_UP result.
+        # The plural category must correspond to the ROUND_HALF_EVEN result.
         # We verify indirectly: call select_plural_category with precision,
         # then call again with the explicitly-rounded value (no precision).
         category_via_precision = select_plural_category(n, "en_US", precision=precision)
@@ -938,3 +940,120 @@ class TestSlavicRuleReturnOther:
         # Remaining cases return 'other'
         result = select_plural_category(111, "pl")
         assert result in ["many", "other"]
+
+
+# ============================================================================
+# Ordinal Plural Rule Tests
+# ============================================================================
+
+
+class TestOrdinalPluralRules:
+    """Tests for the ordinal=True parameter using CLDR ordinal plural rules.
+
+    Ordinal rules apply to rank/position contexts (1st, 2nd, 3rd, ...).
+    English ordinal rules: 1->one (1st), 2->two (2nd), 3->few (3rd),
+    4+->other unless ends in 1/2/3 with specific exceptions.
+    """
+
+    def test_english_ordinal_one(self) -> None:
+        """English ordinal: 1 -> 'one' (1st)."""
+        assert select_plural_category(1, "en_US", ordinal=True) == "one"
+
+    def test_english_ordinal_two(self) -> None:
+        """English ordinal: 2 -> 'two' (2nd)."""
+        assert select_plural_category(2, "en_US", ordinal=True) == "two"
+
+    def test_english_ordinal_few(self) -> None:
+        """English ordinal: 3 -> 'few' (3rd)."""
+        assert select_plural_category(3, "en_US", ordinal=True) == "few"
+
+    def test_english_ordinal_other(self) -> None:
+        """English ordinal: 4+ (no suffix rule) -> 'other' (4th)."""
+        assert select_plural_category(4, "en_US", ordinal=True) == "other"
+
+    def test_english_ordinal_eleven(self) -> None:
+        """English ordinal: 11 -> 'other' (11th, not 11st)."""
+        assert select_plural_category(11, "en_US", ordinal=True) == "other"
+
+    def test_english_ordinal_twelve(self) -> None:
+        """English ordinal: 12 -> 'other' (12th, not 12nd)."""
+        assert select_plural_category(12, "en_US", ordinal=True) == "other"
+
+    def test_english_ordinal_thirteen(self) -> None:
+        """English ordinal: 13 -> 'other' (13th, not 13rd)."""
+        assert select_plural_category(13, "en_US", ordinal=True) == "other"
+
+    def test_english_ordinal_twenty_one(self) -> None:
+        """English ordinal: 21 -> 'one' (21st)."""
+        assert select_plural_category(21, "en_US", ordinal=True) == "one"
+
+    def test_english_ordinal_twenty_two(self) -> None:
+        """English ordinal: 22 -> 'two' (22nd)."""
+        assert select_plural_category(22, "en_US", ordinal=True) == "two"
+
+    def test_english_ordinal_twenty_three(self) -> None:
+        """English ordinal: 23 -> 'few' (23rd)."""
+        assert select_plural_category(23, "en_US", ordinal=True) == "few"
+
+    def test_ordinal_false_is_default(self) -> None:
+        """ordinal=False (default) uses cardinal rules, same as omitting the parameter."""
+        assert (
+            select_plural_category(1, "en_US")
+            == select_plural_category(1, "en_US", ordinal=False)
+        )
+        # Ordinal and cardinal differ for n=2 in English:
+        # cardinal: 2 -> "other"; ordinal: 2 -> "two"
+        assert select_plural_category(2, "en_US") == "other"
+        assert select_plural_category(2, "en_US", ordinal=True) == "two"
+
+    @given(n=st.integers(min_value=0, max_value=1000), locale=LOCALE_CODES)
+    @example(n=1, locale="en_US")
+    @example(n=2, locale="en_US")
+    @example(n=3, locale="en_US")
+    @example(n=11, locale="en_US")
+    def test_ordinal_always_returns_valid_category(
+        self, n: int, locale: str
+    ) -> None:
+        """Ordinal selection always returns a valid CLDR category.
+
+        Property: For all n and locale, ordinal result in valid_categories
+        """
+        result = select_plural_category(n, locale, ordinal=True)
+
+        valid_categories = {"zero", "one", "two", "few", "many", "other"}
+        assert result in valid_categories
+
+        event(f"category={result}")
+        event(f"locale={locale}")
+
+    @given(n=st.integers(min_value=0, max_value=1000), locale=LOCALE_CODES)
+    def test_ordinal_deterministic(self, n: int, locale: str) -> None:
+        """Ordinal selection is deterministic: same inputs produce same result."""
+        result1 = select_plural_category(n, locale, ordinal=True)
+        result2 = select_plural_category(n, locale, ordinal=True)
+
+        assert result1 == result2
+        event(f"category={result1}")
+
+    @given(n=NUMBERS, locale=LOCALE_CODES)
+    def test_ordinal_never_crashes(self, n: int | Decimal, locale: str) -> None:
+        """Ordinal selection never crashes for any valid n/locale combination."""
+        result = select_plural_category(n, locale, ordinal=True)
+
+        assert isinstance(result, str)
+        event(f"category={result}")
+        event(f"n_type={type(n).__name__}")
+
+    def test_ordinal_unknown_locale_falls_back_to_other(self) -> None:
+        """Unknown locale falls back to 'other' for ordinal rules."""
+        result = select_plural_category(1, "xx_XX", ordinal=True)
+        assert result == "other"
+
+    def test_ordinal_welsh_has_multiple_categories(self) -> None:
+        """Welsh (cy) ordinal rules use multiple categories (zero, one, two, few, many, other)."""
+        # Welsh ordinals use all 6 categories
+        results = {select_plural_category(n, "cy", ordinal=True) for n in range(10)}
+        # Welsh ordinals produce at least 2 distinct categories
+        assert len(results) >= 2
+        valid = {"zero", "one", "two", "few", "many", "other"}
+        assert results <= valid

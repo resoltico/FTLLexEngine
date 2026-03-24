@@ -303,6 +303,109 @@ class TestLocalizationBootConfigBoot:
 
 
 # ===========================================================================
+# One-shot enforcement
+# ===========================================================================
+
+
+class TestBootOneShotEnforcement:
+    """boot() is a one-shot operation; calling it twice raises RuntimeError."""
+
+    def test_boot_raises_on_second_call(self) -> None:
+        """boot() raises RuntimeError when called a second time on the same instance."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        cfg.boot()
+        with pytest.raises(RuntimeError, match="already been called"):
+            cfg.boot()
+
+    def test_boot_simple_raises_on_second_call(self) -> None:
+        """boot_simple() raises RuntimeError when called a second time on the same instance."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        cfg.boot_simple()
+        with pytest.raises(RuntimeError, match="already been called"):
+            cfg.boot_simple()
+
+    def test_boot_raises_after_boot_simple(self) -> None:
+        """boot() raises RuntimeError when called after boot_simple() on the same instance."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        cfg.boot_simple()
+        with pytest.raises(RuntimeError, match="already been called"):
+            cfg.boot()
+
+    def test_boot_simple_raises_after_boot(self) -> None:
+        """boot_simple() raises RuntimeError when called after boot() on the same instance."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
+        cfg = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        cfg.boot()
+        with pytest.raises(RuntimeError, match="already been called"):
+            cfg.boot_simple()
+
+    def test_new_instance_can_boot_independently(self) -> None:
+        """Two separate instances can each call boot() exactly once."""
+        locales = ("en",)
+        resource_ids = ("ui.ftl",)
+        loader = _make_loader(locales, resource_ids, "greeting = Hello")
+        cfg1 = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        cfg2 = LocalizationBootConfig(
+            locales=locales,
+            resource_ids=resource_ids,
+            loader=loader,
+        )
+        l10n1, _, _ = cfg1.boot()
+        l10n2, _, _ = cfg2.boot()
+        assert isinstance(l10n1, FluentLocalization)
+        assert isinstance(l10n2, FluentLocalization)
+
+    def test_boot_does_not_consume_instance_on_failure(self) -> None:
+        """boot() that raises IntegrityCheckFailedError still marks the instance as consumed.
+
+        The one-shot guard is set before the boot sequence runs. A failed boot
+        does not produce a valid FluentLocalization, so there is no safe way to
+        retry on the same config instance — the caller must create a new one.
+        """
+        loader = DictLoader({})  # no resources — will raise IntegrityCheckFailedError
+        cfg = LocalizationBootConfig(
+            locales=("en",),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+        )
+        with pytest.raises(IntegrityCheckFailedError):
+            cfg.boot()
+        with pytest.raises(RuntimeError, match="already been called"):
+            cfg.boot()
+
+
+# ===========================================================================
 # boot_simple() convenience alias
 # ===========================================================================
 

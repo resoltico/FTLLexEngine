@@ -39,7 +39,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from math import isinf, isnan
 from typing import TYPE_CHECKING, Any
 
@@ -110,7 +110,7 @@ class BuiltinsMetrics:
     edge_inf_count: int = 0
     edge_zero_count: int = 0
 
-    # Rounding oracle: ROUND_HALF_UP verification
+    # Rounding oracle: ROUND_HALF_EVEN verification (Babel default)
     rounding_oracle_checks: int = 0
     rounding_oracle_violations: int = 0
 
@@ -427,10 +427,10 @@ def _pattern_number_precision(fdp: atheris.FuzzedDataProvider) -> None:
         )
         raise BuiltinsFuzzError(msg)
 
-    # Rounding oracle: verify ROUND_HALF_UP is used across all ASCII-digit locales.
-    # ROUND_HALF_UP pre-quantization in locale_context.py runs before Babel, so it
-    # applies to every locale. _extract_oracle_digits handles locale-specific decimal
-    # and group separators; it returns None for non-ASCII-digit locales (ar-EG, hi-IN).
+    # Rounding oracle: verify ROUND_HALF_EVEN across all ASCII-digit locales.
+    # Babel uses decimal_quantization=True by default, which applies ROUND_HALF_EVEN
+    # (IEEE 754 banker's rounding). _extract_oracle_digits handles locale-specific
+    # decimal and group separators; returns None for non-ASCII-digit locales (ar-EG).
     # NaN guard is explicit: Decimal.quantize() does NOT raise InvalidOperation for
     # quiet NaN -- it silently propagates and returns Decimal('NaN'). Only Infinity
     # raises InvalidOperation. Without the is_nan() check, the oracle compares
@@ -439,7 +439,7 @@ def _pattern_number_precision(fdp: atheris.FuzzedDataProvider) -> None:
     if isinstance(val_d, Decimal) and result.precision is not None and not val_d.is_nan():
         prec = result.precision
         try:
-            expected = abs(val_d).quantize(Decimal(10) ** -prec, rounding=ROUND_HALF_UP)
+            expected = abs(val_d).quantize(Decimal(10) ** -prec, rounding=ROUND_HALF_EVEN)
         except InvalidOperation:
             pass  # Infinity: skip oracle
         else:
@@ -688,21 +688,20 @@ def _pattern_currency_precision(fdp: atheris.FuzzedDataProvider) -> None:
         )
         raise BuiltinsFuzzError(msg)
 
-    # Rounding oracle: verify ROUND_HALF_UP for known currency decimal counts.
-    # ROUND_HALF_UP pre-quantization applies to all locales; _extract_oracle_digits
-    # handles locale-specific separators (de-DE dot-group/comma-decimal, lv-LV
-    # space-group/comma-decimal, etc.) and skips non-ASCII-digit locales.
-    # NaN guard is explicit: Decimal.quantize() silently propagates quiet NaN
-    # (returns Decimal('NaN')) instead of raising InvalidOperation. Only Infinity
-    # raises. Without is_nan(), the oracle fires a false violation when Babel
-    # formats NaN differently from str(Decimal('NaN')).
+    # Rounding oracle: verify ROUND_HALF_EVEN for known currency decimal counts.
+    # Babel's decimal_quantization=True applies ROUND_HALF_EVEN by default.
+    # _extract_oracle_digits handles locale-specific separators and skips
+    # non-ASCII-digit locales. NaN guard is explicit: Decimal.quantize() silently
+    # propagates quiet NaN (returns Decimal('NaN')) instead of raising
+    # InvalidOperation. Only Infinity raises. Without is_nan(), the oracle fires
+    # a false violation when Babel formats NaN differently from str(Decimal('NaN')).
     if isinstance(result, FluentNumber) and result.precision is not None:
         val_d = result.value
         if isinstance(val_d, Decimal) and not val_d.is_nan():
             expected_prec = currency_decimals[currency]
             quantizer = Decimal(10) ** -expected_prec
             try:
-                expected = abs(val_d).quantize(quantizer, rounding=ROUND_HALF_UP)
+                expected = abs(val_d).quantize(quantizer, rounding=ROUND_HALF_EVEN)
             except InvalidOperation:
                 pass  # Infinity: skip oracle
             else:

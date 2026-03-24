@@ -252,10 +252,10 @@ class TestLocaleDuplication:
 
 
 class TestNumberRounding:
-    """Tests for RES-NUM-ROUNDING-001: CLDR half-up rounding."""
+    """Tests for formatting rounding behavior (ROUND_HALF_EVEN via Babel)."""
 
-    def test_half_up_rounding_2_5(self) -> None:
-        """2.5 rounds to 3 (CLDR half-up)."""
+    def test_half_even_rounding_2_5(self) -> None:
+        """2.5 rounds to 2 (ROUND_HALF_EVEN: nearest even digit)."""
         locale_ctx = LocaleContext.create("en")
 
         result = locale_ctx.format_number(
@@ -264,10 +264,10 @@ class TestNumberRounding:
             use_grouping=False
         )
 
-        assert result == "3"  # Not "2" (banker's rounding)
+        assert result == "2"  # ROUND_HALF_EVEN: 2 is even
 
-    def test_half_up_rounding_3_5(self) -> None:
-        """3.5 rounds to 4 (CLDR half-up)."""
+    def test_half_even_rounding_3_5(self) -> None:
+        """3.5 rounds to 4 (ROUND_HALF_EVEN: 4 is even)."""
         locale_ctx = LocaleContext.create("en")
 
         result = locale_ctx.format_number(
@@ -278,8 +278,8 @@ class TestNumberRounding:
 
         assert result == "4"
 
-    def test_half_up_rounding_4_5(self) -> None:
-        """4.5 rounds to 5 (CLDR half-up)."""
+    def test_half_even_rounding_4_5(self) -> None:
+        """4.5 rounds to 4 (ROUND_HALF_EVEN: 4 is even)."""
         locale_ctx = LocaleContext.create("en")
 
         result = locale_ctx.format_number(
@@ -288,7 +288,7 @@ class TestNumberRounding:
             use_grouping=False
         )
 
-        assert result == "5"  # Not "4" (banker's rounding)
+        assert result == "4"  # ROUND_HALF_EVEN: 4 is even
 
     def test_rounding_uses_decimal_quantize(self) -> None:
         """Rounding uses Decimal.quantize with ROUND_HALF_UP."""

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # lint.sh — Universal Agent-Native Linter
-# Version: 1.0.0
+# Version: 1.0.1
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+
 # ARCHITECTURAL INTENT: 
@@ -31,7 +31,7 @@ if [[ "${BASH_VERSINFO[0]}" -lt 5 ]]; then
 fi
 
 # Bash Settings
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.0.1"
 SCRIPT_NAME="lint.sh"
 
 set -o errexit
@@ -121,7 +121,6 @@ pre_flight_diagnostics() {
     echo "[ INFO ] PYTHONPATH           : ${PYTHONPATH:-<empty>}"
     
     # Tool Availability Check
-    local tool_status=0
     for tool in ruff mypy; do
         if ! command -v "$tool" >/dev/null 2>&1; then
              # Warn but don't fail immediately, maybe project doesn't use all tools

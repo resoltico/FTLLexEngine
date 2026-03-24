@@ -62,7 +62,7 @@ Patterns (24):
 - loader_path_error: invalid resource_id is captured as loader error in summary
 - require_clean_api: boot validation raises or returns based on LoadSummary cleanliness
 - boot_config_api: LocalizationBootConfig strict-mode boot sequence, boot_simple(), boot()
-  3-tuple primary API, and required_messages enforcement
+  3-tuple primary API, required_messages enforcement, and one-shot call enforcement
 
 Metrics:
 - Pattern coverage with weighted round-robin schedule
@@ -2022,6 +2022,42 @@ def _check_boot_config_required_messages_present(fdp: atheris.FuzzedDataProvider
         pass
 
 
+def _check_boot_config_one_shot(fdp: atheris.FuzzedDataProvider) -> None:
+    """boot() and boot_simple() are one-shot: second call raises RuntimeError."""
+    locale = fdp.PickValueInList(["en", "de"])
+    ftl = "greeting = Hello\n"
+    loader = _SingleResourceLoader(locale, "ui.ftl", ftl)
+    use_simple = fdp.ConsumeBool()
+    try:
+        cfg = LocalizationBootConfig(
+            locales=(locale,),
+            resource_ids=("ui.ftl",),
+            loader=loader,
+        )
+        # First call must succeed
+        if use_simple:
+            cfg.boot_simple()
+        else:
+            cfg.boot()
+        # Second call must raise RuntimeError (one-shot enforcement)
+        try:
+            if use_simple:
+                cfg.boot_simple()
+            else:
+                cfg.boot()
+            msg = (
+                "boot() did not raise RuntimeError on second call "
+                "(one-shot enforcement missing)"
+            )
+            raise LocalizationFuzzError(msg)
+        except RuntimeError:
+            pass  # expected: one-shot enforcement
+    except IntegrityCheckFailedError:
+        pass  # FTL may have syntax issues -- acceptable
+    except _ALLOWED_EXCEPTIONS:
+        pass
+
+
 def _pattern_boot_config_api(
     fdp: atheris.FuzzedDataProvider,
 ) -> None:
@@ -2034,6 +2070,7 @@ def _pattern_boot_config_api(
         _check_boot_config_boot_failure,
         _check_boot_config_required_messages_absent,
         _check_boot_config_required_messages_present,
+        _check_boot_config_one_shot,
     )
     handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
     handler(fdp)

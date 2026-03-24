@@ -53,16 +53,6 @@ if TYPE_CHECKING:
 _metrics_lock = threading.Lock()
 
 
-@dataclass
-class StrategyInvocation:
-    """Single strategy invocation record."""
-
-    strategy_name: str
-    event_key: str
-    event_value: str
-    duration_ms: float
-    timestamp: float
-
 
 @dataclass
 class StrategyReport:
@@ -218,6 +208,7 @@ STRATEGY_CATEGORIES: dict[str, str] = {
     "strategy=semantic_": "ftl_semantically_broken",
     "currency_decimals=": "currency_by_decimals",
     "territory_region=": "territory_by_region",
+    "territory_official_languages=": "territory_with_official_languages",
     "locale_script=": "locale_by_script",
     # ftl.py function bridge strategies
     "bridge_id_parts=": "snake_case/camel_case_identifiers",
@@ -328,6 +319,11 @@ INTENDED_WEIGHTS: dict[str, dict[str, float]] = {
         "africa": 1 / 7,
         "pacific": 1 / 7,
         "small": 1 / 7,
+    },
+    "territory_official_languages=": {
+        "bilingual": 1 / 3,
+        "trilingual": 1 / 3,
+        "single_dominant": 1 / 3,
     },
     "locale_script=": {
         "latin": 0.20,
@@ -593,6 +589,9 @@ EXPECTED_EVENTS: set[str] = {
     "territory_region=africa",
     "territory_region=pacific",
     "territory_region=small",
+    "territory_official_languages=bilingual",
+    "territory_official_languages=trilingual",
+    "territory_official_languages=single_dominant",
     "locale_script=latin",
     "locale_script=cjk",
     "locale_script=cyrillic",
@@ -760,7 +759,7 @@ class StrategyMetrics:
             return
 
         self._enabled = False
-        self._invocations: list[StrategyInvocation] = []
+        self._strategy_invocation_counts: Counter[str] = Counter()
         self._event_counter: Counter[str] = Counter()
         self._strategy_durations: dict[str, list[float]] = {}
         self._lock = threading.Lock()
@@ -785,7 +784,7 @@ class StrategyMetrics:
     def reset(self) -> None:
         """Clear all collected metrics."""
         with self._lock:
-            self._invocations.clear()
+            self._strategy_invocation_counts.clear()
             self._event_counter.clear()
             self._strategy_durations.clear()
 
@@ -999,28 +998,19 @@ class StrategyMetrics:
         strategy_name: str,
         event_key: str,
         event_value: str,
-        duration_ms: float,
     ) -> None:
-        """Record a detailed strategy invocation.
+        """Record a strategy invocation by name and event.
 
         Args:
             strategy_name: Name of the strategy function
             event_key: Event category (e.g., "strategy")
             event_value: Event value (e.g., "placeable_variable")
-            duration_ms: Time taken in milliseconds
         """
         if not self._enabled:
             return
 
         with self._lock:
-            invocation = StrategyInvocation(
-                strategy_name=strategy_name,
-                event_key=event_key,
-                event_value=event_value,
-                duration_ms=duration_ms,
-                timestamp=time.time(),
-            )
-            self._invocations.append(invocation)
+            self._strategy_invocation_counts[strategy_name] += 1
             self._event_counter[f"{event_key}={event_value}"] += 1
 
     def per_strategy_report(self) -> dict[str, dict[str, float | int]]:
@@ -1156,11 +1146,8 @@ class StrategyMetrics:
                 report.perf_stats["p95_ms"] = all_durations_sorted[min(p95_idx, n - 1)]
                 report.perf_stats["p99_ms"] = all_durations_sorted[min(p99_idx, n - 1)]
 
-            # Strategy counts from invocations
-            strategy_counter: Counter[str] = Counter()
-            for inv in self._invocations:
-                strategy_counter[inv.strategy_name] += 1
-            report.strategy_counts = dict(strategy_counter)
+            # Strategy counts from invocation counter
+            report.strategy_counts = dict(self._strategy_invocation_counts)
 
         # Per-strategy breakdown (calls per_strategy_report which acquires lock)
         report.per_strategy = self.per_strategy_report()

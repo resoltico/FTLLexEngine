@@ -78,6 +78,7 @@ class ISOMetrics:
     type_guard_checks: int = 0
     decimal_digits_checks: int = 0  # get_currency_decimal_digits oracle validations
     module_cache_clears: int = 0  # clear_module_caches() call count
+    official_language_checks: int = 0  # official_languages field validations
 
 
 # --- Global State ---
@@ -102,17 +103,18 @@ SAMPLE_LOCALES = ("en", "en_US", "de_DE", "ja_JP", "lv_LV", "ar_SA", "zh_CN",
 
 # Pattern weights: (name, weight)
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
-    ("territory_lookup", 15),
-    ("currency_lookup", 15),
-    ("type_guards", 15),
-    ("cache_consistency", 12),
-    ("list_functions", 10),
-    ("territory_currencies", 10),
-    ("cache_clear_stress", 8),
-    ("cross_reference", 8),
-    ("invalid_input_stress", 7),
-    ("decimal_digits_convenience", 8),
-    ("clear_module_caches", 6),
+    ("territory_lookup", 14),
+    ("currency_lookup", 14),
+    ("type_guards", 14),
+    ("cache_consistency", 11),
+    ("list_functions", 9),
+    ("territory_currencies", 9),
+    ("cache_clear_stress", 7),
+    ("cross_reference", 7),
+    ("invalid_input_stress", 6),
+    ("decimal_digits_convenience", 7),
+    ("clear_module_caches", 5),
+    ("official_languages", 7),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -146,6 +148,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["type_guard_checks"] = _domain.type_guard_checks
     stats["decimal_digits_checks"] = _domain.decimal_digits_checks
     stats["module_cache_clears"] = _domain.module_cache_clears
+    stats["official_language_checks"] = _domain.official_language_checks
     return stats
 
 
@@ -635,6 +638,64 @@ def _pattern_clear_module_caches(fdp: atheris.FuzzedDataProvider) -> None:
         handler(fdp)
 
 
+def _check_official_languages_invariants(fdp: atheris.FuzzedDataProvider) -> None:
+    """Verify official_languages field invariants on TerritoryInfo results."""
+    code = _gen_territory_code(fdp)
+    locale = _gen_locale(fdp)
+    result = get_territory(code, locale)
+    if result is None:
+        return
+    _domain.official_language_checks += 1
+    langs = result.official_languages
+    if not isinstance(langs, tuple):
+        msg = f"official_languages is not a tuple for {code!r}: {type(langs)}"
+        raise ISOFuzzError(msg)
+    for lang in langs:
+        if not isinstance(lang, str):
+            msg = f"official_languages contains non-str for {code!r}: {type(lang)}"
+            raise ISOFuzzError(msg)
+        if not lang:
+            msg = f"official_languages contains empty string for {code!r}"
+            raise ISOFuzzError(msg)
+
+
+def _check_official_languages_known_territories(fdp: atheris.FuzzedDataProvider) -> None:
+    """Known multi-language territories have at least one official language."""
+    # BE (Belgium: fr/nl/de), CH (Switzerland: de/fr/it/rm), LU (Luxembourg: fr/de/lb)
+    multi_lang = ("BE", "CH", "LU", "CA", "FI")
+    code = fdp.PickValueInList(list(multi_lang))
+    result = get_territory(code)
+    if result is None:
+        return
+    _domain.official_language_checks += 1
+    if len(result.official_languages) < 1:
+        msg = f"Multi-language territory {code} has no official_languages"
+        raise ISOFuzzError(msg)
+
+
+def _check_official_languages_hashable(fdp: atheris.FuzzedDataProvider) -> None:
+    """TerritoryInfo with official_languages is still hashable and usable in sets."""
+    code = fdp.PickValueInList(list(SAMPLE_TERRITORIES[:8]))
+    result = get_territory(code)
+    if result is None:
+        return
+    _domain.official_language_checks += 1
+    _ = hash(result)
+    _ = {result}
+
+
+def _pattern_official_languages(fdp: atheris.FuzzedDataProvider) -> None:
+    """Fuzz TerritoryInfo.official_languages: invariants, known territories, hashability."""
+    handlers = (
+        _check_official_languages_invariants,
+        _check_official_languages_known_territories,
+        _check_official_languages_hashable,
+    )
+    handler = handlers[fdp.ConsumeIntInRange(0, len(handlers) - 1)]
+    with contextlib.suppress(*_ALLOWED):
+        handler(fdp)
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH: dict[str, Any] = {
@@ -649,6 +710,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "invalid_input_stress": _pattern_invalid_input_stress,
     "decimal_digits_convenience": _pattern_decimal_digits_convenience,
     "clear_module_caches": _pattern_clear_module_caches,
+    "official_languages": _pattern_official_languages,
 }
 
 

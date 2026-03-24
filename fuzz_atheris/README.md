@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.155.0"
+version: "0.163.0"
 domain: FUZZING
-updated: "2026-03-16"
+updated: "2026-03-23"
 route:
   keywords: [fuzzing, coverage, atheris, libfuzzer, fuzz, seeds, corpus]
   questions: ["what do the fuzzers cover?", "what modules are fuzzed?", "what is not fuzzed?"]
@@ -18,15 +18,15 @@ route:
 |:-------|:-----------------|:---------|:------|:--------|
 | `fuzz_bridge.py` | `runtime.function_bridge`, `core.value_types` | 16 | 33 (.bin) | FunctionRegistry machinery, FluentNumber contracts, `make_fluent_number()` |
 | `fuzz_graph.py` | `analysis.graph` | 12 | 24 (.bin) | Dependency graph cycle detection, canonicalization |
-| `fuzz_builtins.py` | `runtime.functions` | 13 | 24 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY) |
+| `fuzz_builtins.py` | `runtime.functions` | 13 | 24 (.bin) | Babel formatting boundary (NUMBER, DATETIME, CURRENCY); ROUND_HALF_EVEN oracle |
 | `fuzz_cache.py` | `runtime.bundle`, `runtime.cache`, `integrity` | 14 | 38 (.ftl) + 15 (.bin) | Cache concurrency, integrity, and public audit-trail access |
-| `fuzz_currency.py` | `runtime.functions` | 8 | 65 (.txt) + 23 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
+| `fuzz_currency.py` | `runtime.functions` | 11 | 65 (.txt) + 26 (.bin) | ROUND_HALF_EVEN oracle, `use_grouping`, `currency_digits`, `numbering_system` parameters, custom `pattern=` precision alignment, locale matrix (CURRENCY) |
 | `fuzz_parse_currency.py` | `parsing.currency`, `parsing.guards` | 9 | 5 (.txt) + 20 (.bin) | Locale-aware currency parsing, symbol disambiguation, cache stability |
-| `fuzz_iso.py` | `introspection.iso`, `ftllexengine` | 11 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle; `clear_module_caches(components=...)` |
+| `fuzz_iso.py` | `introspection.iso`, `ftllexengine` | 12 | 36 (.bin) | ISO 3166/4217 introspection; `get_currency_decimal_digits` oracle; `clear_module_caches(components=...)`; `TerritoryInfo.official_languages` invariants |
 | `fuzz_lock.py` | `runtime`, `runtime.rwlock` | 16 | 39 (.bin) | RWLock concurrency primitives and public runtime export |
-| `fuzz_numbers.py` | `runtime.functions` | 8 | 70 (.txt) + 18 (.bin) | ROUND_HALF_UP oracle, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
+| `fuzz_numbers.py` | `runtime.functions` | 9 | 70 (.txt) + 19 (.bin) | ROUND_HALF_EVEN oracle, `numbering_system` parameter, custom `pattern=` path, boundary values, min>max clamping (NUMBER) |
 | `fuzz_parse_decimal.py` | `parsing.numbers`, `parsing.guards`, `core.locale_utils` | 9 | 9 (.txt) + 1 (.bin) | Locale-aware decimal parsing, FluentNumber parsing, locale normalization/cache behavior, boundary locale validation, pseudo-locale fallback |
-| `fuzz_plural.py` | `runtime.plural_rules` | 10 | 37 (.bin) | CLDR plural category selection |
+| `fuzz_plural.py` | `runtime.plural_rules` | 11 | 37 (.bin) | CLDR plural category selection; ordinal plural rules (`ordinal=True`) |
 | `fuzz_oom.py` | `syntax.parser` | 16 | 42 (.ftl) + 8 (.bin) | Parser object explosion (DoS) |
 | `fuzz_roundtrip.py` | `syntax.parser`, `syntax.serializer` | 13 | 31 (.bin) + 4 (.ftl) | Parser-serializer convergence |
 | `fuzz_runtime.py` | `runtime.bundle`, `runtime.cache`, `integrity`, `diagnostics.errors` | 6+8 | 100 (.bin) | Full runtime stack, strict mode, FluentBundle AST lookup facade, canonical locale boundary |
@@ -36,7 +36,7 @@ route:
 | `fuzz_cursor.py` | `syntax.cursor`, `syntax.position` | 8 | 5 (.txt) + 35 (.bin) | Cursor state machine, ParseError formatting, position helper parity |
 | `fuzz_localization.py` | `localization.orchestrator`, `localization.loading` | 24 | 13 (.bin) | FluentLocalization orchestration, canonical locale boundary, boot validation, `required_messages`, `boot()`/`boot_simple()` 3-tuple API, single-message schema validation, AST lookup, cache audit trails, loader init, LoadSummary, fallback chains |
 | `fuzz_dates.py` | `parsing.dates` | 14 | 59 (.bin) | CLDR→strptime token mapping, parse_date/parse_datetime locale-aware parsing; 4-digit year oracle (lv-LV/de-DE) |
-| `fuzz_locale_context.py` | `runtime.locale_context`, `core.locale_utils` | 14 | 25 (.bin) | LocaleContext direct formatting, canonical locale_code contract, ROUND_HALF_UP oracle, cross-locale determinism |
+| `fuzz_locale_context.py` | `runtime.locale_context`, `core.locale_utils` | 18 | 29 (.bin) | LocaleContext direct formatting, canonical locale_code contract, ROUND_HALF_EVEN oracle, `numbering_system`/`use_grouping`/`currency_digits` parameters, cross-locale determinism |
 | `fuzz_introspection.py` | `introspection.message` | 13 | 25 (.bin) | IntrospectionVisitor, ReferenceExtractor, programmatic AST construction; `validate_message_variables` schema oracle |
 | `fuzz_diagnostics_formatter.py` | `diagnostics.formatter`, `diagnostics.validation` | 12 | 23 (.bin) | Control-char escaping, RUST/SIMPLE/JSON output, sanitize/redact modes |
 
@@ -132,7 +132,7 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 Target: `runtime.functions` (NUMBER, DATETIME, CURRENCY) -- direct Babel formatting API boundary testing.
 
-Concern boundary: This fuzzer stress-tests the Babel formatting boundary by calling NUMBER, DATETIME, and CURRENCY functions directly through the Python API. This is distinct from fuzz_runtime which invokes these functions through FTL syntax and the resolver stack. Direct API testing isolates the Babel layer from resolver/cache behavior and enables: fuzz-generated Babel pattern strings (pattern= parameter), FluentNumber precision (CLDR v operand) correctness verification, currency-specific decimal digit enforcement (JPY=0, BHD=3), ROUND_HALF_UP rounding oracle verification (NUMBER and CURRENCY), type coercion across int/float/Decimal/FluentNumber inputs, cross-locale formatting consistency, and edge value handling (NaN, Inf, -0.0, extreme magnitudes). FunctionRegistry lifecycle, parameter mapping, and locale injection protocol are covered by fuzz_bridge.py.
+Concern boundary: This fuzzer stress-tests the Babel formatting boundary by calling NUMBER, DATETIME, and CURRENCY functions directly through the Python API. This is distinct from fuzz_runtime which invokes these functions through FTL syntax and the resolver stack. Direct API testing isolates the Babel layer from resolver/cache behavior and enables: fuzz-generated Babel pattern strings (pattern= parameter), FluentNumber precision (CLDR v operand) correctness verification, currency-specific decimal digit enforcement (JPY=0, BHD=3), ROUND_HALF_EVEN rounding oracle verification (NUMBER and CURRENCY), type coercion across int/float/Decimal/FluentNumber inputs, cross-locale formatting consistency, and edge value handling (NaN, Inf, -0.0, extreme magnitudes). FunctionRegistry lifecycle, parameter mapping, and locale injection protocol are covered by fuzz_bridge.py.
 
 Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `BuiltinsMetrics` dataclass (per-function call counts, precision checks/violations, cross-locale tests, type coercion tests, custom pattern tests, edge value tracking, rounding oracle checks/violations, min_gt_max coverage). Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
@@ -147,7 +147,7 @@ Run this fuzzer in isolation: `./scripts/fuzz_atheris.sh builtins` (uses `.venv-
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `number_basic` | 12 | Result is FluentNumber, fraction/grouping variation; independent min/max draws |
-| `number_precision` | 15 | CLDR v operand non-negative; ROUND_HALF_UP oracle (all ASCII-digit locales); independent min/max draws (covers min > max clamp path) |
+| `number_precision` | 15 | CLDR v operand non-negative; ROUND_HALF_EVEN oracle (all ASCII-digit locales); independent min/max draws (covers min > max clamp path) |
 | `number_edges` | 8 | NaN, Inf, -0.0, huge, tiny stability |
 | `number_type_variety` | 8 | int/float/Decimal/FluentNumber all produce FluentNumber |
 
@@ -164,7 +164,7 @@ Run this fuzzer in isolation: `./scripts/fuzz_atheris.sh builtins` (uses `.venv-
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `currency_codes` | 12 | FluentNumber result, valid/fuzzed ISO codes |
-| `currency_precision` | 10 | Currency-specific decimals (JPY=0, BHD=3); ROUND_HALF_UP oracle (all ASCII-digit locales) |
+| `currency_precision` | 10 | Currency-specific decimals (JPY=0, BHD=3); ROUND_HALF_EVEN oracle (all ASCII-digit locales) |
 | `currency_cross_locale` | 8 | Same currency formatted across locales |
 
 **CROSS-CUTTING (3)** - Multi-function and consistency:
@@ -181,11 +181,11 @@ Run this fuzzer in isolation: `./scripts/fuzz_atheris.sh builtins` (uses `.venv-
 
 ### Rounding Oracle Design
 
-`number_precision` and `currency_precision` include a ROUND_HALF_UP oracle that verifies the pre-quantization applied in `locale_context.py`. ROUND_HALF_UP pre-quantization runs before Babel (not inside it) and applies to every locale; the oracle covers all locales where digit extraction is possible.
+`number_precision` and `currency_precision` include a ROUND_HALF_EVEN oracle that verifies Babel's default rounding mode. Babel uses `decimal_quantization=True` which applies ROUND_HALF_EVEN (IEEE 754 banker's rounding) — 2.5 rounds to 2, 3.5 rounds to 4. The oracle covers all locales where digit extraction is possible.
 
 **Digit extraction** (`_extract_oracle_digits`): Uses `babel.numbers.get_decimal_symbol(locale)` and `get_group_symbol(locale)` to normalize the formatted string for any locale. Normalization removes group separators first (critical for de-DE where group separator is `.`), replaces the decimal separator with ASCII `.`, then strips all remaining non-digit characters (currency codes, whitespace, signs). Locales with non-ASCII digits (ar-EG Arabic-Indic, hi-IN Devanagari) are detected via `c.isdigit() and not c.isascii()` and skipped. Unknown locales (Babel raises `UnknownLocaleError`) are skipped via `except ValueError`.
 
-**Oracle check**: For each non-NaN/non-Inf Decimal result where `_extract_oracle_digits` returns a value: `expected = abs(val).quantize(10^-precision, rounding=ROUND_HALF_UP)` is compared against the extracted digits. NaN and Infinity skip the oracle via `InvalidOperation` from `quantize()`.
+**Oracle check**: For each non-NaN/non-Inf Decimal result where `_extract_oracle_digits` returns a value: `expected = abs(val).quantize(10^-precision, rounding=ROUND_HALF_EVEN)` is compared against the extracted digits. NaN and Infinity skip the oracle via `InvalidOperation` from `quantize()`.
 
 **Input domain**: `min_frac` and `max_frac` are drawn independently (not `max_frac = ConsumeIntInRange(min_frac, N)`). This ensures the `min > max` clamping path in `format_number()` is exercised — a path that previously could trigger incorrect digit counts.
 
@@ -267,7 +267,7 @@ Target: `analysis.graph` -- `_canonicalize_cycle`, `make_cycle_key`, `detect_cyc
 
 ## `fuzz_currency`
 
-Target: `runtime.functions.currency_format` -- ROUND_HALF_UP oracle testing, custom `pattern=` precision alignment, locale matrix, display mode preservation, and `FluentNumber` wrapper contracts.
+Target: `runtime.functions.currency_format` -- ROUND_HALF_EVEN oracle testing, custom `pattern=` precision alignment, locale matrix, display mode preservation, `use_grouping`/`currency_digits`/`numbering_system` parameter coverage, and `FluentNumber` wrapper contracts.
 
 Concern boundary: This fuzzer stress-tests the runtime CURRENCY function formatting path. Distinct from `fuzz_builtins` (which covers NUMBER/DATETIME/CURRENCY via the FTL `FluentBundle` evaluation pipeline); this fuzzer calls `currency_format` directly to probe oracle correctness, custom pattern precision alignment, and boundary-value rounding at precision 0, 2, and 3. Found production bug FIX-CURRENCY-PATTERN-PREC-001 on its first run (~1009 iterations): `format_currency` with a custom pattern and a currency whose CLDR precision differs from the pattern's declared decimal count produced incorrect rounding because `currency_digits=True` caused Babel to override the pattern's decimal count after pre-quantization.
 
@@ -275,23 +275,23 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 
 ### Patterns
 
-8 patterns across 4 categories:
+11 patterns across 5 categories:
 
 **PRECISION (3)** - Per-currency decimal precision and custom pattern precision:
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `0decimal_oracle` | 12 | JPY, KRW (0 decimals): ROUND_HALF_UP at integer boundary |
+| `0decimal_oracle` | 12 | JPY, KRW (0 decimals): ROUND_HALF_EVEN at integer boundary |
 | `3decimal_oracle` | 13 | BHD, KWD, OMR (3 decimals): x.0005 midpoints |
 | `pattern_oracle` | 16 | Custom `pattern=` with CLDR-differing currency: precision must match pattern, not CLDR |
 
-**ORACLE (3)** - ROUND_HALF_UP correctness across value ranges:
+**ORACLE (3)** - ROUND_HALF_EVEN correctness across value ranges:
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `boundary_values` | 15 | 2-decimal currencies (USD, EUR, GBP, AUD, CAD, CHF): x.005 midpoints |
-| `large_oracle` | 11 | Large positive amounts (>1e6): non-empty, ROUND_HALF_UP preserved |
-| `negative_oracle` | 11 | Negative amounts: ROUND_HALF_UP preserved; abs() applied before oracle comparison |
+| `large_oracle` | 11 | Large positive amounts (>1e6): non-empty, ROUND_HALF_EVEN preserved |
+| `negative_oracle` | 11 | Negative amounts: ROUND_HALF_EVEN preserved; abs() applied before oracle comparison |
 
 **LOCALE (1)** - Cross-locale consistency:
 
@@ -304,6 +304,14 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
 | `display_preservation` | 11 | symbol/code/name: result contains currency identifier; not empty |
+
+**PARAMETERS (3)** - New formatting parameter coverage:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `use_grouping` | 8 | `use_grouping=True/False` on large amounts: non-empty FluentNumber returned |
+| `digits_override` | 8 | `currency_digits=True/False`: ISO 4217 precision applied or bypassed; non-empty |
+| `numbering_system` | 7 | Non-Latin digit systems (arab, arabext, deva, beng): non-empty; determinism |
 
 ### Allowed Exceptions
 
@@ -529,24 +537,24 @@ Ordered cheapest-first. Pattern selection uses deterministic round-robin through
 
 ## `fuzz_numbers`
 
-Target: `runtime.functions.number_format` -- ROUND_HALF_UP oracle testing, custom `pattern=` path, grouping separator correctness, boundary values, min>max clamping, and `FluentNumber` wrapper contracts.
+Target: `runtime.functions.number_format` -- ROUND_HALF_EVEN oracle testing, custom `pattern=` path, grouping separator correctness, boundary values, min>max clamping, `numbering_system` parameter coverage, and `FluentNumber` wrapper contracts.
 
-Concern boundary: This fuzzer stress-tests the runtime NUMBER function formatting path. Distinct from `fuzz_builtins` (which covers NUMBER/DATETIME via the FTL `FluentBundle` evaluation pipeline with structural invariants); this fuzzer calls `number_format` directly to probe oracle correctness and covers the custom `pattern=` fast-path that `fuzz_builtins` does not reach. Key gap: `fuzz_builtins` verifies non-empty output and ROUND_HALF_UP at specific boundary values; this fuzzer covers ROUND_HALF_UP across 35 boundary pairs at precisions 0-3, grouping separator interaction with rounding, and the `minimumFractionDigits > maximumFractionDigits` clamping path.
+Concern boundary: This fuzzer stress-tests the runtime NUMBER function formatting path. Distinct from `fuzz_builtins` (which covers NUMBER/DATETIME via the FTL `FluentBundle` evaluation pipeline with structural invariants); this fuzzer calls `number_format` directly to probe oracle correctness and covers the custom `pattern=` fast-path that `fuzz_builtins` does not reach. Key gap: `fuzz_builtins` verifies non-empty output and ROUND_HALF_EVEN at specific boundary values; this fuzzer covers ROUND_HALF_EVEN across 35 boundary pairs at precisions 0-3, grouping separator interaction with rounding, and the `minimumFractionDigits > maximumFractionDigits` clamping path.
 
 Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, reporting); domain-specific metrics tracked in `NumbersMetrics` dataclass. Pattern selection uses deterministic round-robin through a pre-built weighted schedule (`select_pattern_round_robin`), immune to coverage-guided mutation bias. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=4096` default.
 
 ### Patterns
 
-8 patterns across 3 categories:
+9 patterns across 4 categories:
 
-**ORACLE (4)** - ROUND_HALF_UP correctness at precision boundaries:
+**ORACLE (4)** - ROUND_HALF_EVEN correctness at precision boundaries:
 
 | Pattern | Weight | Invariants Checked |
 |:--------|-------:|:-------------------|
-| `boundary_values` | 15 | 35 `(precision, x.y5)` midpoints: all must round away from zero |
-| `grouping_oracle` | 16 | ROUND_HALF_UP with `use_grouping=True` across en-US/de-DE/fr-FR (gap in builtins) |
-| `negative_oracle` | 12 | ROUND_HALF_UP preserved for negative values: abs() applied before oracle comparison |
-| `pattern_oracle` | 13 | Custom `pattern=` path: `parse_pattern(p).frac_prec[1]` precision, ROUND_HALF_UP oracle |
+| `boundary_values` | 15 | 35 `(precision, x.y5)` midpoints: even-digit midpoints round down (ROUND_HALF_EVEN) |
+| `grouping_oracle` | 16 | ROUND_HALF_EVEN with `use_grouping=True` across en-US/de-DE/fr-FR (gap in builtins) |
+| `negative_oracle` | 12 | ROUND_HALF_EVEN preserved for negative values: abs() applied before oracle comparison |
+| `pattern_oracle` | 13 | Custom `pattern=` path: `parse_pattern(p).frac_prec[1]` precision, ROUND_HALF_EVEN oracle |
 
 **BOUNDARY (2)** - Edge-case value handling:
 
@@ -561,6 +569,12 @@ Shared infrastructure imported from `fuzz_common` (`BaseFuzzerState`, metrics, r
 |:--------|-------:|:-------------------|
 | `determinism` | 11 | Same `(value, locale, kwargs)` always produces identical output |
 | `value_preservation` | 11 | Formatted numeric content matches `Decimal` input through grouping/sign stripping |
+
+**PARAMETERS (1)** - New formatting parameter coverage:
+
+| Pattern | Weight | Invariants Checked |
+|:--------|-------:|:-------------------|
+| `numbering_system` | 9 | Non-Latin digit systems (arab, arabext, deva, beng): non-empty FluentNumber; determinism |
 
 ### Allowed Exceptions
 
@@ -898,7 +912,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `loader_junk_summary` | 4 | Junk-bearing resources are surfaced through LoadSummary |
 | `loader_path_error` | 4 | Invalid `resource_id` becomes a loader error, not a crash |
 | `require_clean_api` | 5 | clean initialization returns summary; missing/junk/error states raise integrity context |
-| `boot_config_api` | 6 | `LocalizationBootConfig` validation, `boot_simple()` → FluentLocalization, `boot()` → 3-tuple, `required_messages` absent raises IntegrityCheckFailedError, `required_messages` present succeeds |
+| `boot_config_api` | 6 | `LocalizationBootConfig` validation, `boot_simple()` → FluentLocalization, `boot()` → 3-tuple, `required_messages` absent raises IntegrityCheckFailedError, `required_messages` present succeeds, second `boot()` call raises RuntimeError (one-shot enforcement) |
 
 ### Allowed Exceptions
 
@@ -941,9 +955,9 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 
 ## `fuzz_locale_context`
 
-Target: `runtime.locale_context.LocaleContext`, `core.locale_utils.normalize_locale` -- direct formatting API: `format_number()`, `format_currency()`, `format_datetime()`, canonical locale boundary handling, ROUND_HALF_UP rounding oracle, cross-locale determinism.
+Target: `runtime.locale_context.LocaleContext`, `core.locale_utils.normalize_locale` -- direct formatting API: `format_number()`, `format_currency()`, `format_datetime()`, canonical locale boundary handling, ROUND_HALF_EVEN rounding oracle, `numbering_system`/`use_grouping`/`currency_digits` parameter coverage, cross-locale determinism.
 
-Concern boundary: This fuzzer stress-tests the LocaleContext formatting layer, distinct from fuzz_builtins (which goes through FluentBundle/FTL) and fuzz_runtime (full runtime stack). Directly exercises the locale-aware formatting primitives that caused the v0.145.0 ROUND_HALF_UP regression and now verifies that every successful `LocaleContext.create()` path stores a canonical lowercase underscore `locale_code`. Key invariant (oracle-based): `format_number(val, max_frac=N)` must round half-up (not half-even), verified by `Decimal.quantize(10^-N, ROUND_HALF_UP)`. Control chars stripped from currency symbols prevent log injection through formatted output.
+Concern boundary: This fuzzer stress-tests the LocaleContext formatting layer, distinct from fuzz_builtins (which goes through FluentBundle/FTL) and fuzz_runtime (full runtime stack). Directly exercises the locale-aware formatting primitives that underpin the NUMBER and CURRENCY functions. Key invariant (oracle-based): `format_number(val, max_frac=N)` must round half-even (Babel default), verified by `Decimal.quantize(10^-N, ROUND_HALF_EVEN)`. Also covers `numbering_system`, `use_grouping`, and `currency_digits` parameters added to `format_number`/`format_currency`. Control chars stripped from currency symbols prevent log injection through formatted output.
 
 Shared infrastructure imported from `fuzz_common`; domain-specific metrics tracked in `LocaleContextMetrics` dataclass. Pattern selection uses deterministic round-robin. Periodic `gc.collect()` every 256 iterations and `-rss_limit_mb=2048` default (no Babel concurrency needed).
 
@@ -953,7 +967,7 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 |:--------|-------:|:-------------------|
 | `format_number_int` | 8 | Integers format to non-empty output with canonical locale_code |
 | `format_number_decimal` | 8 | Decimal values format to non-empty output |
-| `format_number_precision` | 8 | ROUND_HALF_UP oracle at explicit min/max precision |
+| `format_number_precision` | 8 | ROUND_HALF_EVEN oracle at explicit min/max precision |
 | `format_number_custom_pattern` | 6 | Custom number patterns produce non-empty output |
 | `format_number_grouping` | 6 | Grouping on/off remains stable |
 | `format_currency_standard` | 8 | Standard currency formatting is non-empty and oracle-safe |
@@ -965,6 +979,10 @@ Shared infrastructure imported from `fuzz_common`; domain-specific metrics track
 | `format_datetime_pattern` | 6 | Custom datetime patterns produce non-empty output |
 | `locale_create_adversarial` | 8 | Successful creates store canonical locale_code; invalid boundaries reject cleanly |
 | `cross_locale_determinism` | 5 | Same value+locale → identical output on repeated calls |
+| `format_number_numbering_system` | 7 | Non-Latin digit systems via `numbering_system=`: non-empty output; determinism |
+| `format_currency_grouping` | 6 | `use_grouping=True/False` on large amounts: non-empty FluentNumber returned |
+| `format_currency_digits` | 6 | `currency_digits=True/False`: ISO 4217 precision applied or bypassed; non-empty |
+| `format_currency_numbering_system` | 7 | Non-Latin digit systems on `format_currency`: non-empty output; determinism |
 
 ### Allowed Exceptions
 

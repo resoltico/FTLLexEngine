@@ -1,8 +1,8 @@
 ---
 afad: "3.3"
-version: "0.160.0"
+version: "0.162.0"
 domain: TYPES
-updated: "2026-03-21"
+updated: "2026-03-23"
 route:
   keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217, require_currency_code, require_territory_code]
   questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?", "how do I validate an ISO currency code?", "how do I validate an ISO territory code?"]
@@ -1266,7 +1266,7 @@ type CurrencyCode = str
 
 ## `TerritoryInfo`
 
-ISO 3166-1 territory data with localized name.
+ISO 3166-1 territory data with localized name and official language codes.
 
 ### Signature
 ```python
@@ -1275,6 +1275,7 @@ class TerritoryInfo:
     alpha2: TerritoryCode
     name: str
     currencies: tuple[CurrencyCode, ...]
+    official_languages: tuple[str, ...]
 ```
 
 ### Parameters
@@ -1283,6 +1284,7 @@ class TerritoryInfo:
 | `alpha2` | `TerritoryCode` | Y | ISO 3166-1 alpha-2 code |
 | `name` | `str` | Y | Localized display name |
 | `currencies` | `tuple[CurrencyCode, ...]` | Y | Currency codes in priority order (may be empty) |
+| `official_languages` | `tuple[str, ...]` | Y | BCP-47 official language codes (may be empty) |
 
 ### Constraints
 - Return: Immutable territory data.
@@ -1290,6 +1292,7 @@ class TerritoryInfo:
 - Thread: Safe.
 - Hashable: Yes.
 - Multi-Currency: Territories may have multiple legal tender currencies (e.g., Panama: PAB, USD).
+- Multi-Language: Territories may have multiple official languages (e.g., Belgium: fr, nl, de).
 - Import: `from ftllexengine.introspection import TerritoryInfo`
 
 ---

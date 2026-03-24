@@ -13,7 +13,7 @@ Python 3.13+.
 Reference: https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html
 """
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 
 from ftllexengine.core.babel_compat import get_unknown_locale_error_class, require_babel
 from ftllexengine.core.locale_utils import get_babel_locale
@@ -25,6 +25,8 @@ def select_plural_category(
     n: int | Decimal,
     locale: str,
     precision: int | None = None,
+    *,
+    ordinal: bool = False,
 ) -> str:
     """Select CLDR plural category for number using Babel's CLDR data.
 
@@ -36,6 +38,9 @@ def select_plural_category(
             When set, number is formatted with this precision before plural matching.
             Critical for NUMBER() formatting: 1 with precision=2 becomes "1.00" which
             has v=2 (fraction digit count), affecting plural category selection.
+        ordinal: When True, use CLDR ordinal plural rules (``Locale.ordinal_form``)
+            instead of cardinal rules (``Locale.plural_form``). Ordinal rules apply to
+            position/rank contexts (e.g., "1st", "2nd", "3rd" in English).
 
     Returns:
         Plural category: "zero", "one", "two", "few", "many", or "other"
@@ -56,11 +61,20 @@ def select_plural_category(
         'two'
         >>> select_plural_category(42, "ja_JP")
         'other'
+        >>> select_plural_category(1, "en_US", ordinal=True)
+        'one'
+        >>> select_plural_category(2, "en_US", ordinal=True)
+        'two'
+        >>> select_plural_category(3, "en_US", ordinal=True)
+        'few'
+        >>> select_plural_category(11, "en_US", ordinal=True)
+        'other'
 
     Architecture:
-        Uses Babel's Locale.plural_form which provides CLDR-compliant plural rules
-        for all supported locales. This is more maintainable and complete than
-        hardcoding rules for individual languages.
+        Uses Babel's Locale.plural_form (cardinal) or Locale.ordinal_form (ordinal),
+        both of which provide CLDR-compliant plural rules for all supported locales.
+        This is more maintainable and complete than hardcoding rules for individual
+        languages.
 
         Babel handles:
         - All CLDR plural categories (zero, one, two, few, many, other)
@@ -104,9 +118,10 @@ def select_plural_category(
     if isinstance(n, Decimal) and (n.is_nan() or n.is_infinite()):
         return "other"
 
-    # Get plural rule from Babel CLDR data
-    # Babel always provides plural_form for valid locales
-    plural_rule = locale_obj.plural_form
+    # Get plural rule from Babel CLDR data.
+    # ordinal_form uses CLDR ordinal rules (1st, 2nd, 3rd...);
+    # plural_form uses CLDR cardinal rules (1 item, 2 items...).
+    plural_rule = locale_obj.ordinal_form if ordinal else locale_obj.plural_form
 
     # Apply precision if specified (for CLDR v operand)
     # Use >= 0 to ensure precision=0 also triggers quantization (round to integer)
@@ -116,9 +131,9 @@ def select_plural_category(
         # Example: 1 with precision=2 becomes Decimal("1.00"), which has v=2.
         # Example: 1.5 with precision=0 becomes Decimal("2"), which is integer.
         quantizer = Decimal(10) ** -precision
-        # ROUND_HALF_UP matches the rounding mode used by locale_context.py
-        # for number formatting, ensuring plural category and displayed number agree.
-        decimal_value = Decimal(str(n)).quantize(quantizer, rounding=ROUND_HALF_UP)
+        # ROUND_HALF_EVEN matches Babel's default decimal_quantization rounding so
+        # the CLDR v operand used for plural selection agrees with the displayed value.
+        decimal_value = Decimal(str(n)).quantize(quantizer, rounding=ROUND_HALF_EVEN)
         return plural_rule(decimal_value)
 
     # Apply CLDR plural rule with original value

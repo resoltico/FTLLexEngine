@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # fuzz_hypofuzz.sh -- HypoFuzz & Property Testing Interface
-# Version: 1.0.0
+# Version: 1.0.1
 # ==============================================================================
 # COMPATIBILITY: Bash 5.0+
 #
@@ -16,7 +16,7 @@
 # ==============================================================================
 
 # Bash Settings
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.0.1"
 SCRIPT_NAME="fuzz_hypofuzz.sh"
 
 set -o errexit
@@ -40,7 +40,7 @@ if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
         export UV_PROJECT_ENVIRONMENT="$TARGET_VENV"
         export FUZZ_ALREADY_PIVOTED=1
         unset VIRTUAL_ENV
-        exec uv run --python "$PY_VERSION" bash "$0" "$@"
+        exec uv run --python "$PY_VERSION" "${BASH:-bash}" "$0" "$@"
     fi
 else
     unset FUZZ_ALREADY_PIVOTED
@@ -621,7 +621,7 @@ run_check() {
     local temp_log
     temp_log=$(mktemp)
 
-    local cmd=(uv run pytest "$test_target" -v --tb=short)
+    local cmd=(uv run --python "$PY_VERSION" pytest "$test_target" -v --tb=short)
 
     local exit_code=0
     set +e
@@ -782,9 +782,51 @@ run_deep() {
 
         local exit_code=0
         set +e
-        _run_with_heartbeat "$log_file" true -- uv run pytest tests/ -m fuzz -v --tb=short
+        _run_with_heartbeat "$log_file" true -- uv run --python "$PY_VERSION" pytest tests/ -m fuzz -v --tb=short
         exit_code=$?
         set -e
+
+        if [[ $exit_code -ne 0 ]]; then
+            log_fail "Metrics session failed (exit $exit_code). Last 80 lines of log:"
+            tail -n 80 "$log_file"
+        fi
+
+        python << METRICS_PYEOF
+import json, re
+from datetime import datetime, timezone
+from pathlib import Path
+
+log_path = Path("$log_file")
+exit_code = $exit_code
+try:
+    log_content = log_path.read_text() if log_path.exists() else ""
+except Exception:
+    log_content = ""
+
+summary_match = re.search(r'=+ (.*?) =+\n*$', log_content, re.MULTILINE)
+summary_text = summary_match.group(1) if summary_match else ""
+passed_m = re.search(r'(\d+) passed', summary_text)
+failed_m = re.search(r'(\d+) failed', summary_text)
+skipped_m = re.search(r'(\d+) skipped', summary_text)
+hypo_count = log_content.count('Falsifying example')
+
+report = {
+    'script': '$SCRIPT_NAME',
+    'script_version': '$SCRIPT_VERSION',
+    'mode': 'deep_metrics',
+    'status': 'pass' if exit_code == 0 else 'fail',
+    'timestamp': datetime.now(timezone.utc).isoformat(),
+    'tests_passed': int(passed_m.group(1)) if passed_m else 0,
+    'tests_failed': int(failed_m.group(1)) if failed_m else 0,
+    'tests_skipped': int(skipped_m.group(1)) if skipped_m else 0,
+    'hypothesis_failures': hypo_count,
+    'exit_code': exit_code,
+    'log_file': str(log_path),
+}
+print('[SUMMARY-JSON-BEGIN]')
+print(json.dumps(report, indent=2))
+print('[SUMMARY-JSON-END]')
+METRICS_PYEOF
 
         log_group_end
         return "$exit_code"
@@ -845,7 +887,7 @@ run_deep() {
 
         set +e
         # timeout(1) sends SIGTERM after TIME_LIMIT seconds; exit 124 = time limit reached
-        _run_with_heartbeat "$log_file" true -- timeout "$TIME_LIMIT" uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
+        _run_with_heartbeat "$log_file" true -- timeout "$TIME_LIMIT" uv run --python "$PY_VERSION" hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
         exit_code=$?
         set -e
         [[ $exit_code -eq 124 ]] && exit_code=0  # time limit reached is a clean stop
@@ -894,7 +936,7 @@ run_deep() {
             } >> "$log_file"
 
             set +e
-            _run_with_heartbeat "$log_file" true -- uv run hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
+            _run_with_heartbeat "$log_file" true -- uv run --python "$PY_VERSION" hypothesis fuzz --no-dashboard -n "$WORKERS" tests/fuzz/
             exit_code=$?
             set -e
 
@@ -1200,7 +1242,7 @@ run_repro() {
 
     local exit_code=0
     set +e
-    uv run python scripts/fuzz_hypofuzz_repro.py --verbose --example "$REPRO_TEST"
+    uv run --python "$PY_VERSION" python scripts/fuzz_hypofuzz_repro.py --verbose --example "$REPRO_TEST"
     exit_code=$?
     set -e
 

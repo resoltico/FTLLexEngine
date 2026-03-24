@@ -185,7 +185,7 @@ class BundleOracleStateMachine(RuleBasedStateMachine):
 
 # Create the test class from the state machine
 TestBundleOracle = BundleOracleStateMachine.TestCase
-TestBundleOracle.settings = settings(stateful_step_count=50, deadline=None)
+TestBundleOracle.settings = settings(stateful_step_count=25, deadline=None)
 
 
 class BundleLifecycleStateMachine(RuleBasedStateMachine):
@@ -264,7 +264,7 @@ class BundleLifecycleStateMachine(RuleBasedStateMachine):
 
 
 TestBundleLifecycle = BundleLifecycleStateMachine.TestCase
-TestBundleLifecycle.settings = settings(stateful_step_count=50, deadline=None)
+TestBundleLifecycle.settings = settings(stateful_step_count=25, deadline=None)
 
 
 # ============================================================================

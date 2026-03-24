@@ -137,16 +137,17 @@ _BOUNDARY_NUMBERS: tuple[int, ...] = (
 
 # Pattern weights: (name, weight)
 _PATTERN_WEIGHTS: tuple[tuple[str, int], ...] = (
-    ("category_validity", 15),
-    ("precision_sensitivity", 15),
-    ("locale_coverage", 12),
-    ("locale_fallback", 8),
-    ("determinism", 12),
-    ("number_type_variety", 10),
-    ("boundary_numbers", 12),
-    ("cache_consistency", 8),
+    ("category_validity", 14),
+    ("precision_sensitivity", 14),
+    ("locale_coverage", 11),
+    ("locale_fallback", 7),
+    ("determinism", 11),
+    ("number_type_variety", 9),
+    ("boundary_numbers", 11),
+    ("cache_consistency", 7),
     ("extreme_inputs", 5),
     ("raw_bytes", 3),
+    ("ordinal_rules", 8),
 )
 
 _PATTERN_SCHEDULE: tuple[str, ...] = build_weighted_schedule(
@@ -408,6 +409,51 @@ def _pattern_raw_bytes(fdp: atheris.FuzzedDataProvider) -> None:
         raise PluralFuzzError(msg)
 
 
+def _pattern_ordinal_rules(fdp: atheris.FuzzedDataProvider) -> None:
+    """CLDR ordinal plural rules: ordinal=True must return valid categories.
+
+    Ordinal rules apply to rank/position contexts (1st, 2nd, 3rd, ...).
+    Key invariant: ordinal=True always returns a valid CLDR category, for
+    all locales and numbers. Also verifies that ordinal and cardinal may
+    differ (they use distinct rule tables).
+    """
+    n = fdp.ConsumeIntInRange(0, 1000)
+    locale = fdp.PickValueInList(list(_HIGH_LEVERAGE_LOCALES))
+
+    # Ordinal result must be a valid category
+    ordinal_cat = select_plural_category(n, locale, ordinal=True)
+    if ordinal_cat not in VALID_CATEGORIES:
+        msg = (
+            f"Invalid ordinal category '{ordinal_cat}' "
+            f"for n={n}, locale={locale}"
+        )
+        raise PluralFuzzError(msg)
+
+    # Cardinal result must also be valid
+    cardinal_cat = select_plural_category(n, locale, ordinal=False)
+    if cardinal_cat not in VALID_CATEGORIES:
+        msg = (
+            f"Invalid cardinal category '{cardinal_cat}' "
+            f"for n={n}, locale={locale}"
+        )
+        raise PluralFuzzError(msg)
+
+    # Both must be deterministic: calling again must return same values
+    ordinal_cat2 = select_plural_category(n, locale, ordinal=True)
+    if ordinal_cat != ordinal_cat2:
+        msg = (
+            f"Ordinal non-deterministic: '{ordinal_cat}' != '{ordinal_cat2}' "
+            f"for n={n}, locale={locale}"
+        )
+        raise PluralFuzzError(msg)
+
+    # Unknown locale ordinal must also return a valid category (fallback)
+    unknown_cat = select_plural_category(n, "xx_XX", ordinal=True)
+    if unknown_cat not in VALID_CATEGORIES:
+        msg = f"Invalid ordinal fallback category '{unknown_cat}' for n={n}"
+        raise PluralFuzzError(msg)
+
+
 # --- Pattern dispatch ---
 
 _PATTERN_DISPATCH: dict[str, Any] = {
@@ -421,6 +467,7 @@ _PATTERN_DISPATCH: dict[str, Any] = {
     "cache_consistency": _pattern_cache_consistency,
     "extreme_inputs": _pattern_extreme_inputs,
     "raw_bytes": _pattern_raw_bytes,
+    "ordinal_rules": _pattern_ordinal_rules,
 }
 
 

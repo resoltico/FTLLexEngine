@@ -5,7 +5,7 @@ message attributes in arguments, plural rounding mode, and StringLiteral guard m
 from __future__ import annotations
 
 import inspect
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 import pytest
 from hypothesis import event, given, settings
@@ -155,29 +155,31 @@ class TestMessageAttributeInArguments:
 
 
 class TestPluralRoundingMode:
-    """Plural rule uses explicit ROUND_HALF_UP, matching formatting rounding."""
+    """Plural rule uses ROUND_HALF_EVEN, matching Babel's default rounding."""
 
     @pytest.fixture(autouse=True)
     def _skip_without_babel(self) -> None:
         pytest.importorskip("babel")
 
     def test_rounding_mode_is_explicit(self) -> None:
-        """Verify quantize call uses ROUND_HALF_UP (matches formatting)."""
+        """Verify quantize call uses ROUND_HALF_EVEN (matches Babel's default)."""
         from ftllexengine.runtime import plural_rules
 
         source = inspect.getsource(plural_rules.select_plural_category)
-        assert "ROUND_HALF_UP" in source
+        assert "ROUND_HALF_EVEN" in source
 
-    def test_half_up_rounding_applied(self) -> None:
-        """ROUND_HALF_UP: 0.5 always rounds away from zero."""
-        # 2.5 rounds to 3 (half-up)
+    def test_half_even_rounding_applied(self) -> None:
+        """ROUND_HALF_EVEN: midpoints round to the nearest even digit."""
+        from decimal import ROUND_HALF_EVEN
+
+        # 2.5 rounds to 2 (2 is even)
         d = Decimal("2.5")
-        result = d.quantize(Decimal(1), rounding=ROUND_HALF_UP)
-        assert result == Decimal(3)
+        result = d.quantize(Decimal(1), rounding=ROUND_HALF_EVEN)
+        assert result == Decimal(2)
 
-        # 3.5 rounds to 4 (half-up)
+        # 3.5 rounds to 4 (4 is even)
         d = Decimal("3.5")
-        result = d.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        result = d.quantize(Decimal(1), rounding=ROUND_HALF_EVEN)
         assert result == Decimal(4)
 
 

@@ -295,6 +295,30 @@ def locale_formatted_numbers(
     return (value, formatted, locale)
 
 
+# Territories known to have at least one CLDR official language.
+# Grouped by linguistic profile for targeted event emission.
+_MULTI_LANGUAGE_TERRITORIES = {
+    "bilingual": ["BE", "CA", "FI", "LU", "MT"],   # 2-3 official languages
+    "trilingual": ["CH", "ZA"],                     # 3-4 official languages
+    "single_dominant": ["GB", "DE", "FR", "JP", "KR", "CN", "IT", "ES", "PT"],
+}
+
+
+@composite
+def territory_with_official_languages(draw: st.DrawFn) -> str:
+    """Generate a territory code guaranteed to have CLDR official language data.
+
+    Events emitted:
+    - territory_official_languages={bilingual|trilingual|single_dominant}
+
+    Useful for testing official_languages field invariants on TerritoryInfo.
+    """
+    profile = draw(st.sampled_from(["bilingual", "trilingual", "single_dominant"]))
+    code = draw(st.sampled_from(_MULTI_LANGUAGE_TERRITORIES[profile]))
+    event(f"territory_official_languages={profile}")
+    return code
+
+
 @composite
 def locale_formatted_decimals(
     draw: st.DrawFn,

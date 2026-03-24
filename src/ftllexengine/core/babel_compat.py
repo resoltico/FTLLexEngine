@@ -46,9 +46,9 @@ if TYPE_CHECKING:
 __all__ = [
     "BabelImportError",
     "get_babel_dates",
+    "get_babel_languages",
     "get_babel_numbers",
     "get_cldr_version",
-    "get_global_data_func",
     "get_locale_class",
     "get_locale_identifiers_func",
     "get_number_format_error_class",
@@ -220,22 +220,25 @@ def get_babel_dates() -> Any:
     return dates
 
 
-def get_global_data_func() -> Any:
-    """Get the babel.core.get_global function.
+def get_babel_languages() -> Any:
+    """Get the babel.languages module.
 
-    Used to access CLDR global data tables (e.g., territory_currencies).
-    Return type is ``Any`` for flexibility across different CLDR data shapes.
+    Provides access to language metadata functions such as
+    ``get_official_languages()`` and ``get_territory_language_info()``.
+    Return type is ``Any`` so call sites can access any module attribute
+    without mypy attr-defined errors.
 
     Returns:
-        The babel.core.get_global callable
+        The babel.languages module
 
     Raises:
         BabelImportError: If Babel is not installed
     """
-    require_babel("babel.core.get_global")
-    from babel.core import get_global  # noqa: PLC0415 - Babel-optional
+    require_babel("babel.languages")
+    from babel import languages  # noqa: PLC0415 - Babel-optional
 
-    return get_global
+    return languages
+
 
 
 def get_number_format_error_class() -> type[NumberFormatError]:
