@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Release publication now stages PyPI uploads separately from GitHub Release assets.** The
+  publish workflow now uploads only the wheel and source distribution to PyPI-facing jobs while
+  keeping the `.sha256` receipt in the GitHub Release asset path, and the maintainer runbook now
+  documents rerunning `workflow_dispatch` against an existing tag to recover a partial release
+  without moving or recreating the tag.
+
 ## [0.163.0] - 2026-04-22
 
 ### Added

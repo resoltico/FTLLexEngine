@@ -230,6 +230,13 @@ gh run list --workflow=publish.yml --event=push --commit "$TAG_SHA" --limit=20
 gh run view <run-id> --log-failed
 ```
 
+Publication invariant:
+
+- PyPI-facing jobs may receive only uploadable distribution files (`.tar.gz` and `.whl`).
+- The `ftllexengine-X.Y.Z.sha256` receipt is a GitHub Release asset, not a PyPI upload.
+- If the workflow stages both distributions and the checksum receipt into the same artifact,
+  treat that as a release-pipeline defect and fix the workflow before rerunning publication.
+
 If you need to rerun publication for the existing tag, rerun the workflow against that tag. Do not
 move or recreate the tag:
 
@@ -237,6 +244,11 @@ move or recreate the tag:
 gh workflow run publish.yml -f release_tag=vX.Y.Z
 gh workflow run publish.yml -f release_tag=vX.Y.Z -f publish_to_testpypi=true
 ```
+
+If the tag push reaches a partial success state — for example, GitHub Release assets publish but
+the PyPI job fails — repair the workflow on `main`, merge the fix, and then rerun
+`workflow_dispatch` for the existing tag. Do not delete, move, or recreate the tag to retrigger
+publication.
 
 If GitHub Release assets need manual convergence after the workflow, use:
 
