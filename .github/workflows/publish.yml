@@ -214,12 +214,47 @@ jobs:
         if: matrix.python-version == '3.14'
         run: ls -laR dist/
 
-      - name: Store build artifacts
+      - name: Stage publication artifacts
+        if: matrix.python-version == '3.14'
+        run: |
+          set -euo pipefail
+          mkdir -p publish-dist release-assets-dist
+          cp dist/*.tar.gz dist/*.whl publish-dist/
+          cp dist/*.tar.gz dist/*.whl dist/*.sha256 release-assets-dist/
+
+          echo "PyPI distributions:"
+          ls -la publish-dist/
+          echo ""
+          echo "GitHub release assets:"
+          ls -la release-assets-dist/
+
+          pypi_count="$(find publish-dist -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          release_count="$(find release-assets-dist -maxdepth 1 -type f | wc -l | tr -d ' ')"
+
+          [ "${pypi_count}" = "2" ] || {
+            echo "::error::Expected 2 uploadable distributions, found ${pypi_count}"
+            exit 1
+          }
+          [ "${release_count}" = "3" ] || {
+            echo "::error::Expected 3 GitHub release assets, found ${release_count}"
+            exit 1
+          }
+
+      - name: Store PyPI distributions
         if: matrix.python-version == '3.14'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist
-          path: dist/
+          name: pypi-dist
+          path: publish-dist/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Store GitHub release assets
+        if: matrix.python-version == '3.14'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets
+          path: release-assets-dist/
           retention-days: 7
           if-no-files-found: error
 
@@ -231,7 +266,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist
+          name: pypi-dist
           path: dist/
 
       - name: Publish to TestPyPI
@@ -350,7 +385,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist
+          name: release-assets
           path: dist/
 
       - name: Publish GitHub release assets
@@ -383,7 +418,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist
+          name: pypi-dist
           path: dist/
 
       - name: Publish to PyPI
