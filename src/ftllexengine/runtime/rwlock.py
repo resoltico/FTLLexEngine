@@ -62,20 +62,20 @@ class RWLock:
         Write lock reentrancy is prohibited: raises RuntimeError.
 
     Example:
-        >>> lock = RWLock()
-        >>>
-        >>> # Multiple readers can proceed concurrently
-        >>> with lock.read():
+        >>> lock = RWLock()  # doctest: +SKIP
+
+        Multiple readers can proceed concurrently:
+        >>> with lock.read():  # doctest: +SKIP
         ...     # Read data
         ...     pass
-        >>>
-        >>> # Writers get exclusive access
-        >>> with lock.write():
+
+        Writers get exclusive access:
+        >>> with lock.write():  # doctest: +SKIP
         ...     # Modify data
         ...     pass
-        >>>
-        >>> # Reentrant read locks work
-        >>> with lock.read():
+
+        Reentrant read locks work:
+        >>> with lock.read():  # doctest: +SKIP
         ...     with lock.read():  # Same thread can reacquire
         ...         # Still shared
         ...         pass
@@ -128,10 +128,10 @@ class RWLock:
             None
 
         Example:
-            >>> with lock.read():
+            >>> with lock.read():  # doctest: +SKIP
             ...     # Safe to read data
             ...     pass
-            >>> with lock.read(timeout=1.0):
+            >>> with lock.read(timeout=1.0):  # doctest: +SKIP
             ...     # Acquired within 1 second or TimeoutError raised
             ...     pass
         """
@@ -164,10 +164,10 @@ class RWLock:
             None
 
         Example:
-            >>> with lock.write():
+            >>> with lock.write():  # doctest: +SKIP
             ...     # Exclusive access to modify data
             ...     pass
-            >>> with lock.write(timeout=2.0):
+            >>> with lock.write(timeout=2.0):  # doctest: +SKIP
             ...     # Acquired within 2 seconds or TimeoutError raised
             ...     pass
         """

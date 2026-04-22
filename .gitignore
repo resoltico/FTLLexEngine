@@ -95,17 +95,6 @@ pdm.lock
 .env
 .env.local
 
-# macOS
-.DS_Store
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# Linux
-*~
-
 # Backup files (all variants)
 *.bak*
 *.backup*
@@ -113,8 +102,6 @@ Desktop.ini
 *.orig
 *_backup
 *_old
-*.swp
-*.swo
 
 # Build artifacts
 *.whl
@@ -126,6 +113,15 @@ docs/.doctrees/
 
 # Security scans
 bandit-results.json
+
+# OS and local scratch files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # Temporary files
 tmp/

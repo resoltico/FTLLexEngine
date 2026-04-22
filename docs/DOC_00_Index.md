@@ -1,350 +1,182 @@
 ---
-afad: "3.3"
-version: "0.161.0"
+afad: "3.5"
+version: "0.163.0"
 domain: INDEX
-updated: "2026-03-21"
+updated: "2026-04-22"
 route:
-  keywords: [api reference, documentation, exports, imports, AsyncFluentBundle, fluentbundle, fluentlocalization, cache-audit, boot-validation, LocalizationBootConfig, validate_message_variables, require_locale_code, make_fluent_number, parse_fluent_number, FluentNumber, decimal_value, iso, currency, get_currency_decimal_digits, LocaleCode, normalize_locale, get_system_locale, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats, parse_stream, parse_stream_ftl, add_resource_stream, incremental, streaming, async, asyncio, CurrencyCode, TerritoryCode, NewType, require_date, require_datetime, require_fluent_number, require_currency_code, require_territory_code, detect_cycles, WarningSeverity]
-  questions: ["what classes are available?", "how to import ftllexengine?", "what are the module exports?", "how do I validate localization at boot?", "how do I validate one message schema?", "how do I canonicalize a locale code?", "how do I construct a FluentNumber manually?", "how do I parse a FluentNumber?", "how do I get the cache audit log?", "how to import ISO introspection?", "how do I boot FluentLocalization with strict validation?", "what is LocalizationBootConfig?", "how do I validate a date at a boundary?", "how do I validate a datetime?", "how do I validate a FluentNumber?", "how do I validate an ISO currency or territory code?"]
+  keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection]
+  questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing and introspection APIs?", "where are syntax, parsing, and diagnostics references?"]
 ---
 
 # FTLLexEngine API Reference Index
 
-## Module Exports
+## Routing Table
 
-### Root Exports (`from ftllexengine import ...`)
-```python
-from ftllexengine import (
-    # Core API
-    AsyncFluentBundle,  # Async-native wrapper around FluentBundle; offloads to thread pool
-    FluentBundle,
-    FluentLocalization,
-    CacheConfig,       # Cache configuration dataclass
-    parse_ftl,
-    parse_stream_ftl,  # Incremental FTL parse from line iterator, yields entries
-    serialize_ftl,
-    validate_resource,  # FTL resource validation (no Babel required)
-    FluentNumber,      # Immutable formatted-number wrapper
-    FluentValue,       # Type alias for function argument values
-    fluent_function,   # Decorator for custom functions
-    make_fluent_number,  # Construct FluentNumber from int/Decimal
-    clear_module_caches,  # Clear all library caches
-    # Errors
-    FrozenFluentError,  # Immutable error type with ErrorCategory
-    ErrorCategory,      # Error classification enum
-    FrozenErrorContext,  # Context for parse/formatting errors
-    # Data Integrity
-    DataIntegrityError,
-    FormattingIntegrityError,
-    ImmutabilityViolationError,
-    SyntaxIntegrityError,
-    CacheCorruptionError,
-    WriteConflictError,
-    IntegrityCheckFailedError,
-    IntegrityContext,
-    # Localization boot (require Babel)
-    LocalizationBootConfig,  # One-shot boot orchestrator for strict-mode assembly
-    LoadSummary,             # Aggregate of all resource load results from initialization
-    ResourceLoadResult,      # Immutable result of a single resource load attempt
-    FallbackInfo,            # Immutable record of a locale fallback event
-    ResourceLoader,          # Protocol for loading FTL resources (structural typing)
-    PathResourceLoader,      # Disk-based loader with path-traversal prevention
-    LocalizationCacheStats,  # Cache statistics across all locales
-    # Locale utilities (no Babel required)
-    LoadStatus,              # Enum: SUCCESS, NOT_FOUND, ERROR, SKIPPED
-    LocaleCode,              # Type alias for BCP-47 / POSIX locale codes
-    normalize_locale,        # Convert BCP-47 to canonical lowercase POSIX form
-    get_system_locale,       # Detect locale from OS environment variables
-    # Boundary validators (no Babel required)
-    require_locale_code,     # Validate and canonicalize a locale code
-    require_date,            # Validate date; rejects datetime subtypes
-    require_datetime,        # Validate datetime; rejects plain date
-    require_fluent_number,   # Validate FluentNumber at a system boundary
-    # Parsing return type (no Babel required; lazy-loaded)
-    ParseResult,         # tuple[T | None, tuple[FrozenFluentError, ...]]
-    # Message introspection (no Babel required)
-    MessageVariableValidationResult,
-    validate_message_variables,
-    # Analysis (no Babel required)
-    detect_cycles,       # Detect cycles in a dependency graph
-    # Diagnostics extras (no Babel required)
-    WarningSeverity,     # Warning severity enum (ERROR, WARNING, INFO)
-    # ISO utilities (importable without Babel; call-time Babel for type guards/lookups)
-    CurrencyCode,        # NewType for ISO 4217 currency codes
-    TerritoryCode,       # NewType for ISO 3166-1 alpha-2 territory codes
-    get_currency_decimal_digits,  # ISO 4217 decimal precision (no Babel required)
-    is_valid_currency_code,       # TypeIs guard; Babel required at call time
-    is_valid_territory_code,      # TypeIs guard; Babel required at call time
-    require_currency_code,        # Validate ISO 4217 code at a boundary
-    require_territory_code,       # Validate ISO 3166-1 alpha-2 code at a boundary
-    get_cldr_version,
-    # Metadata
-    __version__,
-    __fluent_spec_version__,
-    __spec_url__,
-    __recommended_encoding__,
-)
-```
+| Symbol | File | Section |
+|:-------|:-----|:--------|
+| `FluentBundle` | [DOC_01_Core.md](DOC_01_Core.md) | `FluentBundle` |
+| `AsyncFluentBundle` | [DOC_01_Core.md](DOC_01_Core.md) | `AsyncFluentBundle` |
+| `FluentLocalization` | [DOC_01_Core.md](DOC_01_Core.md) | `FluentLocalization` |
+| `LocalizationBootConfig` | [DOC_01_Core.md](DOC_01_Core.md) | `LocalizationBootConfig` |
+| `PathResourceLoader` | [DOC_01_Core.md](DOC_01_Core.md) | `PathResourceLoader` |
+| `ResourceLoader` | [DOC_01_Core.md](DOC_01_Core.md) | `ResourceLoader` |
+| `LoadStatus` | [DOC_01_Core.md](DOC_01_Core.md) | `LoadStatus` |
+| `LoadSummary` | [DOC_01_Core.md](DOC_01_Core.md) | `LoadSummary` |
+| `ResourceLoadResult` | [DOC_01_Core.md](DOC_01_Core.md) | `ResourceLoadResult` |
+| `FallbackInfo` | [DOC_01_Core.md](DOC_01_Core.md) | `FallbackInfo` |
+| `LocalizationCacheStats` | [DOC_01_Core.md](DOC_01_Core.md) | `LocalizationCacheStats` |
+| `FluentNumber` | [DOC_02_Types.md](DOC_02_Types.md) | `FluentNumber` |
+| `FluentValue` | [DOC_02_Types.md](DOC_02_Types.md) | `FluentValue` |
+| `ParseResult` | [DOC_02_Types.md](DOC_02_Types.md) | `ParseResult` |
+| `LocaleCode` | [DOC_02_Types.md](DOC_02_Types.md) | `LocaleCode` |
+| `MessageId` | [DOC_02_Types.md](DOC_02_Types.md) | `MessageId` |
+| `ResourceId` | [DOC_02_Types.md](DOC_02_Types.md) | `ResourceId` |
+| `FTLSource` | [DOC_02_Types.md](DOC_02_Types.md) | `FTLSource` |
+| `CurrencyCode` | [DOC_02_Types.md](DOC_02_Types.md) | `CurrencyCode` |
+| `TerritoryCode` | [DOC_02_Types.md](DOC_02_Types.md) | `TerritoryCode` |
+| `Span` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Span` |
+| `Annotation` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Annotation` |
+| `Identifier` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Identifier` |
+| `Resource` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Resource` |
+| `Message` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Message` |
+| `Term` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Term` |
+| `Attribute` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Attribute` |
+| `Comment` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Comment` |
+| `Junk` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Junk` |
+| `Pattern` | [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | `Pattern` |
+| `TextElement` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `TextElement` |
+| `Placeable` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `Placeable` |
+| `SelectExpression` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `SelectExpression` |
+| `Variant` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `Variant` |
+| `StringLiteral` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `StringLiteral` |
+| `NumberLiteral` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `NumberLiteral` |
+| `VariableReference` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `VariableReference` |
+| `MessageReference` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `MessageReference` |
+| `TermReference` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `TermReference` |
+| `FunctionReference` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `FunctionReference` |
+| `CallArguments` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `CallArguments` |
+| `NamedArgument` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `NamedArgument` |
+| `Entry` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `Entry` |
+| `PatternElement` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `PatternElement` |
+| `Expression` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `Expression` |
+| `SelectorExpression` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `SelectorExpression` |
+| `FTLLiteral` | [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | `FTLLiteral` |
+| `MessageVariableValidationResult` | [DOC_02_Types.md](DOC_02_Types.md) | `MessageVariableValidationResult` |
+| `MessageIntrospection` | [DOC_02_Types.md](DOC_02_Types.md) | `MessageIntrospection` |
+| `VariableInfo` | [DOC_02_Types.md](DOC_02_Types.md) | `VariableInfo` |
+| `FunctionCallInfo` | [DOC_02_Types.md](DOC_02_Types.md) | `FunctionCallInfo` |
+| `ReferenceInfo` | [DOC_02_Types.md](DOC_02_Types.md) | `ReferenceInfo` |
+| `TerritoryInfo` | [DOC_02_Types.md](DOC_02_Types.md) | `TerritoryInfo` |
+| `CurrencyInfo` | [DOC_02_Types.md](DOC_02_Types.md) | `CurrencyInfo` |
+| `CommentType` | [DOC_02_Types.md](DOC_02_Types.md) | `CommentType` |
+| `VariableContext` | [DOC_02_Types.md](DOC_02_Types.md) | `VariableContext` |
+| `ReferenceKind` | [DOC_02_Types.md](DOC_02_Types.md) | `ReferenceKind` |
+| `parse_ftl` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `parse_ftl` |
+| `parse_stream_ftl` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `parse_stream_ftl` |
+| `serialize_ftl` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `serialize_ftl` |
+| `validate_resource` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `validate_resource` |
+| `FluentParserV1` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `FluentParserV1` |
+| `parse` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `parse` |
+| `parse_stream` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `parse_stream` |
+| `serialize` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `serialize` |
+| `Cursor` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `Cursor` |
+| `ftllexengine.syntax.ParseResult` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `ftllexengine.syntax.ParseResult` |
+| `ParseError` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `ParseError` |
+| `SerializationValidationError` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `SerializationValidationError` |
+| `SerializationDepthError` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `SerializationDepthError` |
+| `ASTVisitor` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `ASTVisitor` |
+| `ASTTransformer` | [DOC_03_Parsing.md](DOC_03_Parsing.md) | `ASTTransformer` |
+| `parse_decimal` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `parse_decimal` |
+| `parse_fluent_number` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `parse_fluent_number` |
+| `parse_date` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `parse_date` |
+| `parse_datetime` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `parse_datetime` |
+| `parse_currency` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `parse_currency` |
+| `is_valid_decimal` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `is_valid_decimal` |
+| `is_valid_date` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `is_valid_date` |
+| `is_valid_datetime` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `is_valid_datetime` |
+| `is_valid_currency` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `is_valid_currency` |
+| `clear_date_caches` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `clear_date_caches` |
+| `clear_currency_caches` | [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | `clear_currency_caches` |
+| `CacheConfig` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheConfig` |
+| `FunctionRegistry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `FunctionRegistry` |
+| `fluent_function` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `fluent_function` |
+| `create_default_registry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `create_default_registry` |
+| `get_shared_registry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `get_shared_registry` |
+| `number_format` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `number_format` |
+| `datetime_format` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `datetime_format` |
+| `currency_format` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `currency_format` |
+| `select_plural_category` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `select_plural_category` |
+| `make_fluent_number` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `make_fluent_number` |
+| `clear_module_caches` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `clear_module_caches` |
+| `CacheAuditLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheAuditLogEntry` |
+| `WriteLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `WriteLogEntry` |
+| `detect_cycles` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `detect_cycles` |
+| `normalize_locale` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `normalize_locale` |
+| `get_system_locale` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `get_system_locale` |
+| `require_locale_code` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `require_locale_code` |
+| `require_currency_code` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `require_currency_code` |
+| `require_territory_code` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `require_territory_code` |
+| `is_valid_currency_code` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `is_valid_currency_code` |
+| `is_valid_territory_code` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `is_valid_territory_code` |
+| `get_currency_decimal_digits` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `get_currency_decimal_digits` |
+| `get_cldr_version` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `get_cldr_version` |
+| `__version__` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `__version__` |
+| `__fluent_spec_version__` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `__fluent_spec_version__` |
+| `__spec_url__` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `__spec_url__` |
+| `__recommended_encoding__` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `__recommended_encoding__` |
+| `require_date` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `require_date` |
+| `require_datetime` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `require_datetime` |
+| `require_fluent_number` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `require_fluent_number` |
+| `validate_message_variables` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `validate_message_variables` |
+| `introspect_message` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `introspect_message` |
+| `extract_variables` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `extract_variables` |
+| `extract_references` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `extract_references` |
+| `extract_references_by_attribute` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `extract_references_by_attribute` |
+| `clear_introspection_cache` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `clear_introspection_cache` |
+| `get_territory` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `get_territory` |
+| `get_currency` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `get_currency` |
+| `list_territories` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `list_territories` |
+| `list_currencies` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `list_currencies` |
+| `get_territory_currencies` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `get_territory_currencies` |
+| `clear_iso_cache` | [DOC_04_Introspection.md](DOC_04_Introspection.md) | `clear_iso_cache` |
+| `FrozenFluentError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `FrozenFluentError` |
+| `ErrorCategory` | [DOC_05_Errors.md](DOC_05_Errors.md) | `ErrorCategory` |
+| `ParseTypeLiteral` | [DOC_05_Errors.md](DOC_05_Errors.md) | `ParseTypeLiteral` |
+| `FrozenErrorContext` | [DOC_05_Errors.md](DOC_05_Errors.md) | `FrozenErrorContext` |
+| `BabelImportError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `BabelImportError` |
+| `ErrorTemplate` | [DOC_05_Errors.md](DOC_05_Errors.md) | `ErrorTemplate` |
+| `DataIntegrityError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `DataIntegrityError` |
+| `IntegrityContext` | [DOC_05_Errors.md](DOC_05_Errors.md) | `IntegrityContext` |
+| `CacheCorruptionError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `CacheCorruptionError` |
+| `ImmutabilityViolationError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `ImmutabilityViolationError` |
+| `IntegrityCheckFailedError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `IntegrityCheckFailedError` |
+| `FormattingIntegrityError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `FormattingIntegrityError` |
+| `SyntaxIntegrityError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `SyntaxIntegrityError` |
+| `WriteConflictError` | [DOC_05_Errors.md](DOC_05_Errors.md) | `WriteConflictError` |
+| `ValidationResult` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ValidationResult` |
+| `ValidationError` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ValidationError` |
+| `ValidationWarning` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ValidationWarning` |
+| `WarningSeverity` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `WarningSeverity` |
+| `Diagnostic` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `Diagnostic` |
+| `DiagnosticCode` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `DiagnosticCode` |
+| `DiagnosticFormatter` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `DiagnosticFormatter` |
+| `OutputFormat` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `OutputFormat` |
+| `SourceSpan` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `SourceSpan` |
+| `scripts/validate_docs.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate_docs.py` |
+| `scripts/validate_version.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate_version.py` |
+| `scripts/run_examples.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/run_examples.py` |
+| `check.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `check.sh` |
+| `scripts/lint.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/lint.sh` |
+| `scripts/test.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/test.sh` |
+| `scripts/fuzz_hypofuzz.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/fuzz_hypofuzz.sh` |
+| `scripts/fuzz_atheris.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/fuzz_atheris.sh` |
+| `pytest.mark.fuzz` | [DOC_06_Testing.md](DOC_06_Testing.md) | `pytest.mark.fuzz` |
 
-### AST Types (`from ftllexengine.syntax.ast import ...`)
-```python
-from ftllexengine.syntax.ast import (
-    Resource, Message, Term, Pattern, Attribute,
-    Placeable, TextElement, Identifier, Junk, Comment,
-    VariableReference, MessageReference, TermReference, FunctionReference,
-    SelectExpression, Variant, NumberLiteral, StringLiteral,
-    CallArguments, NamedArgument, Span, Annotation,
-    # Type aliases (PEP 695)
-    Entry, Expression, PatternElement, InlineExpression, VariantKey,
-    SelectorExpression, FTLLiteral, ASTNode,
-)
-```
+## Guide Links
 
-### Syntax Utilities (`from ftllexengine.syntax import ...`)
-```python
-from ftllexengine.syntax import (
-    FluentParserV1, ASTVisitor, ASTTransformer,
-    Cursor, ParseError, ParseResult,
-    parse, serialize,
-    SerializationValidationError, SerializationDepthError,
-)
-```
-
-### Errors & Validation (`from ftllexengine.diagnostics import ...`)
-```python
-from ftllexengine.diagnostics import (
-    FrozenFluentError, ErrorCategory, FrozenErrorContext,
-    Diagnostic, DiagnosticCode,
-    ValidationResult, ValidationError, ValidationWarning, WarningSeverity,
-    DiagnosticFormatter, OutputFormat,
-)
-```
-
-### Introspection (`from ftllexengine.introspection import ...`)
-```python
-from ftllexengine.introspection import (
-    # Message introspection (no Babel required)
-    introspect_message, MessageIntrospection,
-    extract_variables, extract_references, extract_references_by_attribute,
-    clear_introspection_cache,
-    VariableInfo, FunctionCallInfo, ReferenceInfo,
-    # Variable schema validation (no Babel required)
-    validate_message_variables, MessageVariableValidationResult,
-    # ISO introspection (requires Babel)
-    TerritoryCode, CurrencyCode,  # Type aliases
-    TerritoryInfo, CurrencyInfo,  # Data classes
-    get_territory, get_currency, get_currency_decimal_digits,
-    list_territories, list_currencies,
-    get_territory_currencies,  # Lookup functions
-    is_valid_territory_code, is_valid_currency_code,  # Type guards
-    require_currency_code, require_territory_code,    # Boundary validators
-    clear_iso_cache,  # Cache management
-    BabelImportError,  # Exception
-    get_cldr_version,  # Babel/CLDR diagnostics
-)
-```
-
-### Enums (`from ftllexengine.enums import ...`)
-```python
-from ftllexengine.enums import (
-    CommentType,       # COMMENT, GROUP, RESOURCE
-    VariableContext,   # PATTERN, SELECTOR, VARIANT, FUNCTION_ARG
-    ReferenceKind,     # MESSAGE, TERM
-    LoadStatus,        # SUCCESS, PARTIAL, FAILED
-)
-```
-
-### Analysis (`from ftllexengine.analysis import ...`)
-```python
-from ftllexengine.analysis import detect_cycles, entry_dependency_set, make_cycle_key
-```
-
-### Validation (`from ftllexengine.validation import ...`)
-```python
-from ftllexengine.validation import validate_resource
-```
-
-### Core Utilities (`from ftllexengine.core import ...`)
-```python
-from ftllexengine.core import (
-    DepthGuard, depth_clamp,  # Depth limiting
-)
-from ftllexengine.core.babel_compat import (
-    BabelImportError, require_babel,        # Babel availability checking
-    is_babel_available, get_locale_class,   # Babel introspection
-    get_cldr_version,                       # CLDR version
-)
-```
-
-### Runtime (`from ftllexengine.runtime import ...`)
-```python
-from ftllexengine.runtime import (
-    CacheAuditLogEntry, FluentBundle, FluentNumber,
-    FunctionRegistry, WriteLogEntry, fluent_function,
-    create_default_registry, get_shared_registry,
-    number_format, datetime_format, currency_format, make_fluent_number,
-    select_plural_category,
-)
-```
-
-### Localization (`from ftllexengine.localization import ...`)
-```python
-from ftllexengine.localization import (
-    CacheAuditLogEntry, FluentLocalization, LocalizationBootConfig, LocalizationCacheStats,
-    PathResourceLoader, ResourceLoader,
-    LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo,
-    MessageId, LocaleCode, ResourceId, FTLSource,
-)
-```
-
-### Parsing (`from ftllexengine.parsing import ...`)
-
-> **Babel required** for this entire module.
-
-```python
-from ftllexengine.parsing import (
-    # Parse functions (require Babel)
-    parse_decimal, parse_fluent_number, parse_date, parse_datetime, parse_currency,
-    # Type guards
-    is_valid_decimal, is_valid_date, is_valid_datetime, is_valid_currency,
-    # Type alias
-    ParseResult,
-    # Cache management
-    clear_date_caches, clear_currency_caches,
-)
-```
-
----
-
-## File Routing Table
-
-| Query Pattern | Target File | Domain |
-|:--------------|:------------|:-------|
-| AsyncFluentBundle, FluentBundle, FluentLocalization, add_resource, add_resource_stream, format_pattern, require_clean, validate_message_schemas, validate_message_variables, require_locale_code, require_date, require_datetime, require_fluent_number, get_cache_audit_log, LocaleCode, normalize_locale, get_system_locale, LocalizationBootConfig, LoadSummary, ResourceLoadResult, FallbackInfo, LoadStatus, PathResourceLoader, ResourceLoader, LocalizationCacheStats | [DOC_01_Core.md](DOC_01_Core.md) | Core API |
-| Message, Term, Pattern, Resource, AST, Identifier, FTLLiteral, NamedArgument, dataclass | [DOC_02_Types.md](DOC_02_Types.md) | AST Types |
-| parse, parse_stream, parse_stream_ftl, serialize, parse_ftl, serialize_ftl, parse_decimal, parse_fluent_number, parse_date, parse_currency, FluentParserV1 | [DOC_03_Parsing.md](DOC_03_Parsing.md) | Parsing |
-| NUMBER, DATETIME, CURRENCY, FluentNumber, make_fluent_number, fluent_function, add_function, FunctionRegistry, CacheAuditLogEntry, clear_module_caches | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime |
-| FrozenFluentError, ErrorCategory, FrozenErrorContext, BabelImportError, DepthGuard, ValidationResult, Diagnostic, DiagnosticCode | [DOC_05_Errors.md](DOC_05_Errors.md) | Errors |
-| detect_cycles, entry_dependency_set, make_cycle_key, validate_resource | [DOC_04_Runtime.md](DOC_04_Runtime.md) | Analysis |
-| extract_variables, extract_references, extract_references_by_attribute, introspect_message, MessageIntrospection | [DOC_02_Types.md](DOC_02_Types.md) | Message Introspection |
-| TerritoryInfo, CurrencyInfo, get_territory, get_currency, require_currency_code, require_territory_code, ISO 3166, ISO 4217 | [DOC_02_Types.md](DOC_02_Types.md) | ISO Introspection |
-| WarningSeverity, detect_cycles | [DOC_05_Errors.md](DOC_05_Errors.md) | Diagnostics / Analysis |
-
----
-
-## Submodule Structure
-
-```
-ftllexengine/
-  __init__.py              # Public API exports
-  constants.py             # MAX_DEPTH, MAX_IDENTIFIER_LENGTH, MAX_LOCALE_LENGTH_HARD_LIMIT, cache limits, fallback strings, ISO_4217_DECIMAL_DIGITS
-  enums.py                 # CommentType, VariableContext, ReferenceKind, LoadStatus
-  integrity.py             # DataIntegrityError hierarchy (6 sealed subclasses), IntegrityContext
-  localization/
-    __init__.py            # FluentLocalization, LocalizationBootConfig, PathResourceLoader, ResourceLoader, LoadStatus, LoadSummary, ResourceLoadResult, FallbackInfo, type aliases
-    types.py               # PEP 695 type aliases: MessageId, LocaleCode, ResourceId, FTLSource
-    loading.py             # ResourceLoader protocol, PathResourceLoader, LoadSummary, ResourceLoadResult, FallbackInfo
-    boot.py                # LocalizationBootConfig (strict-mode boot API)
-    orchestrator.py        # FluentLocalization class, LocalizationCacheStats
-  introspection/
-    __init__.py            # Introspection API exports (message + ISO)
-    message.py             # MessageIntrospection, introspect_message, extract_variables, extract_references, extract_references_by_attribute
-    iso.py                 # TerritoryInfo, CurrencyInfo, get_territory, get_currency, require_currency_code, require_territory_code
-  core/
-    __init__.py            # Core exports (BabelImportError, DepthGuard, FrozenFluentError, require_non_empty_str)
-    babel_compat.py        # BabelImportError, Babel lazy import infrastructure
-    depth_guard.py         # DepthGuard, depth_clamp
-    errors.py              # ErrorCategory, FrozenErrorContext, FrozenFluentError (re-exports)
-    identifier_validation.py  # FTL identifier validation utilities
-    validators.py          # require_positive_int, require_date, require_datetime, require_fluent_number (internal validators)
-    locale_utils.py        # require_locale_code, get_system_locale, normalize_locale, get_babel_locale, clear_locale_cache
-  analysis/
-    __init__.py            # Analysis API exports
-    graph.py               # detect_cycles, entry_dependency_set, make_cycle_key
-  syntax/
-    __init__.py            # AST exports, parse(), serialize()
-    ast.py                 # AST node definitions
-    cursor.py              # Cursor, ParseError, ParseResult
-    position.py            # Source position tracking
-    validation_helpers.py  # Shared validation helper functions
-    validator.py           # SemanticValidator (AST node-level validation)
-    visitor.py             # ASTVisitor, ASTTransformer
-    serializer.py          # FluentSerializer
-    parser/
-      __init__.py          # FluentParserV1, ParseContext
-      core.py              # Parser main entry point
-      primitives.py        # Parser primitive operations (identifier, number, string literal parsing)
-      rules.py             # ParseContext, pattern/expression parsing
-      whitespace.py        # Whitespace handling
-  runtime/
-    __init__.py            # Runtime exports
-    bundle.py              # FluentBundle
-    cache.py               # IntegrityCache, IntegrityCacheEntry, CacheStats
-    function_bridge.py     # FunctionRegistry, fluent_function
-    function_metadata.py   # Function metadata helpers (requires_locale_injection, etc.)
-    functions.py           # Built-in functions, create_default_registry, get_shared_registry
-    locale_context.py      # Locale context for runtime formatting
-    plural_rules.py        # select_plural_category
-    resolution_context.py  # GlobalDepthGuard, ResolutionContext
-    resolver.py            # FluentResolver
-    rwlock.py              # RWLock (internal readers-writer lock)
-    value_types.py         # FluentNumber, make_fluent_number, FluentValue, FluentFunction, FunctionSignature
-  parsing/
-    __init__.py            # Parsing API exports (requires Babel)
-    numbers.py             # parse_decimal, parse_fluent_number
-    dates.py               # parse_date, parse_datetime
-    currency.py            # parse_currency
-    guards.py              # Type guards
-  diagnostics/
-    __init__.py            # Error exports
-    errors.py              # FrozenFluentError, ErrorCategory, FrozenErrorContext
-    codes.py               # DiagnosticCode, Diagnostic, SourceSpan
-    templates.py           # ErrorTemplate
-    validation.py          # ValidationResult, ValidationError, ValidationWarning
-    formatter.py           # DiagnosticFormatter, OutputFormat
-  validation/
-    __init__.py            # validate_resource
-    resource.py            # Standalone resource validation
-```
-
----
-
-## Type Alias Quick Reference
-
-| Alias | Definition | Location |
-|:------|:-----------|:---------|
-| `FluentValue` | `str \| int \| Decimal \| datetime \| date \| FluentNumber \| None \| Sequence[FluentValue] \| Mapping[str, FluentValue]` | runtime/value_types.py (exported from root) |
-| `ParseResult[T]` | `tuple[T \| None, tuple[FrozenFluentError, ...]]` | parsing/__init__.py (also `ftllexengine`) |
-| `MessageId` | `str` | localization.py |
-| `LocaleCode` | `str` | localization.py |
-| `ResourceId` | `str` | localization.py |
-| `FTLSource` | `str` | localization.py |
-| `TerritoryCode` | `NewType("TerritoryCode", str)` | introspection/iso.py |
-| `CurrencyCode` | `NewType("CurrencyCode", str)` | introspection/iso.py |
-| `Entry` | `Message \| Term \| Comment \| Junk` | syntax/ast.py |
-| `PatternElement` | `TextElement \| Placeable` | syntax/ast.py |
-| `Expression` | `SelectExpression \| InlineExpression` | syntax/ast.py |
-| `InlineExpression` | Union of inline AST types (superset of SelectorExpression) | syntax/ast.py |
-| `SelectorExpression` | Restricted subset of InlineExpression valid as SelectExpression.selector (excludes Placeable) | syntax/ast.py |
-| `FTLLiteral` | `StringLiteral \| NumberLiteral` | syntax/ast.py |
-| `ASTNode` | Union of all AST node types | syntax/ast.py |
-| `VariantKey` | `Identifier \| NumberLiteral` | syntax/ast.py |
-
----
-
-## Cross-Reference: Non-Reference Documentation
-
-| File | Purpose | Audience |
-|:-----|:--------|:---------|
-| [README.md](../README.md) | Entry point, installation, quick start | Humans |
-| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Cheat sheet, common patterns | Humans |
-| [PARSING_GUIDE.md](PARSING_GUIDE.md) | Bi-directional parsing tutorial | Humans |
-| [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md) | Python 3.13+ type patterns | Humans |
-| [TERMINOLOGY.md](TERMINOLOGY.md) | Glossary, disambiguation | Both |
-| [MIGRATION.md](MIGRATION.md) | fluent.runtime migration guide | Humans |
-| [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md) | Custom function tutorial | Humans |
-| [LOCALE_GUIDE.md](LOCALE_GUIDE.md) | Locale formatting behavior (str vs NUMBER) | Humans |
-| [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md) | Validation architecture and responsibility matrix | Humans |
-| [THREAD_SAFETY.md](THREAD_SAFETY.md) | Thread safety architectural decisions | Humans |
-
----
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
+- [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md)
+- [LOCALE_GUIDE.md](LOCALE_GUIDE.md)
+- [PARSING_GUIDE.md](PARSING_GUIDE.md)
+- [RELEASE_PROTOCOL.md](RELEASE_PROTOCOL.md)
+- [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md)

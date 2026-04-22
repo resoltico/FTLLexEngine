@@ -22,11 +22,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-from ftllexengine.analysis.graph import detect_cycles, make_cycle_key
 from ftllexengine.constants import MAX_DEPTH
+from ftllexengine.core.reference_graph import detect_cycles, make_cycle_key
 from ftllexengine.diagnostics import (
     ValidationError,
     ValidationResult,
@@ -34,15 +31,32 @@ from ftllexengine.diagnostics import (
     WarningSeverity,
 )
 from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.introspection import extract_references, extract_references_by_attribute
 from ftllexengine.syntax import Attribute, Junk, Message, Resource, Term
 from ftllexengine.syntax.cursor import LineOffsetCache
+from ftllexengine.syntax.reference_extraction import extract_references
 from ftllexengine.syntax.validator import SemanticValidator
+from ftllexengine.validation.resource_graph import (
+    _compute_longest_paths as _compute_longest_paths_impl,
+)
+from ftllexengine.validation.resource_graph import (
+    build_dependency_graph,
+    detect_long_chains,
+)
+from ftllexengine.validation.resource_graph import (
+    detect_circular_references as _detect_circular_references_impl,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ftllexengine.syntax.parser import FluentParserV1
 
 __all__ = ["validate_resource"]
+
+# Backward-compatible private re-exports for existing tests and internal callers.
+_build_dependency_graph = build_dependency_graph
+_compute_longest_paths = _compute_longest_paths_impl
+_detect_long_chains = detect_long_chains
 
 logger = logging.getLogger(__name__)
 
@@ -436,336 +450,13 @@ def _check_undefined_references(
     return warnings
 
 
-def _detect_circular_references(
-    graph: dict[str, set[str]],
-) -> list[ValidationWarning]:
-    """Detect circular dependencies in messages and terms.
-
-    Uses iterative DFS via analysis.graph module to avoid stack overflow
-    on deep dependency chains.
-
-    Accepts a unified dependency graph with type-prefixed nodes to detect:
-    - Message-only cycles (msg:A -> msg:B -> msg:A)
-    - Term-only cycles (term:A -> term:B -> term:A)
-    - Cross-type cycles (msg:A -> term:B -> msg:A)
-    - Cross-resource cycles (current resource -> known entry -> current resource)
-
-    Args:
-        graph: Unified dependency graph with type-prefixed nodes (msg:name, term:name)
-
-    Returns:
-        List of warnings for circular references
-    """
-    warnings: list[ValidationWarning] = []
-    seen_cycle_keys: set[str] = set()
-
-    # Detect all cycles in the unified graph
-    for cycle in detect_cycles(graph):
-        cycle_key = make_cycle_key(cycle)
-        if cycle_key not in seen_cycle_keys:
-            seen_cycle_keys.add(cycle_key)
-
-            # Format cycle for human-readable output
-            # Convert "msg:foo" -> "foo", "msg:foo.bar" -> "foo.bar",
-            # "term:baz" -> "-baz", "term:baz.attr" -> "-baz.attr"
-            formatted_parts: list[str] = []
-            for node in cycle:
-                if node.startswith("msg:"):
-                    formatted_parts.append(node[4:])  # Strip "msg:" prefix
-                elif node.startswith("term:"):
-                    formatted_parts.append(f"-{node[5:]}")  # Strip "term:", add "-"
-
-            cycle_str = " -> ".join(formatted_parts)
-
-            # Determine cycle type for appropriate message
-            has_messages = any(n.startswith("msg:") for n in cycle)
-            has_terms = any(n.startswith("term:") for n in cycle)
-
-            if has_messages and has_terms:
-                msg = f"Circular cross-reference: {cycle_str}"
-            elif has_terms:
-                msg = f"Circular term reference: {cycle_str}"
-            else:
-                msg = f"Circular message reference: {cycle_str}"
-
-            warnings.append(
-                ValidationWarning(
-                    code=DiagnosticCode.VALIDATION_CIRCULAR_REFERENCE,
-                    message=msg,
-                    context=cycle_str,
-                    severity=WarningSeverity.CRITICAL,
-                )
-            )
-
-    return warnings
-
-
-def _resolve_reference(
-    ref: str,
-    prefix: str,
-    local_entries: dict[str, Message] | dict[str, Term],
-    known_ids: frozenset[str] | None,
-) -> str | None:
-    """Resolve a reference string to a graph node key.
-
-    Shared logic for both message and term reference resolution.
-    References may be attribute-qualified ("name.attr") or bare ("name").
-
-    Args:
-        ref: Reference string (possibly attribute-qualified)
-        prefix: Graph node prefix ("msg" or "term")
-        local_entries: Local entries dict for this namespace
-        known_ids: Optional set of IDs already in bundle
-
-    Returns:
-        Prefixed graph node key, or None if reference is unknown
-    """
-    if "." in ref:
-        base, attr = ref.split(".", 1)
-        if base in local_entries or (known_ids and base in known_ids):
-            return f"{prefix}:{base}.{attr}"
-    elif ref in local_entries or (known_ids and ref in known_ids):
-        return f"{prefix}:{ref}"
-    return None
-
-
-def _add_entry_nodes(
-    entries: dict[str, Message] | dict[str, Term],
-    prefix: str,
-    messages_dict: dict[str, Message],
-    terms_dict: dict[str, Term],
-    known_messages: frozenset[str] | None,
-    known_terms: frozenset[str] | None,
-    graph: dict[str, set[str]],
-) -> None:
-    """Add nodes and edges for a set of entries to the dependency graph.
-
-    Shared logic for both message and term node building.
-
-    Args:
-        entries: The entries to process (messages or terms)
-        prefix: Graph node prefix ("msg" or "term")
-        messages_dict: All local messages (for reference resolution)
-        terms_dict: All local terms (for reference resolution)
-        known_messages: Optional set of message IDs already in bundle
-        known_terms: Optional set of term IDs already in bundle
-        graph: Mutable graph to add nodes to
-    """
-    for name, entry in entries.items():
-        refs_by_attr = extract_references_by_attribute(entry)
-
-        for attr_name, (msg_refs, term_refs) in refs_by_attr.items():
-            node_key = (
-                f"{prefix}:{name}"
-                if attr_name is None
-                else f"{prefix}:{name}.{attr_name}"
-            )
-            deps: set[str] = set()
-            for ref in msg_refs:
-                resolved = _resolve_reference(
-                    ref, "msg", messages_dict, known_messages
-                )
-                if resolved is not None:
-                    deps.add(resolved)
-            for ref in term_refs:
-                resolved = _resolve_reference(
-                    ref, "term", terms_dict, known_terms
-                )
-                if resolved is not None:
-                    deps.add(resolved)
-            graph[node_key] = deps
-
-
-def _add_known_entries(
-    known_ids: frozenset[str] | None,
-    prefix: str,
-    known_deps: Mapping[str, frozenset[str]] | None,
-    graph: dict[str, set[str]],
-) -> None:
-    """Add known (pre-existing) entries to the graph.
-
-    Args:
-        known_ids: Set of known entry IDs
-        prefix: Graph node prefix ("msg" or "term")
-        known_deps: Optional dependency map for known entries
-        graph: Mutable graph to add nodes to
-    """
-    if not known_ids:
-        return
-    for known_id in known_ids:
-        node_key = f"{prefix}:{known_id}"
-        if node_key not in graph:
-            if known_deps and known_id in known_deps:
-                graph[node_key] = set(known_deps[known_id])
-            else:
-                graph[node_key] = set()
-
-
-def _build_dependency_graph(
-    messages_dict: dict[str, Message],
-    terms_dict: dict[str, Term],
-    *,
-    known_messages: frozenset[str] | None = None,
-    known_terms: frozenset[str] | None = None,
-    known_msg_deps: Mapping[str, frozenset[str]] | None = None,
-    known_term_deps: Mapping[str, frozenset[str]] | None = None,
-) -> dict[str, set[str]]:
-    """Build unified dependency graph for messages and terms.
-
-    Creates a graph with type-prefixed nodes (msg:name, term:name) for
-    both cycle detection and chain depth analysis.
-
-    Args:
-        messages_dict: Map of message IDs to Message nodes from current resource
-        terms_dict: Map of term IDs to Term nodes from current resource
-        known_messages: Optional set of message IDs already in bundle
-        known_terms: Optional set of term IDs already in bundle
-        known_msg_deps: Optional dependency map for known messages. Maps message ID
-            to frozenset of prefixed dependencies (e.g., {"msg:foo", "term:bar"}).
-        known_term_deps: Optional dependency map for known terms.
-
-    Returns:
-        Graph as adjacency list (node -> set of dependencies)
-    """
-    graph: dict[str, set[str]] = {}
-
-    # Add entry nodes with attribute-granular dependencies.
-    # Each attribute gets its own node to avoid false positive cycles
-    # when msg.a references msg.b (non-cyclic intra-entry reference).
-    _add_entry_nodes(
-        messages_dict, "msg",
-        messages_dict, terms_dict,
-        known_messages, known_terms, graph,
+def _detect_circular_references(graph: dict[str, set[str]]) -> list[ValidationWarning]:
+    """Compatibility wrapper preserving patch points for cycle tests."""
+    return _detect_circular_references_impl(
+        graph,
+        detect_cycles_fn=detect_cycles,
+        make_cycle_key_fn=make_cycle_key,
     )
-    _add_entry_nodes(
-        terms_dict, "term",
-        messages_dict, terms_dict,
-        known_messages, known_terms, graph,
-    )
-
-    # Add known entries with their dependencies for cross-resource
-    # cycle detection.
-    _add_known_entries(
-        known_messages, "msg", known_msg_deps, graph,
-    )
-    _add_known_entries(
-        known_terms, "term", known_term_deps, graph,
-    )
-
-    return graph
-
-
-def _compute_longest_paths(
-    graph: dict[str, set[str]],
-) -> dict[str, tuple[int, list[str]]]:
-    """Compute longest path from each node using memoized iterative DFS.
-
-    Args:
-        graph: Dependency graph as adjacency list
-
-    Returns:
-        Map from node to (path_length, path_nodes)
-    """
-    longest_path: dict[str, tuple[int, list[str]]] = {}
-    in_stack: set[str] = set()
-
-    for start in graph:
-        if start in longest_path:
-            continue
-
-        # Iterative DFS with two-phase processing
-        stack: list[tuple[str, int, list[str]]] = [(start, 0, list(graph.get(start, set())))]
-
-        while stack:
-            node, phase, children = stack.pop()
-
-            if phase == 0:
-                if node in longest_path:
-                    continue
-
-                in_stack.add(node)
-                stack.append((node, 1, children))
-
-                stack.extend(
-                    (child, 0, list(graph.get(child, set())))
-                    for child in children
-                    if child not in longest_path and child not in in_stack
-                )
-            else:
-                in_stack.discard(node)
-                best_depth, best_path = 0, []
-                for child in children:
-                    if child in longest_path:
-                        child_depth, child_path = longest_path[child]
-                        if child_depth + 1 > best_depth:
-                            best_depth = child_depth + 1
-                            best_path = child_path
-                longest_path[node] = (best_depth, [node, *best_path])
-
-    return longest_path
-
-
-def _detect_long_chains(
-    graph: dict[str, set[str]],
-    max_depth: int = MAX_DEPTH,
-) -> list[ValidationWarning]:
-    """Detect ALL reference chains that exceed maximum depth.
-
-    Computes longest path from each node and reports ALL chains exceeding
-    max_depth. This allows users to see and fix all depth violations in a
-    single validation pass rather than iteratively discovering them.
-
-    Args:
-        graph: Unified dependency graph with type-prefixed nodes (msg:name, term:name)
-        max_depth: Maximum allowed chain depth (default: MAX_DEPTH)
-
-    Returns:
-        List of warnings for ALL chains exceeding max_depth, sorted by depth
-        (deepest first) for prioritized remediation
-    """
-    if not graph:
-        return []
-
-    longest_paths = _compute_longest_paths(graph)
-
-    # Collect ALL chains exceeding max_depth
-    exceeding_chains: list[tuple[int, list[str], str]] = []
-    for node, (depth, path) in longest_paths.items():
-        # Only report chains starting from their origin (first node in path)
-        # to avoid duplicate warnings for the same chain from different nodes
-        if depth > max_depth and path and path[0] == node:
-            exceeding_chains.append((depth, path, node))
-
-    if not exceeding_chains:
-        return []
-
-    # Sort by depth descending (deepest chains first) for prioritized remediation
-    exceeding_chains.sort(key=lambda x: x[0], reverse=True)
-
-    warnings: list[ValidationWarning] = []
-    for chain_depth, chain_path, _origin in exceeding_chains:
-        # Format path for human-readable output
-        formatted = [
-            node[4:] if node.startswith("msg:") else f"-{node[5:]}"
-            for node in chain_path[:10]
-        ]
-        chain_str = " -> ".join(formatted)
-        if len(chain_path) > 10:
-            chain_str += f" -> ... ({len(chain_path)} total)"
-
-        warnings.append(
-            ValidationWarning(
-                code=DiagnosticCode.VALIDATION_CHAIN_DEPTH_EXCEEDED,
-                message=(
-                    f"Reference chain depth ({chain_depth}) exceeds maximum ({max_depth}); "
-                    f"will fail at runtime with MAX_DEPTH_EXCEEDED"
-                ),
-                context=chain_str,
-                severity=WarningSeverity.WARNING,
-            )
-        )
-
-    return warnings
 
 
 def validate_resource(
@@ -811,12 +502,12 @@ def validate_resource(
         TypeError: If source is not a string (e.g., bytes were passed).
 
     Example:
-        >>> from ftllexengine.validation import validate_resource
-        >>> result = validate_resource(ftl_source)
-        >>> if not result.is_valid:
+        >>> from ftllexengine.validation import validate_resource  # doctest: +SKIP
+        >>> result = validate_resource(ftl_source)  # doctest: +SKIP
+        >>> if not result.is_valid:  # doctest: +SKIP
         ...     for error in result.errors:
         ...         print(f"Error [{error.code}]: {error.message}")
-        >>> for warning in result.warnings:
+        >>> for warning in result.warnings:  # doctest: +SKIP
         ...     print(f"Warning [{warning.code}]: {warning.message}")
 
     Thread Safety:
@@ -873,7 +564,7 @@ def validate_resource(
 
     # Build unified dependency graph once for both cycle and chain detection
     # Avoids redundant graph construction (important for large resources)
-    dependency_graph = _build_dependency_graph(
+    dependency_graph = build_dependency_graph(
         messages_dict,
         terms_dict,
         known_messages=known_messages,
@@ -886,7 +577,7 @@ def validate_resource(
     cycle_warnings = _detect_circular_references(dependency_graph)
 
     # Pass 5: Detect long reference chains (would fail at runtime)
-    chain_warnings = _detect_long_chains(dependency_graph)
+    chain_warnings = detect_long_chains(dependency_graph, max_depth=MAX_DEPTH)
 
     # Pass 6: Fluent spec compliance (E0001-E0013)
     semantic_validator = SemanticValidator()

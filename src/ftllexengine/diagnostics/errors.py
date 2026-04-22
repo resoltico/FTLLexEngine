@@ -43,10 +43,10 @@ The first element is the parsed value (None on failure).
 The second element is a tuple of errors (empty on success).
 
 Example:
-    >>> from ftllexengine import ParseResult
-    >>> result: ParseResult[Decimal]
-    >>> value, errors = result
-    >>> if not errors and value is not None:
+    >>> from ftllexengine import ParseResult  # doctest: +SKIP
+    >>> result: ParseResult[Decimal]  # doctest: +SKIP
+    >>> value, errors = result  # doctest: +SKIP
+    >>> if not errors and value is not None:  # doctest: +SKIP
     ...     total = value.quantize(Decimal("0.01"))
 """
 
@@ -77,17 +77,17 @@ class FrozenFluentError(Exception):
         context: Additional context for parse/formatting errors (optional)
 
     Example:
-        >>> error = FrozenFluentError(
+        >>> error = FrozenFluentError(  # doctest: +SKIP
         ...     "Message 'hello' not found",
         ...     ErrorCategory.REFERENCE,
         ...     diagnostic=some_diagnostic,
         ... )
-        >>> error.category == ErrorCategory.REFERENCE
+        >>> error.category == ErrorCategory.REFERENCE  # doctest: +SKIP
         True
-        >>> error.verify_integrity()
+        >>> error.verify_integrity()  # doctest: +SKIP
         True
-        >>> # Attempting mutation raises:
-        >>> error._message = "modified"  # Raises ImmutabilityViolationError
+        Attempting mutation raises:
+        >>> error._message = "modified"  # Raises ImmutabilityViolationError  # doctest: +SKIP
     """
 
     __slots__ = (

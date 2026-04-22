@@ -6,6 +6,10 @@ from .core.babel_compat import get_cldr_version as get_cldr_version
 from .core.locale_utils import get_system_locale as get_system_locale
 from .core.locale_utils import normalize_locale as normalize_locale
 from .core.locale_utils import require_locale_code as require_locale_code
+from .core.semantic_types import FTLSource as FTLSource
+from .core.semantic_types import LocaleCode as LocaleCode
+from .core.semantic_types import MessageId as MessageId
+from .core.semantic_types import ResourceId as ResourceId
 
 # Domain validators (no Babel dependency)
 from .core.validators import require_date as require_date
@@ -81,7 +85,6 @@ from .localization import LocalizationCacheStats as LocalizationCacheStats
 from .localization import PathResourceLoader as PathResourceLoader
 from .localization import ResourceLoader as ResourceLoader
 from .localization import ResourceLoadResult as ResourceLoadResult
-from .localization.types import LocaleCode as LocaleCode
 from .runtime import AsyncFluentBundle as AsyncFluentBundle
 from .runtime import FluentBundle as FluentBundle
 from .runtime import FluentNumber as FluentNumber
@@ -143,7 +146,10 @@ __all__: list[str] = [
     "SyntaxIntegrityError",
     "WriteConflictError",
     # Locale utilities (no Babel dependency)
+    "FTLSource",
     "LocaleCode",
+    "MessageId",
+    "ResourceId",
     "get_system_locale",
     "normalize_locale",
     # Domain validators (no Babel dependency)

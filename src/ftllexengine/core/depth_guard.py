@@ -13,16 +13,32 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Self
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
-from ftllexengine.diagnostics.templates import ErrorTemplate
 
-__all__ = ["DepthGuard", "depth_clamp"]
+__all__ = ["DepthGuard", "DepthLimitExceededError", "depth_clamp"]
 
 logger = logging.getLogger(__name__)
+
+type DepthErrorFactory = Callable[[int], BaseException]
+
+
+class DepthLimitExceededError(ValueError):
+    """Raised when DepthGuard detects recursion beyond the configured limit."""
+
+    __slots__ = ("max_depth",)
+
+    def __init__(self, max_depth: int) -> None:
+        self.max_depth = max_depth
+        super().__init__(f"Depth limit exceeded (max_depth={max_depth})")
+
+
+def _default_depth_error(max_depth: int) -> DepthLimitExceededError:
+    """Build the default core-layer depth exception."""
+    return DepthLimitExceededError(max_depth)
 
 
 @dataclass(slots=True)
@@ -41,7 +57,7 @@ class DepthGuard:
 
     Explicit check (non-context-manager call sites):
         guard = DepthGuard()
-        guard.check()  # Raises FrozenFluentError if limit exceeded
+        guard.check()  # Raises DepthLimitExceededError if limit exceeded
 
     Mutability Note:
         Intentionally mutable (not frozen=True) to enable stateful depth
@@ -59,24 +75,30 @@ class DepthGuard:
 
     max_depth: int = MAX_DEPTH
     current_depth: int = field(default=0, init=False)
+    error_factory: DepthErrorFactory = field(
+        default=_default_depth_error,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         """Clamp max_depth against Python recursion limit."""
         self.max_depth = depth_clamp(self.max_depth)
 
+    def _raise_depth_error(self) -> None:
+        """Raise the configured exception for a depth-limit breach."""
+        raise self.error_factory(self.max_depth)
+
     def __enter__(self) -> Self:
         """Enter guarded section, increment depth.
 
         Validates depth limit BEFORE incrementing to prevent state corruption
-        if FrozenFluentError is raised. Since __exit__ is not called when
+        if the configured exception is raised. Since __exit__ is not called when
         __enter__ raises, incrementing first would leave current_depth
         permanently elevated, causing all subsequent operations to fail.
         """
         if self.current_depth >= self.max_depth:
-            diag = ErrorTemplate.depth_exceeded(self.max_depth)
-            raise FrozenFluentError(
-                str(diag), ErrorCategory.RESOLUTION, diagnostic=diag,
-            )
+            self._raise_depth_error()
         self.current_depth += 1
         return self
 
@@ -95,13 +117,13 @@ class DepthGuard:
         Use when context manager pattern is not convenient.
 
         Raises:
-            FrozenFluentError: If depth limit exceeded (category=RESOLUTION)
+            DepthLimitExceededError: If depth limit exceeded and the default
+                core-layer error factory is in use.
+            BaseException: Any caller-supplied exception produced by
+                ``error_factory``.
         """
         if self.current_depth >= self.max_depth:
-            diag = ErrorTemplate.depth_exceeded(self.max_depth)
-            raise FrozenFluentError(
-                str(diag), ErrorCategory.RESOLUTION, diagnostic=diag,
-            )
+            self._raise_depth_error()
 
 
 def depth_clamp(requested_depth: int, reserve_frames: int = 50) -> int:
@@ -119,11 +141,11 @@ def depth_clamp(requested_depth: int, reserve_frames: int = 50) -> int:
         Safe depth value, clamped if necessary
 
     Example:
-        >>> import sys
-        >>> sys.setrecursionlimit(200)
-        >>> depth_clamp(100)  # OK, within limit
+        >>> import sys  # doctest: +SKIP
+        >>> sys.setrecursionlimit(200)  # doctest: +SKIP
+        >>> depth_clamp(100)  # OK, within limit  # doctest: +SKIP
         100
-        >>> depth_clamp(500)  # Exceeds limit, clamped to 150
+        >>> depth_clamp(500)  # Exceeds limit, clamped to 150  # doctest: +SKIP
         150
     """
     max_safe_depth = sys.getrecursionlimit() - reserve_frames

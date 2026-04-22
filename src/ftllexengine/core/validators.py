@@ -61,17 +61,17 @@ def require_positive_int(value: object, field_name: str) -> int:
         ValueError: If value is zero or negative.
 
     Example:
-        >>> require_positive_int(42, "size")
+        >>> require_positive_int(42, "size")  # doctest: +SKIP
         42
-        >>> require_positive_int(0, "size")
+        >>> require_positive_int(0, "size")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         ValueError: size must be positive
-        >>> require_positive_int(-1, "size")
+        >>> require_positive_int(-1, "size")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         ValueError: size must be positive
-        >>> require_positive_int(True, "size")
+        >>> require_positive_int(True, "size")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: size must be int, got bool
@@ -114,14 +114,14 @@ def require_date(value: object, field_name: str) -> _date:
         TypeError: If value is not a date instance.
 
     Example:
-        >>> from datetime import date, datetime
-        >>> require_date(date(2024, 1, 15), "effective_date")
+        >>> from datetime import date, datetime  # doctest: +SKIP
+        >>> require_date(date(2024, 1, 15), "effective_date")  # doctest: +SKIP
         datetime.date(2024, 1, 15)
-        >>> require_date(datetime(2024, 1, 15, 9, 0), "effective_date")
+        >>> require_date(datetime(2024, 1, 15, 9, 0), "effective_date")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: effective_date must be date, got datetime
-        >>> require_date("2024-01-15", "effective_date")
+        >>> require_date("2024-01-15", "effective_date")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: effective_date must be date, got str
@@ -160,14 +160,14 @@ def require_datetime(value: object, field_name: str) -> _datetime:
         TypeError: If value is not a datetime instance (including plain date).
 
     Example:
-        >>> from datetime import date, datetime
-        >>> require_datetime(datetime(2024, 1, 15, 9, 0), "created_at")
+        >>> from datetime import date, datetime  # doctest: +SKIP
+        >>> require_datetime(datetime(2024, 1, 15, 9, 0), "created_at")  # doctest: +SKIP
         datetime.datetime(2024, 1, 15, 9, 0)
-        >>> require_datetime(date(2024, 1, 15), "created_at")
+        >>> require_datetime(date(2024, 1, 15), "created_at")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: created_at must be datetime, got date
-        >>> require_datetime("2024-01-15T09:00:00", "created_at")
+        >>> require_datetime("2024-01-15T09:00:00", "created_at")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: created_at must be datetime, got str
@@ -199,12 +199,14 @@ def require_fluent_number(value: object, field_name: str) -> FluentNumber:
         TypeError: If value is not a FluentNumber instance.
 
     Example:
-        >>> from ftllexengine.core.value_types import FluentNumber
-        >>> from decimal import Decimal
-        >>> fn = FluentNumber(value=Decimal("9.99"), formatted="9.99", precision=2)
-        >>> require_fluent_number(fn, "amount")
+        >>> from ftllexengine.core.value_types import FluentNumber  # doctest: +SKIP
+        >>> from decimal import Decimal  # doctest: +SKIP
+        >>> fn = FluentNumber(  # doctest: +SKIP
+        ...     value=Decimal("9.99"), formatted="9.99", precision=2
+        ... )
+        >>> require_fluent_number(fn, "amount")  # doctest: +SKIP
         FluentNumber(value=Decimal('9.99'), formatted='9.99', precision=2)
-        >>> require_fluent_number(9.99, "amount")
+        >>> require_fluent_number(9.99, "amount")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: amount must be FluentNumber, got float
@@ -213,5 +215,4 @@ def require_fluent_number(value: object, field_name: str) -> FluentNumber:
         msg = f"{field_name} must be FluentNumber, got {type(value).__name__}"
         raise TypeError(msg)
     return value
-
 

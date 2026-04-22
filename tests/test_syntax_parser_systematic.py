@@ -1,8 +1,8 @@
-"""Systematic error path testing for parser.py.
+"""Systematic error path testing for syntax parser primitives.
 
-This module provides comprehensive coverage of all error paths in the parser,
-organized by parser method. Each test targets a specific uncovered line that
-returns a Failure(ParseError(...)).
+This module provides comprehensive coverage of parser error paths, organized
+by parser method. Each test targets a specific failure branch that returns
+``ParseError``.
 
 Testing Philosophy:
     - Every error path should have at least one test
@@ -30,12 +30,12 @@ class TestParseNumberErrorPaths:
     """Error path tests for _parse_number method.
 
     Target coverage:
-        - Line 222: No digits after minus sign
-        - Line 234: No digits after decimal point
+        - No digits after minus sign
+        - No digits after decimal point
     """
 
     def test_number_no_digits_after_minus(self):
-        """Line 222: '-' not followed by digit.
+        """'-' not followed by a digit fails.
 
         Example: test = { - }
         Trigger: Minus sign followed by non-digit or EOF
@@ -48,7 +48,7 @@ class TestParseNumberErrorPaths:
         assert isinstance(result, ParseError)
 
     def test_number_no_digits_after_minus_eof(self):
-        """Line 222: '-' at end of string.
+        """'-' at end of string fails.
 
         Example: test = { -
         Trigger: Minus sign at EOF
@@ -60,7 +60,7 @@ class TestParseNumberErrorPaths:
         assert isinstance(result, ParseError)
 
     def test_number_no_digits_after_minus_non_digit(self):
-        """Line 222: '-' followed by letter.
+        """'-' followed by a letter fails.
 
         Example: test = { -x }
         Trigger: Minus sign followed by alphabetic character
@@ -72,7 +72,7 @@ class TestParseNumberErrorPaths:
         assert isinstance(result, ParseError)
 
     def test_number_decimal_no_digits(self):
-        """Line 234: '3.' with no digits after decimal point.
+        """'3.' with no digits after the decimal point fails.
 
         Example: test = { 3. }
         Trigger: Decimal point followed by non-digit
@@ -84,7 +84,7 @@ class TestParseNumberErrorPaths:
         assert isinstance(result, ParseError)
 
     def test_number_decimal_no_digits_eof(self):
-        """Line 234: Number ending with decimal at EOF.
+        """A number ending with a decimal point at EOF fails.
 
         Example: test = { 3.
         Trigger: Decimal point at end of input
@@ -96,11 +96,11 @@ class TestParseNumberErrorPaths:
         assert isinstance(result, ParseError)
 
     def test_number_just_decimal_point(self):
-        """Line 234: Just a decimal point with no integer part.
+        """A decimal point without an integer part fails.
 
         Example: test = { . }
         Trigger: Decimal point as first character
-        Note: This actually triggers line 222 first (no digits before decimal)
+        Note: This actually fails earlier because there are no digits before the decimal point
         """
         cursor = Cursor("test = { . }", 9)  # Position at '.'
 
@@ -114,9 +114,9 @@ class TestParseEscapeSequenceErrorPaths:
     """Error path tests for _parse_escape_sequence method.
 
     Target coverage:
-        - Line 293: EOF after backslash in string
-        - Line 298: Escape sequence \" (actually SUCCESS, testing for coverage)
-        - Line 300: Escape sequence \\ (actually SUCCESS, testing for coverage)
+        - EOF after backslash in string
+        - Quote escape sequence
+        - Backslash escape sequence
     """
 
     def test_escape_eof_after_backslash(self):
@@ -578,7 +578,7 @@ class TestAllEscapeSequences:
         """Test all supported escape sequences systematically.
 
         This parametrized test ensures all escape sequences work correctly.
-        Covers lines 298, 300, 302, 304, 307-321.
+        It covers the supported escape-sequence branches.
         """
         parser = FluentParserV1()
         ftl = f'test = {{ "text{escape}more" }}'

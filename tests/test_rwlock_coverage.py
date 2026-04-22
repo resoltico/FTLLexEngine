@@ -9,6 +9,7 @@ Tests verify:
 
 import threading
 import time
+from typing import cast
 
 import pytest
 
@@ -374,7 +375,8 @@ class TestRWLockStateConsistency:
         assert lock._active_writer is None
 
         lock._acquire_write()
-        assert lock._active_writer == current_thread_id
+        active_writer = cast("int", lock._active_writer)
+        assert active_writer == current_thread_id
 
         lock._release_write()
         assert lock._active_writer is None

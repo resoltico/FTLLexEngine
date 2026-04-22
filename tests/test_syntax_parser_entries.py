@@ -23,18 +23,18 @@ from ftllexengine.syntax.ast import (
     TextElement,
 )
 from ftllexengine.syntax.cursor import Cursor, ParseResult
-from ftllexengine.syntax.parser import rules
+from ftllexengine.syntax.parser import entries as entry_rules
+from ftllexengine.syntax.parser.context import ParseContext
 from ftllexengine.syntax.parser.core import FluentParserV1
-from ftllexengine.syntax.parser.rules import (
-    ParseContext,
+from ftllexengine.syntax.parser.entries import (
     parse_attribute,
     parse_comment,
     parse_message,
     parse_message_attributes,
     parse_message_header,
-    parse_pattern,
     parse_term,
 )
+from ftllexengine.syntax.parser.patterns import parse_pattern
 from ftllexengine.syntax.parser.whitespace import (
     skip_multiline_pattern_start,
 )
@@ -159,7 +159,7 @@ class TestParseMessage:
     def test_pattern_mock_fails(self) -> None:
         """Returns None when parse_pattern returns None."""
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern",
+            "ftllexengine.syntax.parser.entries.parse_pattern",
             return_value=None,
         ):
             assert parse_message(
@@ -169,10 +169,10 @@ class TestParseMessage:
     def test_attributes_mock_fails(self) -> None:
         """Returns None when parse_message_attributes returns None."""
         with patch.object(
-            rules, "parse_message_attributes",
+            entry_rules, "parse_message_attributes",
             return_value=None,
         ):
-            assert rules.parse_message(
+            assert entry_rules.parse_message(
                 Cursor("msg = Value\n", 0)
             ) is None
 
@@ -215,7 +215,7 @@ class TestParseAttribute:
     def test_pattern_mock_fails(self) -> None:
         """Returns None when parse_pattern returns None."""
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern",
+            "ftllexengine.syntax.parser.entries.parse_pattern",
             return_value=None,
         ):
             assert parse_attribute(
@@ -318,7 +318,7 @@ class TestParseTerm:
     def test_pattern_mock_fails(self) -> None:
         """Returns None when parse_pattern returns None."""
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern",
+            "ftllexengine.syntax.parser.entries.parse_pattern",
             return_value=None,
         ):
             assert parse_term(
@@ -337,7 +337,7 @@ class TestParseTerm:
             return ParseResult(empty_pattern, cursor)
 
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern",
+            "ftllexengine.syntax.parser.entries.parse_pattern",
             side_effect=mock_parse_pattern,
         ):
             assert parse_term(Cursor(source, 0)) is None
@@ -354,7 +354,7 @@ class TestParseTerm:
             return ParseResult(pattern, Cursor(source, 14))
 
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern",
+            "ftllexengine.syntax.parser.entries.parse_pattern",
             side_effect=mock_parse_pattern,
         ):
             result = parse_term(Cursor(source, 0))
@@ -364,7 +364,7 @@ class TestParseTerm:
     def test_invalid_attribute_syntax(self) -> None:
         """Invalid attribute syntax restores cursor and breaks."""
         source = "-term = Value\n.invalid"
-        original = rules.parse_attribute
+        original = entry_rules.parse_attribute
 
         def mock_attr(cursor, context=None):
             if ".invalid" in cursor.source[cursor.pos:]:
@@ -372,7 +372,7 @@ class TestParseTerm:
             return original(cursor, context)
 
         with patch.object(
-            rules, "parse_attribute", side_effect=mock_attr
+            entry_rules, "parse_attribute", side_effect=mock_attr
         ):
             result = parse_term(Cursor(source, 0))
         assert result is not None
@@ -428,7 +428,7 @@ class TestTermCRLFHandling:
             return ParseResult(Pattern(elements=()), cursor)
 
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern",
+            "ftllexengine.syntax.parser.entries.parse_pattern",
             side_effect=mock_parse_pattern,
         ):
             assert parse_term(Cursor(source, 0)) is None

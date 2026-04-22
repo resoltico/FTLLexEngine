@@ -29,6 +29,9 @@ Linting Notes:
 
 from __future__ import annotations
 
+import contextlib
+import io
+
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, rule
@@ -79,8 +82,10 @@ def example_1_format_never_raises() -> None:
         # Always returns a tuple of errors
         assert isinstance(errors, tuple)
 
-    # Run the property test
-    test_format_never_raises()
+    # Invalid random message IDs can legitimately trigger parser diagnostics on stderr.
+    # Suppress that noise so the example stays focused on the property outcome.
+    with contextlib.redirect_stderr(io.StringIO()):
+        test_format_never_raises()
     print("Property verified: format_pattern() never raises in soft mode (strict=False)\n")
 
 

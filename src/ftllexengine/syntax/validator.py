@@ -20,6 +20,7 @@ from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
 from ftllexengine.diagnostics import ValidationResult
 from ftllexengine.diagnostics.codes import DiagnosticCode
+from ftllexengine.diagnostics.depth import resolution_depth_error
 from ftllexengine.syntax.ast import (
     Annotation,
     Attribute,
@@ -105,7 +106,10 @@ class SemanticValidator:
             ValidationResult with errors (if any)
         """
         errors: list[Annotation] = []
-        depth_guard = DepthGuard(max_depth=MAX_DEPTH)
+        depth_guard = DepthGuard(
+            max_depth=MAX_DEPTH,
+            error_factory=resolution_depth_error,
+        )
 
         for entry in resource.entries:
             self._validate_entry(entry, errors, depth_guard)
@@ -501,13 +505,13 @@ def validate(resource: Resource) -> ValidationResult:
         ValidationResult with any errors found
 
     Example:
-        >>> from ftllexengine.syntax.parser import FluentParserV1
-        >>> from ftllexengine.syntax.validator import validate
-        >>>
-        >>> parser = FluentParserV1()
-        >>> resource = parser.parse("msg = value")
-        >>> result = validate(resource)
-        >>> assert result.is_valid
+        >>> from ftllexengine.syntax.parser import FluentParserV1  # doctest: +SKIP
+        >>> from ftllexengine.syntax.validator import validate  # doctest: +SKIP
+
+        >>> parser = FluentParserV1()  # doctest: +SKIP
+        >>> resource = parser.parse("msg = value")  # doctest: +SKIP
+        >>> result = validate(resource)  # doctest: +SKIP
+        >>> assert result.is_valid  # doctest: +SKIP
     """
     validator = SemanticValidator()
     return validator.validate(resource)

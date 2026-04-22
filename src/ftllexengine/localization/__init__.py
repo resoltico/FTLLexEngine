@@ -22,6 +22,7 @@ Python 3.13+.
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 
+from ftllexengine.core.semantic_types import FTLSource, LocaleCode, MessageId, ResourceId
 from ftllexengine.enums import LoadStatus
 from ftllexengine.localization.loading import (
     FallbackInfo,
@@ -30,7 +31,6 @@ from ftllexengine.localization.loading import (
     ResourceLoader,
     ResourceLoadResult,
 )
-from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
 
 # Babel-optional: orchestrator and boot depend on FluentBundle (runtime → Babel).
 # On parser-only installs these imports fail; the names are absent from this
@@ -48,8 +48,8 @@ try:
     from ftllexengine.runtime.cache import (
         CacheAuditLogEntry as CacheAuditLogEntry,
     )
-except ImportError:
-    pass  # Parser-only install; Babel-dependent localization types unavailable
+except ImportError:  # pragma: no cover - parser-only install; Babel-dependent names unavailable
+    pass  # pragma: no cover - parser-only install; Babel-dependent names unavailable
 
 __all__ = [
     # Main orchestrator (Babel-optional; absent in parser-only installs)

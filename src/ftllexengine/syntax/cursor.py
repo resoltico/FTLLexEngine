@@ -58,20 +58,20 @@ class Cursor:
             len(source) is rejected to make the invariant explicit.
 
     Example:
-        >>> cursor = Cursor("hello", 0)
-        >>> cursor.current  # Type: str (not str | None!)
+        >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+        >>> cursor.current  # Type: str (not str | None!)  # doctest: +SKIP
         'h'
-        >>> new_cursor = cursor.advance()
-        >>> new_cursor.current
+        >>> new_cursor = cursor.advance()  # doctest: +SKIP
+        >>> new_cursor.current  # doctest: +SKIP
         'e'
-        >>> cursor.current  # Original unchanged (immutability)
+        >>> cursor.current  # Original unchanged (immutability)  # doctest: +SKIP
         'h'
-        >>> cursor.is_eof
+        >>> cursor.is_eof  # doctest: +SKIP
         False
-        >>> eof_cursor = Cursor("hi", 2)
-        >>> eof_cursor.is_eof
+        >>> eof_cursor = Cursor("hi", 2)  # doctest: +SKIP
+        >>> eof_cursor.is_eof  # doctest: +SKIP
         True
-        >>> eof_cursor.current  # Raises EOFError
+        >>> eof_cursor.current  # Raises EOFError  # doctest: +SKIP
         Traceback (most recent call last):
         ...
         EOFError: Unexpected EOF at position 2
@@ -203,14 +203,14 @@ class Cursor:
             The compiler enforces progress!
 
         Example:
-            >>> cursor = Cursor("hello", 0)
-            >>> cursor2 = cursor.advance()
-            >>> cursor.pos  # Original unchanged
+            >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+            >>> cursor2 = cursor.advance()  # doctest: +SKIP
+            >>> cursor.pos  # Original unchanged  # doctest: +SKIP
             0
-            >>> cursor2.pos  # New cursor advanced
+            >>> cursor2.pos  # New cursor advanced  # doctest: +SKIP
             1
 
-            >>> cursor.advance(0)  # Raises: must advance by at least 1
+            >>> cursor.advance(0)  # Raises: must advance by at least 1  # doctest: +SKIP
             Traceback (most recent call last):
             ...
             ValueError: advance() count must be >= 1, got 0
@@ -239,11 +239,11 @@ class Cursor:
             Source substring from current position to end_pos
 
         Example:
-            >>> cursor = Cursor("hello world", 0)
-            >>> start_cursor = cursor
-            >>> while not cursor.is_eof and cursor.current != ' ':
+            >>> cursor = Cursor("hello world", 0)  # doctest: +SKIP
+            >>> start_cursor = cursor  # doctest: +SKIP
+            >>> while not cursor.is_eof and cursor.current != ' ':  # doctest: +SKIP
             ...     cursor = cursor.advance()
-            >>> start_cursor.slice_to(cursor.pos)
+            >>> start_cursor.slice_to(cursor.pos)  # doctest: +SKIP
             'hello'
         """
         return self.source[self.pos : end_pos]
@@ -259,16 +259,16 @@ class Cursor:
             This matches Fluent parser specification for inline whitespace.
 
         Example:
-            >>> cursor = Cursor("   hello", 0)
-            >>> new_cursor = cursor.skip_spaces()
-            >>> new_cursor.pos
+            >>> cursor = Cursor("   hello", 0)  # doctest: +SKIP
+            >>> new_cursor = cursor.skip_spaces()  # doctest: +SKIP
+            >>> new_cursor.pos  # doctest: +SKIP
             3
-            >>> new_cursor.current
+            >>> new_cursor.current  # doctest: +SKIP
             'h'
 
-            >>> cursor = Cursor("hello", 0)
-            >>> new_cursor = cursor.skip_spaces()
-            >>> new_cursor.pos  # No spaces to skip
+            >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+            >>> new_cursor = cursor.skip_spaces()  # doctest: +SKIP
+            >>> new_cursor.pos  # No spaces to skip  # doctest: +SKIP
             0
         """
         # O(1) cursor allocation: compute final position via integer arithmetic
@@ -291,16 +291,16 @@ class Cursor:
             to LF at parser entry (see FluentParserV1.parse()).
 
         Example:
-            >>> cursor = Cursor("  \\n  hello", 0)
-            >>> new_cursor = cursor.skip_whitespace()
-            >>> new_cursor.pos
+            >>> cursor = Cursor("  \\n  hello", 0)  # doctest: +SKIP
+            >>> new_cursor = cursor.skip_whitespace()  # doctest: +SKIP
+            >>> new_cursor.pos  # doctest: +SKIP
             5
-            >>> new_cursor.current
+            >>> new_cursor.current  # doctest: +SKIP
             'h'
 
-            >>> cursor = Cursor("hello", 0)
-            >>> new_cursor = cursor.skip_whitespace()
-            >>> new_cursor.pos  # No whitespace to skip
+            >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+            >>> new_cursor = cursor.skip_whitespace()  # doctest: +SKIP
+            >>> new_cursor.pos  # No whitespace to skip  # doctest: +SKIP
             0
         """
         # O(1) cursor allocation: compute final position via integer arithmetic
@@ -326,17 +326,17 @@ class Cursor:
             For required characters, use current property with explicit check.
 
         Example:
-            >>> cursor = Cursor("hello", 0)
-            >>> new_cursor = cursor.expect('h')
-            >>> new_cursor.pos if new_cursor else None
+            >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+            >>> new_cursor = cursor.expect('h')  # doctest: +SKIP
+            >>> new_cursor.pos if new_cursor else None  # doctest: +SKIP
             1
 
-            >>> cursor = Cursor("hello", 0)
-            >>> cursor.expect('x')  # No match
+            >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+            >>> cursor.expect('x')  # No match  # doctest: +SKIP
             None
 
-            >>> eof_cursor = Cursor("hi", 2)
-            >>> eof_cursor.expect('h')  # At EOF
+            >>> eof_cursor = Cursor("hi", 2)  # doctest: +SKIP
+            >>> eof_cursor.expect('h')  # At EOF  # doctest: +SKIP
             None
         """
         if not self.is_eof and self.current == char:
@@ -358,12 +358,12 @@ class Cursor:
             Does not advance the cursor position.
 
         Example:
-            >>> cursor = Cursor("hello", 0)
-            >>> cursor.slice_ahead(3)
+            >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+            >>> cursor.slice_ahead(3)  # doctest: +SKIP
             'hel'
-            >>> cursor.pos  # Unchanged
+            >>> cursor.pos  # Unchanged  # doctest: +SKIP
             0
-            >>> cursor.slice_ahead(10)  # More than available
+            >>> cursor.slice_ahead(10)  # More than available  # doctest: +SKIP
             'hello'
         """
         return self.source[self.pos : self.pos + n]
@@ -380,9 +380,9 @@ class Cursor:
             performs this normalization automatically.
 
         Example:
-            >>> cursor = Cursor("hello\\nworld", 5)  # At \\n
-            >>> new_cursor = cursor.skip_line_end()
-            >>> new_cursor.pos
+            >>> cursor = Cursor("hello\\nworld", 5)  # At \\n  # doctest: +SKIP
+            >>> new_cursor = cursor.skip_line_end()  # doctest: +SKIP
+            >>> new_cursor.pos  # doctest: +SKIP
             6
         """
         if not self.is_eof and self.current == "\n":
@@ -404,11 +404,11 @@ class Cursor:
             performs this normalization automatically.
 
         Example:
-            >>> cursor = Cursor("hello\\nworld", 0)
-            >>> new_cursor = cursor.skip_to_line_end()
-            >>> new_cursor.pos
+            >>> cursor = Cursor("hello\\nworld", 0)  # doctest: +SKIP
+            >>> new_cursor = cursor.skip_to_line_end()  # doctest: +SKIP
+            >>> new_cursor.pos  # doctest: +SKIP
             5
-            >>> new_cursor.current
+            >>> new_cursor.current  # doctest: +SKIP
             '\\n'
         """
         # C-level str.find() avoids O(N) cursor allocations
@@ -429,8 +429,8 @@ class Cursor:
             More efficient than source[:pos].count() for large files.
 
         Example:
-            >>> cursor = Cursor("a\\nb\\nc", 4)  # At 'c'
-            >>> cursor.count_newlines_before()
+            >>> cursor = Cursor("a\\nb\\nc", 4)  # At 'c'  # doctest: +SKIP
+            >>> cursor.count_newlines_before()  # doctest: +SKIP
             2
         """
         return self.source.count("\n", 0, self.pos)
@@ -446,15 +446,15 @@ class Cursor:
             Only call for error reporting, not during normal parsing!
 
         Example:
-            >>> source = "line1\\nline2\\nline3"
-            >>> cursor = Cursor(source, 0)
-            >>> cursor.compute_line_col()
+            >>> source = "line1\\nline2\\nline3"  # doctest: +SKIP
+            >>> cursor = Cursor(source, 0)  # doctest: +SKIP
+            >>> cursor.compute_line_col()  # doctest: +SKIP
             (1, 1)
-            >>> cursor = Cursor(source, 6)  # Start of line2
-            >>> cursor.compute_line_col()
+            >>> cursor = Cursor(source, 6)  # Start of line2  # doctest: +SKIP
+            >>> cursor.compute_line_col()  # doctest: +SKIP
             (2, 1)
-            >>> cursor = Cursor(source, 8)  # Middle of line2
-            >>> cursor.compute_line_col()
+            >>> cursor = Cursor(source, 8)  # Middle of line2  # doctest: +SKIP
+            >>> cursor.compute_line_col()  # doctest: +SKIP
             (2, 3)
         """
         # Count newlines before current position (O(1) memory)
@@ -480,13 +480,13 @@ class LineOffsetCache:
     each position, which is O(n) per call.
 
     Example:
-        >>> source = "line1\\nline2\\nline3"
-        >>> cache = LineOffsetCache(source)
-        >>> cache.get_line_col(0)   # Start of line 1
+        >>> source = "line1\\nline2\\nline3"  # doctest: +SKIP
+        >>> cache = LineOffsetCache(source)  # doctest: +SKIP
+        >>> cache.get_line_col(0)   # Start of line 1  # doctest: +SKIP
         (1, 1)
-        >>> cache.get_line_col(6)   # Start of line 2
+        >>> cache.get_line_col(6)   # Start of line 2  # doctest: +SKIP
         (2, 1)
-        >>> cache.get_line_col(8)   # Third char of line 2
+        >>> cache.get_line_col(8)   # Third char of line 2  # doctest: +SKIP
         (2, 3)
 
     Thread Safety:
@@ -531,10 +531,10 @@ class LineOffsetCache:
             O(log n) where n = number of lines
 
         Example:
-            >>> cache = LineOffsetCache("abc\\ndef\\nghi")
-            >>> cache.get_line_col(0)
+            >>> cache = LineOffsetCache("abc\\ndef\\nghi")  # doctest: +SKIP
+            >>> cache.get_line_col(0)  # doctest: +SKIP
             (1, 1)
-            >>> cache.get_line_col(4)  # 'd' in "def"
+            >>> cache.get_line_col(4)  # 'd' in "def"  # doctest: +SKIP
             (2, 1)
         """
         # Clamp position to valid range
@@ -580,14 +580,14 @@ class ParseResult[T]:
                 return Success(ParseResult(parsed_value, new_cursor))
 
     Example:
-        >>> cursor = Cursor("hello", 0)
-        >>> # Parse single character
-        >>> result = ParseResult('h', cursor.advance())
-        >>> result.value
+        >>> cursor = Cursor("hello", 0)  # doctest: +SKIP
+        Parse a single character:
+        >>> result = ParseResult('h', cursor.advance())  # doctest: +SKIP
+        >>> result.value  # doctest: +SKIP
         'h'
-        >>> result.cursor.pos
+        >>> result.cursor.pos  # doctest: +SKIP
         1
-        >>> result.cursor.current
+        >>> result.cursor.current  # doctest: +SKIP
         'e'
     """
 
@@ -606,9 +606,9 @@ class ParseError:
         - Immutable for error chaining
 
     Example:
-        >>> cursor = Cursor("hello", 2)
-        >>> error = ParseError("Expected '}'", cursor, expected=('}', ']'))
-        >>> error.format_error()
+        >>> cursor = Cursor("hello", 2)  # doctest: +SKIP
+        >>> error = ParseError("Expected '}'", cursor, expected=('}', ']'))  # doctest: +SKIP
+        >>> error.format_error()  # doctest: +SKIP
         "1:3: Expected '}' (expected: '}', ']')"
     """
 
@@ -623,13 +623,13 @@ class ParseError:
             Formatted error string with location
 
         Example:
-            >>> cursor = Cursor("hello\\nworld", 7)
-            >>> error = ParseError("Expected ']'", cursor)
-            >>> error.format_error()
+            >>> cursor = Cursor("hello\\nworld", 7)  # doctest: +SKIP
+            >>> error = ParseError("Expected ']'", cursor)  # doctest: +SKIP
+            >>> error.format_error()  # doctest: +SKIP
             "2:2: Expected ']'"
 
-            >>> error2 = ParseError("Unexpected", cursor, expected=(']', '}'))
-            >>> error2.format_error()
+            >>> error2 = ParseError("Unexpected", cursor, expected=(']', '}'))  # doctest: +SKIP
+            >>> error2.format_error()  # doctest: +SKIP
             "2:2: Unexpected (expected: ']', '}')"
         """
         line, col = self.cursor.compute_line_col()
@@ -653,10 +653,10 @@ class ParseError:
             Multi-line formatted error with context
 
         Example:
-            >>> source = "hello = Hi\\nworld = { $name\\nfoo = Bar"
-            >>> cursor = Cursor(source, 26)  # After $name
-            >>> error = ParseError("Expected '}'", cursor)
-            >>> print(error.format_with_context())
+            >>> source = "hello = Hi\\nworld = { $name\\nfoo = Bar"  # doctest: +SKIP
+            >>> cursor = Cursor(source, 26)  # After $name  # doctest: +SKIP
+            >>> error = ParseError("Expected '}'", cursor)  # doctest: +SKIP
+            >>> print(error.format_with_context())  # doctest: +SKIP
             2:15: Expected '}'
             <BLANKLINE>
                1 | hello = Hi

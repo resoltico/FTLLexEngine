@@ -33,7 +33,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -56,6 +58,7 @@ class CheckConfig:
     skip_markers: list[str]
     parser_path: str
     language: str = "ftl"
+    python_exec_globs: list[str] = field(default_factory=list)
 
     @classmethod
     def from_pyproject(cls, root: Path) -> Self:
@@ -81,6 +84,7 @@ class CheckConfig:
             skip_markers=config.get("skip_markers", []),
             parser_path=config.get("parser_path", ""),
             language=config.get("language", "ftl"),
+            python_exec_globs=config.get("python_exec_globs", []),
         )
 
 
@@ -93,6 +97,7 @@ class ExampleFailure:
     content: str
     error: str
     error_type: str = "SyntaxError"
+    language: str = "ftl"
 
 
 @dataclass
@@ -120,6 +125,7 @@ class ValidationReport:
                     {
                         "file": f.file,
                         "line": f.line,
+                        "language": f.language,
                         "error_type": f.error_type,
                         "message": f.error,
                         "snippet": f.content[:100] + "...",
@@ -144,6 +150,37 @@ def get_parser(path: str) -> Any:
     except (ImportError, AttributeError) as e:
         print(f"[ERROR] Could not load parser {path!r}: {e!s}", file=sys.stderr)
         return None
+
+
+def _python_env(root: Path) -> dict[str, str]:
+    """Return subprocess environment for installed-package snippet execution."""
+    del root
+    env = dict(**os.environ)
+    env.pop("PYTHONPATH", None)
+    return env
+
+
+def validate_python_code(code: str, root: Path) -> str | None:
+    """Execute a Python documentation block in isolation."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=root,
+            env=_python_env(root),
+            text=True,
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return f"TimeoutExpired: {exc!s}"
+
+    if result.returncode == 0:
+        return None
+
+    stderr = result.stderr.strip()
+    stdout = result.stdout.strip()
+    return stderr or stdout or f"process exited with code {result.returncode}"
 
 
 def validate_code(code: str, parser: Any) -> str | None:
@@ -197,13 +234,16 @@ def process_file(
 
     report.files_checked += 1
     rel_path = str(md_file.relative_to(root))
+    python_enabled = any(md_file.match(pattern) for pattern in config.python_exec_globs)
 
     for match in pattern.finditer(content):
         indent = match.group(1)
         language = match.group(2).lower()
         code_block = match.group(3)
 
-        if language != config.language:
+        should_validate_ftl = language == config.language
+        should_validate_python = python_enabled and language == "python"
+        if not should_validate_ftl and not should_validate_python:
             continue
 
         report.examples_validated += 1
@@ -218,11 +258,25 @@ def process_file(
         if any(m in code_block for m in config.skip_markers):
             continue
 
-        error = validate_code(code_block, parser)
+        if should_validate_python:
+            error = validate_python_code(code_block, root)
+            error_type = "PythonRuntimeError"
+            failure_language = "python"
+        else:
+            error = validate_code(code_block, parser)
+            error_type = "SyntaxError"
+            failure_language = config.language
         if error:
             line_num = content[: match.start()].count("\n") + 2
             report.failures.append(
-                ExampleFailure(file=rel_path, line=line_num, content=code_block, error=error)
+                ExampleFailure(
+                    file=rel_path,
+                    line=line_num,
+                    content=code_block,
+                    error=error,
+                    error_type=error_type,
+                    language=failure_language,
+                )
             )
 
 

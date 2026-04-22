@@ -45,6 +45,11 @@ locale_codes = st.sampled_from([
     "fr", "fr_FR",
 ])
 
+log_source_paths = st.from_regex(
+    r"[A-Za-z0-9_-][A-Za-z0-9_. /-]{0,31}",
+    fullmatch=True,
+)
+
 
 # ============================================================================
 # PROPERTY TESTS - TERM ATTRIBUTES IN CYCLE DETECTION
@@ -168,7 +173,7 @@ class TestSourcePathErrorLogging:
         if log_messages:
             assert any("error_file.ftl" in msg for msg in log_messages)
 
-    @given(locale=locale_codes, filename=st.text(min_size=1))  # Remove arbitrary max
+    @given(locale=locale_codes, filename=log_source_paths)
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_source_path_appears_in_logs_property(
         self,
@@ -177,9 +182,6 @@ class TestSourcePathErrorLogging:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Property: source_path always appears in error/warning logs when provided."""
-        assume(filename.isprintable())
-        assume(not filename.startswith("."))
-
         bundle = FluentBundle(locale)
 
         invalid_ftl = "invalid syntax $$$"

@@ -16,36 +16,32 @@ Thread Safety:
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from ftllexengine.constants import (
     DEFAULT_MAX_EXPANSION_SIZE,
-    FALLBACK_FUNCTION_ERROR,
-    FALLBACK_INVALID,
     FALLBACK_MISSING_MESSAGE,
     FALLBACK_MISSING_TERM,
-    FALLBACK_MISSING_VARIABLE,
     MAX_DEPTH,
 )
 from ftllexengine.core import depth_clamp
-from ftllexengine.core.babel_compat import BabelImportError
-from ftllexengine.core.value_types import FluentNumber
 from ftllexengine.diagnostics import (
     ErrorCategory,
     ErrorTemplate,
     FrozenFluentError,
 )
-from ftllexengine.runtime.plural_rules import select_plural_category
+from ftllexengine.runtime.plural_rules import (
+    select_plural_category as _select_plural_category,
+)
 from ftllexengine.runtime.resolution_context import (
     GlobalDepthGuard,
     ResolutionContext,
 )
+from ftllexengine.runtime.resolver_runtime import _ResolverRuntimeMixin
+from ftllexengine.runtime.resolver_selection import _ResolverSelectionMixin
 from ftllexengine.syntax import (
     Expression,
     FunctionReference,
-    Identifier,
     Message,
     MessageReference,
     NumberLiteral,
@@ -57,14 +53,17 @@ from ftllexengine.syntax import (
     TermReference,
     TextElement,
     VariableReference,
-    Variant,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ftllexengine.core.value_types import FluentValue
     from ftllexengine.runtime.function_bridge import FunctionRegistry
 
 __all__ = ["FluentResolver", "GlobalDepthGuard", "ResolutionContext"]
+
+select_plural_category = _select_plural_category
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +72,8 @@ logger = logging.getLogger(__name__)
 UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
 
-# Maximum recursion depth for fallback string generation in _get_fallback_for_placeable.
-# Fallback rendering is purely diagnostic (shown when resolution fails), so a shallow
-# depth limit prevents runaway recursion while still capturing meaningful context.
-_FALLBACK_MAX_DEPTH: int = 10
 
-
-class FluentResolver:
+class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
     """Resolves Fluent messages to strings.
 
     Aligned with Mozilla python-fluent error handling:
@@ -525,478 +519,3 @@ class FluentResolver:
             return self._resolve_pattern(pattern, term_args, errors, context)
         finally:
             context.pop()
-
-    def _find_exact_variant(
-        self,
-        variants: Sequence[Variant],
-        selector_value: FluentValue,
-        selector_str: str,
-    ) -> Variant | None:
-        """Pass 1: Find variant with exact string or number match.
-
-        Args:
-            variants: Sequence of variants to search
-            selector_value: Resolved selector value (for numeric comparison)
-            selector_str: String representation of selector (for string comparison)
-
-        Returns:
-            Matching variant or None if no exact match found.
-        """
-        # Compute numeric selector once before the loop. Only int, Decimal, and FluentNumber
-        # are valid numeric selector types (float is excluded from FluentValue).
-        # bool is excluded: isinstance(True, int) is True but str(True) == "True" is not
-        # a valid Decimal literal. FluentNumber wraps NUMBER()-formatted values while
-        # preserving the original numeric value for matching (.value attribute).
-        numeric_for_match: int | Decimal | None = None
-        if isinstance(selector_value, FluentNumber):
-            numeric_for_match = selector_value.value
-        elif isinstance(selector_value, (int, Decimal)) and not isinstance(selector_value, bool):
-            numeric_for_match = selector_value
-
-        # Pre-convert selector to Decimal once for all NumberLiteral comparisons in the loop.
-        # Decimal(raw_str) per variant still executes inside the loop since raw_str varies.
-        # NumberLiteral.__post_init__ guarantees raw is a parseable finite number.
-        sel_decimal: Decimal | None = None
-        if numeric_for_match is not None:
-            sel_decimal = Decimal(str(numeric_for_match))
-
-        for variant in variants:
-            match variant.key:
-                case Identifier(name=key_name):
-                    if key_name == selector_str:
-                        return variant
-                case NumberLiteral(raw=raw_str):
-                    if sel_decimal is not None and Decimal(raw_str) == sel_decimal:
-                        return variant
-        return None
-
-    def _find_plural_variant(
-        self,
-        variants: Sequence[Variant],
-        plural_category: str,
-    ) -> Variant | None:
-        """Pass 2: Find variant matching plural category.
-
-        Args:
-            variants: Sequence of variants to search
-            plural_category: CLDR plural category (zero, one, two, few, many, other)
-
-        Returns:
-            Matching variant or None if no plural category match found.
-        """
-        for variant in variants:
-            match variant.key:
-                case Identifier(name=key_name):
-                    if key_name == plural_category:
-                        return variant
-        return None
-
-    def _find_default_variant(self, variants: Sequence[Variant]) -> Variant | None:
-        """Find the default variant (marked with *).
-
-        Args:
-            variants: Sequence of variants to search
-
-        Returns:
-            Default variant or None if no default marked.
-        """
-        for variant in variants:
-            if variant.default:
-                return variant
-        return None
-
-    def _resolve_select_expression(
-        self,
-        expr: SelectExpression,
-        args: Mapping[str, FluentValue],
-        errors: list[FrozenFluentError],
-        context: ResolutionContext,
-    ) -> str:
-        """Resolve select expression by matching variant.
-
-        Matching priority (two-pass linear scan):
-            1. Exact string/number match (pass 1)
-            2. Plural category match for numeric selectors (pass 2)
-            3. Default variant
-            4. First variant (fallback)
-
-        For typical FTL files with <5 variants, linear scan is more efficient
-        than building dictionary indices. Exact matches always take precedence
-        over plural category matches, regardless of variant order in FTL source.
-
-        Error handling:
-            If the selector expression fails (e.g., missing variable), the error
-            is collected and resolution falls back to the default variant. This
-            ensures robustness and matches the Fluent spec behavior.
-        """
-        # Evaluate selector with error resilience.
-        # If selector evaluation fails (e.g., missing variable), collect the error
-        # and fall back to the default variant per Fluent spec.
-        # Wrap in expression_guard to track depth for DoS protection.
-        try:
-            with context.expression_guard:
-                selector_value = self._resolve_expression(
-                    expr.selector, args, errors, context
-                )
-        except FrozenFluentError as e:
-            # Collect the error but don't propagate - fall back to default variant
-            errors.append(e)
-            return self._resolve_fallback_variant(expr, args, errors, context)
-
-        # Use _format_value for consistent string representation.
-        # This ensures:
-        # - None -> "" (falls through to default variant)
-        # - bool -> "true"/"false" (matches FTL variant keys, not Python "True"/"False")
-        # - FluentNumber -> formatted string (display representation)
-        # - Other types -> str() representation
-        selector_str = self._format_value(selector_value)
-
-        # Pass 1: Exact match (takes priority)
-        exact_match = self._find_exact_variant(expr.variants, selector_value, selector_str)
-        if exact_match is not None:
-            return self._resolve_pattern(exact_match.value, args, errors, context)
-
-        # Pass 2: Plural category match (numeric selectors only)
-        # FluentValue includes Decimal for currency/financial values.
-        # FluentNumber wraps formatted numbers while preserving numeric identity.
-        # float is not in FluentValue: only int and Decimal are valid numeric types.
-        # Note: Exclude bool since isinstance(True, int) is True in Python,
-        # but booleans should match [true]/[false] variants, not plural categories.
-        #
-        # Extract numeric value and precision from FluentNumber for plural matching.
-        numeric_value: int | Decimal | None = None
-        precision: int | None = None
-        if isinstance(selector_value, FluentNumber):
-            numeric_value = selector_value.value
-            precision = selector_value.precision
-        elif isinstance(selector_value, (int, Decimal)) and not isinstance(
-            selector_value, bool
-        ):
-            numeric_value = selector_value
-
-        if numeric_value is not None:
-            # Try plural category matching (requires Babel for CLDR data).
-            # If Babel is not installed (parser-only mode), collect error and
-            # fall through to default variant.
-            try:
-                # Pass precision to ensure CLDR v operand (fraction digit count) is correct.
-                # Example: NUMBER(1, minimumFractionDigits: 2) creates FluentNumber with
-                # precision=2, which makes select_plural_category treat it as "1.00" (v=2),
-                # selecting "other" instead of "one" in English plural rules.
-                plural_category = select_plural_category(numeric_value, self._locale, precision)
-                plural_match = self._find_plural_variant(expr.variants, plural_category)
-                if plural_match is not None:
-                    return self._resolve_pattern(
-                        plural_match.value, args, errors, context
-                    )
-            except BabelImportError:
-                # Babel not installed - collect error, fall through to default
-                diag = ErrorTemplate.plural_support_unavailable()
-                errors.append(
-                    FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-                )
-
-        # Fallback: default variant
-        default_variant = self._find_default_variant(expr.variants)
-        if default_variant is not None:
-            return self._resolve_pattern(default_variant.value, args, errors, context)
-
-        # Fallback: first variant
-        if expr.variants:
-            return self._resolve_pattern(expr.variants[0].value, args, errors, context)
-
-        diag = ErrorTemplate.no_variants()
-        raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-
-    def _resolve_fallback_variant(
-        self,
-        expr: SelectExpression,
-        args: Mapping[str, FluentValue],
-        errors: list[FrozenFluentError],
-        context: ResolutionContext,
-    ) -> str:
-        """Resolve fallback variant when selector evaluation fails.
-
-        Attempts to resolve in order:
-            1. Default variant (marked with *)
-            2. First variant
-
-        Args:
-            expr: The SelectExpression to resolve
-            args: Arguments for pattern resolution
-            errors: Error list for error collection
-            context: Resolution context
-
-        Returns:
-            Resolved variant pattern string
-
-        Raises:
-            FrozenFluentError: If no variants exist (category=RESOLUTION)
-        """
-        # Try default variant first
-        default_variant = self._find_default_variant(expr.variants)
-        if default_variant is not None:
-            return self._resolve_pattern(default_variant.value, args, errors, context)
-
-        # Fall back to first variant
-        if expr.variants:
-            return self._resolve_pattern(expr.variants[0].value, args, errors, context)
-
-        diag = ErrorTemplate.no_variants()
-        raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-
-    def _resolve_function_call(
-        self,
-        func_ref: FunctionReference,
-        args: Mapping[str, FluentValue],
-        errors: list[FrozenFluentError],
-        context: ResolutionContext,
-    ) -> FluentValue:
-        """Resolve function call.
-
-        Uses FunctionRegistry to handle camelCase → snake_case parameter conversion.
-        Uses metadata system to determine if locale injection is needed.
-
-        Exception Handling:
-            FrozenFluentError from registry (TypeError/ValueError) propagates to
-            pattern-level handler. Other exceptions (bugs in custom functions)
-            are caught here to provide graceful degradation per Fluent spec.
-            This ensures resolution "never fails catastrophically."
-
-        Security:
-            Wraps argument resolution in expression_guard to prevent DoS via deeply
-            nested function calls like NUMBER(A(B(C(...)))). Each nested call
-            consumes stack frames during resolution.
-
-        Returns FluentValue which the resolver will convert to string for final output.
-        """
-        func_name = func_ref.id.name
-
-        # Evaluate arguments within depth guard (DoS prevention)
-        # Function arguments can contain nested function calls: NUMBER(ABS(FLOOR($x)))
-        # Without depth tracking, deeply nested calls can exhaust the Python stack.
-        with context.expression_guard:
-            positional_values: list[FluentValue] = [
-                self._resolve_expression(arg, args, errors, context)
-                for arg in func_ref.arguments.positional
-            ]
-
-            # Evaluate named arguments (camelCase from FTL)
-            named_values: dict[str, FluentValue] = {
-                arg.name.name: self._resolve_expression(arg.value, args, errors, context)
-                for arg in func_ref.arguments.named
-            }
-
-        # Check if locale injection is needed (metadata-driven, not magic tuple)
-        # This correctly handles custom functions with same name as built-ins
-        if self._function_registry.should_inject_locale(func_name):
-            # Validate arity before injection to provide clear error messages
-            # instead of opaque TypeError from incorrect argument positioning
-            expected_args = self._function_registry.get_expected_positional_args(func_name)
-            if expected_args is not None and len(positional_values) != expected_args:
-                diag = ErrorTemplate.function_arity_mismatch(
-                    func_name, expected_args, len(positional_values)
-                )
-                raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-
-            # Built-in formatting functions expect signature: func(value, locale, *, ...)
-            # Append locale after positional args (FTL passes exactly one value arg,
-            # so this places locale as the second positional argument by contract)
-            # FunctionRegistry.call() handles camelCase -> snake_case conversion
-            return self._call_function_safe(
-                func_name,
-                [*positional_values, self._locale],
-                named_values,
-                errors,
-            )
-
-        # Custom function or built-in that doesn't need locale: pass args as-is
-        return self._call_function_safe(
-            func_name,
-            positional_values,
-            named_values,
-            errors,
-        )
-
-    def _call_function_safe(
-        self,
-        func_name: str,
-        positional: list[FluentValue],
-        named: dict[str, FluentValue],
-        errors: list[FrozenFluentError],
-    ) -> FluentValue:
-        """Call a registered function with graceful error handling.
-
-        FrozenFluentError from the registry propagates directly (already
-        structured). Any other exception is caught and converted to a
-        diagnostic error per Fluent spec requirement that resolution must
-        "never fail catastrophically."
-
-        Args:
-            func_name: Function name as it appears in FTL.
-            positional: Positional argument values (locale may be appended).
-            named: Named argument values (camelCase keys from FTL).
-            errors: Mutable error accumulator for the current resolution.
-
-        Returns:
-            Function result on success, or fallback error string on failure.
-        """
-        try:
-            return self._function_registry.call(func_name, positional, named)
-        except FrozenFluentError:
-            # Already structured error from registry (TypeError/ValueError),
-            # let it propagate to pattern-level handler
-            raise
-        except Exception as e:  # noqa: BLE001 - spec requires graceful degradation for custom functions
-            # Intentionally broad: Fluent spec requires graceful degradation
-            # for ANY exception from custom functions.
-            logger.warning(
-                "Custom function %s raised %s: %s",
-                func_name,
-                type(e).__name__,
-                str(e),
-            )
-            diag = ErrorTemplate.function_failed(
-                func_name, f"Uncaught exception: {type(e).__name__}: {e}"
-            )
-            errors.append(
-                FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-            )
-            return FALLBACK_FUNCTION_ERROR.format(name=func_name)
-
-    def _format_value(self, value: FluentValue) -> str:
-        """Format FluentValue to string for final output.
-
-        Handles all types in the FluentValue union:
-        - str: returned as-is
-        - bool: "true"/"false" (Fluent convention)
-        - int: string representation
-        - Decimal/datetime/date/FluentNumber: string representation via __str__
-        - Sequence/Mapping: type name (collections are for function args, not display)
-        - None: empty string
-
-        float is not in FluentValue and is explicitly rejected here at runtime.
-        Mypy strict mode catches float misuse at statically typed call sites, but
-        custom functions registered via FunctionRegistry return Python values through
-        function_bridge.py without return-type validation — a float return bypasses
-        mypy entirely. Without this guard, float silently produces IEEE 754 noise
-        (e.g., "3.1400000000000001") in financial output. Use int for whole amounts
-        or Decimal for fractional amounts.
-
-        The float case raises FrozenFluentError (not TypeError) so callers'
-        ``except FrozenFluentError`` handlers catch it and return a graceful
-        fallback per Fluent spec requirement that resolution never fails
-        catastrophically. TypeError would escape those handlers entirely.
-
-        Pattern order rationale:
-        - str before Sequence: str implements Sequence; must match str first to avoid
-          the collection guard path.
-        - bool before int: bool is a subclass of int; must match bool first to produce
-          "true"/"false" rather than "1"/"0".
-        - float before the wildcard: explicit rejection as FrozenFluentError so the
-          caller's error handler catches it; float is not in FluentValue but the
-          wildcard would silently accept it.
-        - None as explicit case: avoids the collection guard and the str(None) path.
-        - Sequence | Mapping before the default str() fallback: guards against
-          exponential str() expansion on deeply shared collection structures.
-        """
-        match value:
-            case str():
-                return value
-            # bool must precede int: isinstance(True, int) is True.
-            case bool():
-                return "true" if value else "false"
-            case int():
-                return str(value)
-            case None:
-                return ""
-            # Explicit float rejection. Statically unreachable for typed callers
-            # (FluentValue excludes float), but custom functions registered via
-            # FunctionRegistry return untyped Python values — a float return bypasses
-            # mypy and would silently reach str() without this guard, producing IEEE
-            # 754 noise in financial output (e.g., "3.1400000000000001").
-            # FrozenFluentError (not TypeError) ensures callers' except handlers
-            # catch this and produce a graceful fallback per Fluent spec.
-            case float():
-                msg = (
-                    f"float value {value!r} is not a valid FluentValue. "
-                    "IEEE 754 float cannot represent most decimal fractions exactly. "
-                    "Use int for whole amounts or decimal.Decimal for fractional amounts."
-                )
-                raise FrozenFluentError(msg, ErrorCategory.RESOLUTION)
-            # Guard against str() on collections (Sequence/Mapping). These are valid
-            # FluentValue types for passing structured data to custom functions, but
-            # str() on deeply nested/shared structures causes exponential expansion
-            # (e.g., DAG with depth 30 → 2^30 nodes in str() output).
-            case Sequence() | Mapping():
-                return f"[{type(value).__name__}]"
-            # Handles Decimal, datetime, date, and FluentNumber via __str__.
-            case _:
-                return str(value)
-
-    def _get_fallback_for_placeable(
-        self, expr: Expression, depth: int = _FALLBACK_MAX_DEPTH
-    ) -> str:
-        """Get readable fallback for failed placeable per Fluent spec.
-
-        Per Fluent specification, when a placeable fails to resolve,
-        we return a human-readable representation of what was attempted.
-        This is superior to {ERROR: ...} as it:
-        1. Doesn't expose internal diagnostics
-        2. Shows what the translator expected
-        3. Makes errors visible but not alarming
-
-        Args:
-            expr: The expression that failed to resolve
-            depth: Remaining recursion depth (prevents stack overflow)
-
-        Returns:
-            Readable fallback string
-
-        Examples:
-            VariableReference($name) -> "{$name}"
-            MessageReference(welcome) -> "{welcome}"
-            TermReference(-brand) -> "{-brand}"
-            FunctionReference(NUMBER) -> "{NUMBER(...)}"
-            SelectExpression($count) -> "{{$count} -> ...}"
-        """
-        # Depth protection: prevent recursion overflow on adversarial ASTs
-        if depth <= 0:
-            return FALLBACK_INVALID
-
-        match expr:
-            case VariableReference():
-                return FALLBACK_MISSING_VARIABLE.format(name=expr.id.name)
-            case MessageReference():
-                msg_id = expr.id.name
-                if expr.attribute:
-                    msg_id = f"{msg_id}.{expr.attribute.name}"
-                return FALLBACK_MISSING_MESSAGE.format(id=msg_id)
-            case TermReference():
-                term_id = expr.id.name
-                if expr.attribute:
-                    term_id = f"{term_id}.{expr.attribute.name}"
-                return FALLBACK_MISSING_TERM.format(name=term_id)
-            case FunctionReference():
-                return FALLBACK_FUNCTION_ERROR.format(name=expr.id.name)
-            case SelectExpression():
-                # Provide context by showing the selector expression
-                selector_fallback = self._get_fallback_for_placeable(expr.selector, depth - 1)
-                return f"{{{selector_fallback} -> ...}}"
-            case Placeable():
-                # Nested placeable: delegate to the inner expression
-                return self._get_fallback_for_placeable(expr.expression, depth - 1)
-            case StringLiteral():
-                # Literal string value is the best fallback for a failed string literal
-                return expr.value
-            case NumberLiteral():
-                # Raw source representation is the best fallback for a failed number literal
-                return expr.raw
-            case _:
-                # Statically unreachable (Expression union is exhaustively covered above),
-                # but defensively necessary: _get_fallback_for_placeable is an error-recovery
-                # function whose contract is to ALWAYS return a string. Tests intentionally
-                # bypass the type system (passing Mock objects) to verify graceful degradation.
-                # assert_never() would change the contract from "always return" to "may raise",
-                # breaking the fallback guarantee. This wildcard is the safety net.
-                return FALLBACK_INVALID  # type: ignore[unreachable]

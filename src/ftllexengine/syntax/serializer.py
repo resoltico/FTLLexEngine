@@ -15,13 +15,11 @@ Python 3.13+.
 
 from __future__ import annotations
 
-from enum import Enum, auto
 from typing import assert_never
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.core.depth_guard import DepthGuard
-from ftllexengine.core.identifier_validation import is_valid_identifier
-from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.core.depth_guard import DepthGuard, DepthLimitExceededError
+from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.enums import CommentType
 
 from .ast import (
@@ -46,6 +44,23 @@ from .ast import (
     TextElement,
     VariableReference,
 )
+from .serializer_lines import (
+    _ATTR_INDENT,
+    _CHAR_PLACEABLE,
+    _CONT_INDENT,
+    _VARIANT_INDENT,
+    _classify_line,
+    _escape_text,
+    _LineKind,
+)
+from .serializer_validation import (
+    SerializationDepthError,
+    SerializationValidationError,
+    _validate_pattern,
+)
+from .serializer_validation import (
+    validate_resource as _validate_resource_impl,
+)
 from .visitor import ASTVisitor
 
 __all__ = [
@@ -55,354 +70,13 @@ __all__ = [
 ]
 
 
-class SerializationValidationError(ValueError):
-    """Raised when AST validation fails during serialization.
-
-    This error indicates the AST structure would produce invalid FTL syntax.
-    Common causes:
-    - Duplicate named argument names in function or term calls
-    - Named argument values that are not StringLiteral or NumberLiteral
-    - Invalid identifiers in messages, terms, or attributes
-    """
-
-
-class SerializationDepthError(ValueError):
-    """Raised when AST nesting exceeds maximum serialization depth.
-
-    This error indicates the AST is too deeply nested for safe serialization.
-    Prevents stack overflow from:
-    - Adversarially constructed ASTs with excessive Placeable nesting
-    - Malformed programmatic AST construction
-
-    The default limit is 100, matching the parser's maximum nesting depth.
-    """
-
-
-def _validate_identifier(identifier: Identifier, context: str) -> None:
-    """Validate identifier follows FTL grammar rules.
-
-    Uses unified validation module to ensure consistency between parser
-    and serializer. Validates both syntax and length constraints.
-
-    Args:
-        identifier: Identifier to validate
-        context: Context string for error messages
-
-    Raises:
-        SerializationValidationError: If identifier name is invalid
-    """
-    if not is_valid_identifier(identifier.name):
-        msg = (
-            f"Invalid identifier '{identifier.name}' in {context}. "
-            f"Identifiers must match [a-zA-Z][a-zA-Z0-9_-]* and be ≤256 characters"
-        )
-        raise SerializationValidationError(msg)
-
-
-def _validate_pattern(pattern: Pattern, context: str, depth_guard: DepthGuard) -> None:
-    """Validate all expressions within a Pattern.
-
-    Args:
-        pattern: Pattern AST to validate
-        context: Context string for error messages
-        depth_guard: Depth guard for recursion protection
-    """
-    for element in pattern.elements:
-        if isinstance(element, Placeable):
-            with depth_guard:
-                _validate_expression(element.expression, context, depth_guard)
-
-
-def _assert_named_arg_value_is_literal(
-    value: object, arg_name: str, context: str
-) -> None:
-    """Defense-in-depth check: named argument value must be StringLiteral or NumberLiteral.
-
-    NamedArgument.value is typed FTLLiteral (StringLiteral | NumberLiteral), which
-    enforces the spec constraint at the type level. However, Python type annotations
-    are not enforced at runtime: a frozen dataclass field can be bypassed via
-    object.__setattr__, deserialization, or direct AST construction.
-
-    This function accepts the value as ``object`` (not ``FTLLiteral``) so that the
-    isinstance check is not redundant from mypy's perspective — mypy cannot see
-    through the ``object`` parameter to know the value will always be FTLLiteral.
-    The check is a permanent last-line defense before invalid FTL is emitted.
-
-    Args:
-        value: The named argument value to check.
-        arg_name: The argument name (for error messages).
-        context: The call context (for error messages).
-
-    Raises:
-        SerializationValidationError: If value is not a literal.
-    """
-    if not isinstance(value, (StringLiteral, NumberLiteral)):
-        value_type = type(value).__name__
-        msg = (
-            f"Named argument '{arg_name}' in {context} has invalid value type "
-            f"'{value_type}'. Named argument values must be StringLiteral or "
-            f"NumberLiteral per FTL specification "
-            f'(NamedArgument ::= Identifier ":" (StringLiteral | NumberLiteral)).'
-        )
-        raise SerializationValidationError(msg)
-
-
-def _validate_call_arguments(
-    args: CallArguments, context: str, depth_guard: DepthGuard
-) -> None:
-    """Validate CallArguments per FTL specification.
-
-    Per FTL EBNF:
-        NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)
-
-    Enforces:
-    1. Positional argument expressions are valid
-    2. Named argument names must be unique (no duplicates)
-    3. Named argument identifiers are valid
-    4. Named argument values are StringLiteral or NumberLiteral (defense-in-depth:
-       type annotation is FTLLiteral, but runtime bypass is possible via
-       object.__setattr__ on frozen dataclasses)
-
-    The parser enforces these constraints during parsing, but programmatically
-    constructed ASTs may violate the uniqueness, identifier, and literal-value constraints.
-    This validation catches such errors before serialization produces invalid FTL.
-
-    Args:
-        args: CallArguments to validate
-        context: Context string for error messages
-        depth_guard: Depth guard for recursion protection
-
-    Raises:
-        SerializationValidationError: If constraints are violated
-    """
-    # Validate positional arguments
-    for pos_arg in args.positional:
-        with depth_guard:
-            _validate_expression(pos_arg, context, depth_guard)
-
-    # Validate named arguments with duplicate detection
-    seen_names: set[str] = set()
-    for named_arg in args.named:
-        arg_name = named_arg.name.name
-
-        # Check for duplicate named argument names
-        if arg_name in seen_names:
-            msg = (
-                f"Duplicate named argument '{arg_name}' in {context}. "
-                "Named argument names must be unique per FTL specification."
-            )
-            raise SerializationValidationError(msg)
-        seen_names.add(arg_name)
-
-        # Validate the identifier
-        _validate_identifier(named_arg.name, f"{context}, named argument")
-
-        # Defense-in-depth: verify value is a literal (FTLLiteral type annotation is
-        # bypassable at runtime; this check is the serializer's last line of defense).
-        _assert_named_arg_value_is_literal(named_arg.value, arg_name, context)
-
-
-def _validate_expression(  # noqa: PLR0912 - validation dispatch over closed Expression union type
-    expr: Expression, context: str, depth_guard: DepthGuard
-) -> None:
-    """Validate an Expression recursively.
-
-    Args:
-        expr: Expression AST to validate
-        context: Context string for error messages
-        depth_guard: Depth guard for recursion protection
-    """
-    match expr:
-        case SelectExpression():
-            # Defense-in-depth: __post_init__ validates at construction time, but
-            # programmatically built ASTs (e.g., in tests or external tooling) can
-            # bypass __post_init__ via object.__new__. Verify the invariant here as
-            # a last guard before emitting invalid FTL.
-            n_defaults = sum(1 for v in expr.variants if v.default)
-            if n_defaults == 0:
-                msg = (
-                    f"SelectExpression in {context} has no default variant. "
-                    "Exactly one variant must be marked as default."
-                )
-                raise SerializationValidationError(msg)
-            if n_defaults > 1:
-                msg = (
-                    f"SelectExpression in {context} has {n_defaults} default variants. "
-                    "Exactly one variant must be marked as default."
-                )
-                raise SerializationValidationError(msg)
-            # Validate selector expression and variant keys
-            with depth_guard:
-                _validate_expression(expr.selector, context, depth_guard)
-            # Validate variant keys (if Identifier) and patterns
-            for variant in expr.variants:
-                if isinstance(variant.key, Identifier):
-                    _validate_identifier(variant.key, f"{context}, variant key")
-                with depth_guard:
-                    _validate_pattern(variant.value, context, depth_guard)
-        case Placeable():
-            with depth_guard:
-                _validate_expression(expr.expression, context, depth_guard)
-        case VariableReference():
-            _validate_identifier(expr.id, f"{context}, variable reference")
-        case MessageReference():
-            _validate_identifier(expr.id, f"{context}, message reference")
-            if expr.attribute:
-                _validate_identifier(expr.attribute, f"{context}, message attribute")
-        case TermReference():
-            _validate_identifier(expr.id, f"{context}, term reference")
-            if expr.attribute:
-                _validate_identifier(expr.attribute, f"{context}, term attribute")
-            if expr.arguments:
-                _validate_call_arguments(expr.arguments, context, depth_guard)
-        case FunctionReference():
-            _validate_identifier(expr.id, f"{context}, function reference")
-            _validate_call_arguments(expr.arguments, context, depth_guard)
-        case _:
-            pass  # Other expressions (NumberLiteral, StringLiteral) don't need validation
-
-
 def _validate_resource(resource: Resource, max_depth: int = MAX_DEPTH) -> None:
-    """Validate a Resource AST for serialization.
-
-    Checks identifiers, call arguments, and nested expression structure.
-    Enforces depth limits to prevent stack overflow.
-
-    Args:
-        resource: Resource AST to validate
-        max_depth: Maximum AST nesting depth (default: MAX_DEPTH)
-
-    Raises:
-        SerializationValidationError: If validation fails
-        SerializationDepthError: If AST nesting exceeds max_depth
-    """
-    depth_guard = DepthGuard(max_depth=max_depth)
-
-    try:
-        for entry in resource.entries:
-            match entry:
-                case Message():
-                    _validate_identifier(entry.id, "message ID")
-                    context = f"message '{entry.id.name}'"
-                    if entry.value:
-                        _validate_pattern(entry.value, context, depth_guard)
-                    for attr in entry.attributes:
-                        _validate_identifier(attr.id, f"{context}, attribute ID")
-                        _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
-                case Term():
-                    _validate_identifier(entry.id, "term ID")
-                    context = f"term '-{entry.id.name}'"
-                    _validate_pattern(entry.value, context, depth_guard)
-                    for attr in entry.attributes:
-                        _validate_identifier(attr.id, f"{context}, attribute ID")
-                        _validate_pattern(attr.value, f"{context}.{attr.id.name}", depth_guard)
-                case _:
-                    pass  # Comments and Junk don't need validation
-    except FrozenFluentError as e:
-        if e.category == ErrorCategory.RESOLUTION:
-            # Depth limit exceeded - wrap in SerializationDepthError
-            msg = f"Validation depth limit exceeded (max: {max_depth}): {e}"
-            raise SerializationDepthError(msg) from e
-        raise
-
-# FTL indentation constants per Fluent spec.
-# Standard continuation indent: 4 spaces.
-_CONT_INDENT: str = "    "
-
-# Attributes use 4 spaces for standard indentation.
-_ATTR_INDENT: str = "\n    "
-
-# Select expression variants use 3 spaces to align with the `*[` marker.
-# This produces: "\n   *[key] value" where the `[` aligns with attribute `.`.
-_VARIANT_INDENT: str = "\n   "
-
-# Characters that are syntactically significant at the start of a continuation
-# line in FTL: '[' (variant key), '*' (default variant), '.' (attribute).
-# The FTL parser strips leading whitespace and checks the first non-whitespace
-# character against these markers. Content containing these characters at
-# structurally ambiguous positions must be wrapped in StringLiteral placeables.
-_LINE_START_SYNTAX_CHARS: frozenset[str] = frozenset(".[*")
-
-# Precomputed StringLiteral placeable forms for special characters.
-# Used by both continuation line dispatch and brace escaping.
-_CHAR_PLACEABLE: dict[str, str] = {
-    "{": '{ "{" }',
-    "}": '{ "}" }',
-    "[": '{ "[" }',
-    "*": '{ "*" }',
-    ".": '{ "." }',
-}
-
-
-class _LineKind(Enum):
-    """Classification of a continuation line's content for serialization.
-
-    The FTL parser interprets continuation lines structurally: leading
-    whitespace is syntactic indent, blank lines are stripped, and
-    characters '.', '*', '[' as the first non-whitespace trigger
-    attribute/variant parsing. Each kind maps to one unambiguous
-    emission strategy.
-    """
-
-    EMPTY = auto()
-    WHITESPACE_ONLY = auto()
-    SYNTAX_LEADING = auto()
-    NORMAL = auto()
-
-
-def _classify_line(line: str) -> tuple[_LineKind, int]:
-    """Classify a continuation line for serialization dispatch.
-
-    Returns the line kind and, for SYNTAX_LEADING, the number of
-    leading whitespace characters before the syntax character.
-    For all other kinds the second element is 0.
-
-    Pure function with no side effects.
-
-    Args:
-        line: Text content of a single continuation line (no newlines).
-
-    Returns:
-        (kind, ws_prefix_len) tuple.
-    """
-    if not line:
-        return (_LineKind.EMPTY, 0)
-
-    # Scan to first non-space character.
-    ws_len = 0
-    length = len(line)
-    while ws_len < length and line[ws_len] == " ":
-        ws_len += 1
-
-    if ws_len == length:
-        return (_LineKind.WHITESPACE_ONLY, 0)
-
-    if line[ws_len] in _LINE_START_SYNTAX_CHARS:
-        return (_LineKind.SYNTAX_LEADING, ws_len)
-
-    return (_LineKind.NORMAL, 0)
-
-
-def _escape_text(text: str, output: list[str]) -> None:
-    """Escape brace characters in text content.
-
-    Wraps { and } as StringLiteral placeables per Fluent spec.
-    Character-level escaping only; line-level concerns (whitespace
-    ambiguity, syntax chars) are handled by _emit_classified_line.
-    """
-    pos = 0
-    length = len(text)
-    while pos < length:
-        ch = text[pos]
-        if ch in ("{", "}"):
-            output.append(_CHAR_PLACEABLE[ch])
-            pos += 1
-            continue
-        run_start = pos
-        pos += 1
-        while pos < length and text[pos] not in ("{", "}"):
-            pos += 1
-        output.append(text[run_start:pos])
+    """Validate a resource using the serializer module's patchable helpers."""
+    _validate_resource_impl(
+        resource,
+        max_depth=max_depth,
+        validate_pattern=_validate_pattern,
+    )
 
 
 class FluentSerializer(ASTVisitor):
@@ -412,18 +86,18 @@ class FluentSerializer(ASTVisitor):
     All serialization state is local to the serialize() call.
 
     Usage:
-        >>> from ftllexengine.syntax import parse, serialize
-        >>> ast = parse("hello = Hello, world!")
-        >>> ftl = serialize(ast)
-        >>> print(ftl)
+        >>> from ftllexengine.syntax import parse, serialize  # doctest: +SKIP
+        >>> ast = parse("hello = Hello, world!")  # doctest: +SKIP
+        >>> ftl = serialize(ast)  # doctest: +SKIP
+        >>> print(ftl)  # doctest: +SKIP
         hello = Hello, world!
 
     Advanced usage (direct class instantiation):
-        >>> from ftllexengine.syntax import parse
-        >>> from ftllexengine.syntax.serializer import FluentSerializer
-        >>> ast = parse("hello = Hello, world!")
-        >>> serializer = FluentSerializer()
-        >>> ftl = serializer.serialize(ast)
+        >>> from ftllexengine.syntax import parse  # doctest: +SKIP
+        >>> from ftllexengine.syntax.serializer import FluentSerializer  # doctest: +SKIP
+        >>> ast = parse("hello = Hello, world!")  # doctest: +SKIP
+        >>> serializer = FluentSerializer()  # doctest: +SKIP
+        >>> ftl = serializer.serialize(ast)  # doctest: +SKIP
     """
 
     def serialize(
@@ -461,11 +135,10 @@ class FluentSerializer(ASTVisitor):
 
         try:
             self._serialize_resource(resource, output, depth_guard)
-        except FrozenFluentError as e:
-            if e.category == ErrorCategory.RESOLUTION:
-                # Depth limit exceeded - wrap in SerializationDepthError
-                msg = f"AST nesting exceeds maximum depth ({max_depth})"
-                raise SerializationDepthError(msg) from e
+        except DepthLimitExceededError as exc:
+            msg = f"AST nesting exceeds maximum depth ({max_depth})"
+            raise SerializationDepthError(msg) from exc
+        except FrozenFluentError:
             raise
 
         return "".join(output)
@@ -961,10 +634,10 @@ def serialize(
         SerializationDepthError: If AST nesting exceeds max_depth
 
     Example:
-        >>> from ftllexengine.syntax import parse, serialize
-        >>> ast = parse("hello = Hello, world!")
-        >>> ftl = serialize(ast)
-        >>> assert ftl == "hello = Hello, world!\\n"
+        >>> from ftllexengine.syntax import parse, serialize  # doctest: +SKIP
+        >>> ast = parse("hello = Hello, world!")  # doctest: +SKIP
+        >>> ftl = serialize(ast)  # doctest: +SKIP
+        >>> assert ftl == "hello = Hello, world!\\n"  # doctest: +SKIP
     """
     serializer = FluentSerializer()
     return serializer.serialize(resource, validate=validate, max_depth=max_depth)

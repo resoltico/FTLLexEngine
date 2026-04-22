@@ -28,8 +28,11 @@ Localization Boot (requires Babel):
     LocalizationCacheStats - Cache statistics for all locales in a FluentLocalization
 
 Locale Utilities (no Babel dependency):
-    LoadStatus - Enum of resource load statuses (SUCCESS, NOT_FOUND, ERROR, SKIPPED)
+    LoadStatus - Enum of resource load statuses (SUCCESS, NOT_FOUND, ERROR)
     LocaleCode - Type alias for BCP-47 / POSIX locale codes (e.g. "en_US", "de")
+    MessageId - Type alias for Fluent message identifiers
+    ResourceId - Type alias for loader resource identifiers
+    FTLSource - Type alias for raw Fluent source text
     normalize_locale - Convert BCP-47 to canonical lowercase POSIX form
     get_system_locale - Detect locale from OS environment variables
 
@@ -103,6 +106,7 @@ from importlib.metadata import version as _get_version
 
 from .analysis import detect_cycles
 from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
+from .core.semantic_types import FTLSource, LocaleCode, MessageId, ResourceId
 
 # Domain validators - no Babel dependency; no circular import risk
 from .core.validators import (
@@ -143,7 +147,6 @@ from .introspection.iso import (
     require_territory_code,
 )
 from .introspection.message import MessageVariableValidationResult, validate_message_variables
-from .localization.types import LocaleCode
 from .syntax import parse as parse_ftl
 from .syntax import parse_stream as parse_stream_ftl
 from .syntax import serialize as serialize_ftl
@@ -288,9 +291,9 @@ def clear_module_caches(
         ``bundle.clear_cache()``.
 
     Example:
-        >>> import ftllexengine
-        >>> ftllexengine.clear_module_caches()  # Clear all caches
-        >>> ftllexengine.clear_module_caches(  # Clear only ISO + message caches
+        >>> import ftllexengine  # doctest: +SKIP
+        >>> ftllexengine.clear_module_caches()  # Clear all caches  # doctest: +SKIP
+        >>> ftllexengine.clear_module_caches(  # Clear only ISO + message caches  # doctest: +SKIP
         ...     components=frozenset({'introspection.iso', 'introspection.message'})
         ... )
     """
@@ -400,7 +403,10 @@ __all__ = [
     "SyntaxIntegrityError",
     "WriteConflictError",
     # Locale utilities (no Babel dependency)
+    "FTLSource",
     "LocaleCode",
+    "MessageId",
+    "ResourceId",
     "get_system_locale",
     "normalize_locale",
     # Domain validators (no Babel dependency)

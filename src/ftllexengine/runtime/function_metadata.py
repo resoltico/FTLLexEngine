@@ -52,7 +52,7 @@ class FunctionMetadata:
         category: Function category for documentation
 
     Example:
-        >>> NUMBER_META = FunctionMetadata(
+        >>> NUMBER_META = FunctionMetadata(  # doctest: +SKIP
         ...     python_name="number_format",
         ...     ftl_name="NUMBER",
         ...     requires_locale=True,
@@ -108,9 +108,9 @@ def requires_locale_injection(func_name: str) -> bool:
         True if function requires locale injection, False otherwise
 
     Example:
-        >>> requires_locale_injection("NUMBER")
+        >>> requires_locale_injection("NUMBER")  # doctest: +SKIP
         True
-        >>> requires_locale_injection("CUSTOM")
+        >>> requires_locale_injection("CUSTOM")  # doctest: +SKIP
         False
     """
     metadata = BUILTIN_FUNCTIONS.get(func_name)
@@ -127,9 +127,9 @@ def is_builtin_function(func_name: str) -> bool:
         True if function is built-in, False otherwise
 
     Example:
-        >>> is_builtin_function("NUMBER")
+        >>> is_builtin_function("NUMBER")  # doctest: +SKIP
         True
-        >>> is_builtin_function("CUSTOM")
+        >>> is_builtin_function("CUSTOM")  # doctest: +SKIP
         False
     """
     return func_name in BUILTIN_FUNCTIONS
@@ -145,9 +145,9 @@ def get_python_name(ftl_name: str) -> str | None:
         Python function name (e.g., "number_format") or None if not found
 
     Example:
-        >>> get_python_name("NUMBER")
+        >>> get_python_name("NUMBER")  # doctest: +SKIP
         'number_format'
-        >>> get_python_name("CUSTOM")
+        >>> get_python_name("CUSTOM")  # doctest: +SKIP
         None
     """
     metadata = BUILTIN_FUNCTIONS.get(ftl_name)

@@ -1,20 +1,21 @@
 ---
-afad: "3.3"
-version: "0.161.0"
+afad: "3.5"
+version: "0.163.0"
 domain: ERRORS
-updated: "2026-03-21"
+updated: "2026-04-22"
 route:
-  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, ParseTypeLiteral, ImmutabilityViolationError, DataIntegrityError, IntegrityContext, CacheCorruptionError, IntegrityCheckFailedError, WriteConflictError, SyntaxIntegrityError, FormattingIntegrityError, ValidationResult, DiagnosticCode, Diagnostic, VALIDATION_PLACEABLE_SELECTOR]
-  questions: ["what errors can occur?", "how to handle errors?", "what are the error codes?", "how to format diagnostics?", "what exceptions do parsing functions raise?", "how to verify error integrity?", "what is SyntaxIntegrityError?", "what is FormattingIntegrityError?", "what is IntegrityContext?", "what is CacheCorruptionError?", "what is WriteConflictError?"]
+  keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, DataIntegrityError, BabelImportError, ErrorTemplate]
+  questions: ["what errors does FTLLexEngine expose?", "how do parse and format failures surface?", "what integrity exceptions exist?", "how does missing Babel surface?"]
 ---
 
 # Errors Reference
 
----
+This reference covers immutable Fluent errors, optional-dependency failures, and fail-fast integrity exceptions.
+Validation result types and formatter infrastructure are documented in [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md).
 
 ## `ErrorCategory`
 
-Error categorization string enum replacing the exception class hierarchy.
+Enum that classifies `FrozenFluentError` instances.
 
 ### Signature
 ```python
@@ -26,27 +27,53 @@ class ErrorCategory(StrEnum):
     FORMATTING = "formatting"
 ```
 
-### Parameters
-| Value | Description |
-|:------|:------------|
-| `REFERENCE` | Unknown message, term, or variable reference. |
-| `RESOLUTION` | Runtime resolution failure (depth exceeded, function error). |
-| `CYCLIC` | Cyclic reference detected (e.g., `hello = { hello }`). |
-| `PARSE` | Bi-directional parsing failure (number, date, currency). |
-| `FORMATTING` | Locale-aware formatting failure. |
+### Constraints
+- Import: `from ftllexengine import ErrorCategory`
+- Type: `StrEnum`
+- Purpose: replaces a subclass hierarchy for normal Fluent errors
+
+---
+
+## `ParseTypeLiteral`
+
+Closed literal set for parse/format context.
+
+### Signature
+```python
+type ParseTypeLiteral = Literal["", "currency", "date", "datetime", "decimal", "number"]
+```
 
 ### Constraints
-- Type: `StrEnum` — each member IS a `str`; `ErrorCategory.REFERENCE == "reference"` is `True`
-- String repr: `str(ErrorCategory.REFERENCE) == "reference"` (not `"ErrorCategory.REFERENCE"`)
-- Value: `.value` is still the plain string (`"reference"`, `"resolution"`, etc.)
-- Usage: Check category instead of using isinstance() on subclasses.
-- Import: `from ftllexengine.diagnostics import ErrorCategory`
+- Import: `from ftllexengine import ParseTypeLiteral`
+- `""` is the sentinel meaning "not applicable"
+- Used by: `FrozenErrorContext.parse_type`
+
+---
+
+## `FrozenErrorContext`
+
+Immutable context attached to parse and formatting failures.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class FrozenErrorContext:
+    input_value: str = ""
+    locale_code: str = ""
+    parse_type: ParseTypeLiteral = ""
+    fallback_value: str = ""
+```
+
+### Constraints
+- Import: `from ftllexengine import FrozenErrorContext`
+- Purpose: keeps parse/format metadata immutable and hashable
+- Typical use: attached to `FrozenFluentError.context`
 
 ---
 
 ## `FrozenFluentError`
 
-Immutable, content-addressable Fluent error for financial-grade data integrity.
+Sealed, immutable, content-addressable Fluent error type.
 
 ### Signature
 ```python
@@ -59,122 +86,60 @@ class FrozenFluentError(Exception):
         diagnostic: Diagnostic | None = None,
         context: FrozenErrorContext | None = None,
     ) -> None: ...
-
-    def verify_integrity(self) -> bool: ...
-
-    @property
-    def message(self) -> str: ...
-    @property
-    def category(self) -> ErrorCategory: ...
-    @property
-    def diagnostic(self) -> Diagnostic | None: ...
-    @property
-    def context(self) -> FrozenErrorContext | None: ...
-    @property
-    def content_hash(self) -> bytes: ...
-    @property
-    def fallback_value(self) -> str: ...
-    @property
-    def input_value(self) -> str: ...
-    @property
-    def locale_code(self) -> str: ...
-    @property
-    def parse_type(self) -> Literal["", "currency", "date", "datetime", "decimal", "number"]: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `category` | `ErrorCategory` | Y | Error categorization (replaces subclass hierarchy). |
-| `diagnostic` | `Diagnostic \| None` | N | Structured diagnostic information. |
-| `context` | `FrozenErrorContext \| None` | N | Additional context for parse/formatting errors. |
-
 ### Constraints
-- Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
-- Exception Attributes: Python exception mechanism attributes (`__traceback__`, `__context__`, `__cause__`, `__suppress_context__`, `__notes__`) are allowed even after freeze to support exception chaining and Python 3.11+ exception groups.
-- Sealed: Cannot be subclassed. Use `ErrorCategory` for classification.
-- Content-Addressed: BLAKE2b-128 hash computed at construction for integrity verification.
-- Hashable: Can be used in sets and as dict keys. Hash based on content, not identity. `__hash__` returns `int.from_bytes(content_hash, "big")` using all 16 bytes of the BLAKE2b-128 hash; Python's `hash()` protocol then reduces via `int.__hash__()` (Mersenne prime modulus).
-- Convenience Properties: `input_value`, `locale_code`, `parse_type` delegate to `context` (return empty string if context is None).
-- Hash Composition: Content hash includes ALL fields for complete audit trail integrity:
-  - Core: `message`, `category.value`
-  - Diagnostic (if present): `code.name`, `message`, `span` (start/end/line/column), `hint`, `help_url`, `function_name`, `argument_name`, `expected_type`, `received_type`, `ftl_location`, `severity`, `resolution_path`
-  - Context (if present): `input_value`, `locale_code`, `parse_type`, `fallback_value`
-- Length-Prefixing: All string fields are length-prefixed (4-byte big-endian) before hashing. This prevents collision attacks where `("ab", "c")` and `("a", "bc")` would hash identically.
-- Import: `from ftllexengine.diagnostics import FrozenFluentError`
+- Import: `from ftllexengine import FrozenFluentError`
+- Purpose: normal parse, formatting, resolution, and reference failures
+- Integrity: stores a BLAKE2b-128 `content_hash` and exposes `verify_integrity()`
+- Immutability: attribute mutation or deletion raises `ImmutabilityViolationError`
+- Sealed: runtime and static checks prevent subclassing
+- Convenience properties: `input_value`, `locale_code`, `parse_type`, and `fallback_value` proxy `context`
 
 ---
 
-## `FrozenFluentError.verify_integrity`
+## `BabelImportError`
 
-Verify error content hasn't been corrupted.
+Exception raised when a Babel-backed feature is called in a parser-only installation.
 
 ### Signature
 ```python
-def verify_integrity(self) -> bool:
+class BabelImportError(ImportError):
+    def __init__(self, feature: str) -> None: ...
 ```
 
 ### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
+| Name | Req | Semantics |
+|:-----|:----|:----------|
+| `feature` | Y | Missing Babel feature label |
 
 ### Constraints
-- Return: True if content hash matches, False if corrupted.
-- Method: Recomputes BLAKE2b-128 hash and compares using constant-time comparison.
-- Security: Defense against timing attacks via `hmac.compare_digest()`.
+- Import: `from ftllexengine.introspection import BabelImportError`
+- Purpose: consistent optional-dependency failure for CLDR-backed features
+- Message: instructs callers to install `ftllexengine[babel]`
 
 ---
 
-## `ParseTypeLiteral`
+## `ErrorTemplate`
 
-Type alias for the `parse_type` field of `FrozenErrorContext`.
-
-### Signature
-```python
-type ParseTypeLiteral = Literal["", "currency", "date", "datetime", "decimal", "number"]
-```
-
-### Constraints
-- `""` is the absent sentinel meaning "no parse type associated with this error", not an empty string value.
-- Closed set: any value outside this literal is a static type error.
-- Import: `from ftllexengine.diagnostics import ParseTypeLiteral`
-
----
-
-## `FrozenErrorContext`
-
-Immutable context for parse/formatting errors.
+Class namespace that builds standardized `Diagnostic` objects for common runtime failures.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
-class FrozenErrorContext:
-    input_value: str
-    locale_code: str
-    parse_type: ParseTypeLiteral
-    fallback_value: str
+class ErrorTemplate: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `input_value` | `str` | Y | String that failed parsing/formatting. |
-| `locale_code` | `str` | Y | Locale used for parsing/formatting. |
-| `parse_type` | `ParseTypeLiteral` | Y | Formatting type domain; `""` when absent. |
-| `fallback_value` | `str` | Y | Value to use when formatting fails. |
-
 ### Constraints
-- Immutable: Frozen dataclass, cannot be modified.
-- `parse_type`: see `ParseTypeLiteral`. The `""` sentinel means "not applicable".
-- Usage: Passed to `FrozenFluentError` for PARSE/FORMATTING errors.
-- Import: `from ftllexengine.diagnostics import FrozenErrorContext`
+- Import: `from ftllexengine.diagnostics import ErrorTemplate`
+- Purpose: centralized diagnostic-message construction instead of ad-hoc exception strings
+- Output: returns `Diagnostic` objects from named factory methods such as `message_not_found()` and `plural_support_unavailable()`
+- State: Stateless factory namespace
 
 ---
 
 ## `DataIntegrityError`
 
-Base exception for data integrity violations.
+Base exception for system integrity failures, distinct from normal Fluent errors.
 
 ### Signature
 ```python
@@ -184,29 +149,19 @@ class DataIntegrityError(Exception):
         message: str,
         context: IntegrityContext | None = None,
     ) -> None: ...
-
-    @property
-    def context(self) -> IntegrityContext | None: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context for post-mortem analysis. |
-
 ### Constraints
-- Purpose: Base class for all system-level integrity exceptions (NOT a `FrozenFluentError` subclass — different error domain).
-- Hierarchy: Six sealed `@final` subclasses: `CacheCorruptionError`, `FormattingIntegrityError`, `ImmutabilityViolationError`, `IntegrityCheckFailedError`, `SyntaxIntegrityError`, `WriteConflictError`.
-- Immutable: Attributes frozen after construction. Mutation raises `ImmutabilityViolationError` (except Python exception machinery attributes).
-- Context: `context` property exposes the `IntegrityContext` passed at construction.
-- Import: `from ftllexengine.integrity import DataIntegrityError` or `from ftllexengine import DataIntegrityError`
+- Import: `from ftllexengine import DataIntegrityError`
+- Purpose: corruption, strict-mode violations, or mutation attempts that should fail fast
+- Domain boundary: not a `FrozenFluentError` subclass
+- Immutability: frozen after initialization; mutation raises `ImmutabilityViolationError`
 
 ---
 
 ## `IntegrityContext`
 
-Structured diagnostic context for post-mortem analysis of integrity failures.
+Structured context for `DataIntegrityError` instances.
 
 ### Signature
 ```python
@@ -218,85 +173,67 @@ class IntegrityContext:
     expected: str | None = None
     actual: str | None = None
     timestamp: float | None = None
+    wall_time_unix: float | None = None
 ```
 
-### Parameters
-| Field | Type | Req | Description |
-|:------|:-----|:----|:------------|
-| `component` | `str` | Y | System component where error occurred (e.g., `"cache"`, `"error"`, `"bundle"`). |
-| `operation` | `str` | Y | Operation being performed (e.g., `"get"`, `"put"`, `"verify"`, `"mutate"`). |
-| `key` | `str \| None` | N | Cache key or identifier involved. |
-| `expected` | `str \| None` | N | Expected value or hash. |
-| `actual` | `str \| None` | N | Actual value or hash found. |
-| `timestamp` | `float \| None` | N | Time of error detection (`time.monotonic()`). |
-
 ### Constraints
-- Immutable: Frozen dataclass; all fields read-only after construction.
-- Purpose: Passed to all `DataIntegrityError` subclass constructors as `context=` to enable structured post-mortem analysis.
-- Import: `from ftllexengine.integrity import IntegrityContext` or `from ftllexengine import IntegrityContext`
+- Import: `from ftllexengine import IntegrityContext`
+- Purpose: post-mortem metadata for cache, formatting, and strict-load failures
+- Timestamps: `timestamp` is monotonic-process time; `wall_time_unix` is wall-clock correlation time
 
 ---
 
 ## `CacheCorruptionError`
 
-Checksum mismatch detected in a cache entry.
+Raised when cached content fails checksum verification.
 
 ### Signature
 ```python
 @final
-class CacheCorruptionError(DataIntegrityError):
-    def __init__(
-        self,
-        message: str,
-        context: IntegrityContext | None = None,
-    ) -> None: ...
+class CacheCorruptionError(DataIntegrityError): ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
+### Constraints
+- Import: `from ftllexengine import CacheCorruptionError`
+- Typical meaning: corruption, tampering, or checksum mismatch in cached data
+
+---
+
+## `ImmutabilityViolationError`
+
+Raised when frozen error or integrity objects are mutated.
+
+### Signature
+```python
+@final
+class ImmutabilityViolationError(DataIntegrityError): ...
+```
 
 ### Constraints
-- Purpose: Raised when a cached entry's checksum does not match the stored checksum, indicating memory corruption, hardware fault, or tampering.
-- Severity: CRITICAL — should trigger immediate investigation and incident response.
-- Sealed: `@final` decorator prevents subclassing.
-- Import: `from ftllexengine.integrity import CacheCorruptionError` or `from ftllexengine import CacheCorruptionError`
+- Import: `from ftllexengine import ImmutabilityViolationError`
+- Triggered by: invalid mutation attempts on `FrozenFluentError`, `DataIntegrityError`, or related frozen evidence
 
 ---
 
 ## `IntegrityCheckFailedError`
 
-Generic integrity verification failure not covered by a more specific subclass.
+Generic integrity-verification failure when no narrower subtype applies.
 
 ### Signature
 ```python
 @final
-class IntegrityCheckFailedError(DataIntegrityError):
-    def __init__(
-        self,
-        message: str,
-        context: IntegrityContext | None = None,
-    ) -> None: ...
+class IntegrityCheckFailedError(DataIntegrityError): ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-
 ### Constraints
-- Purpose: Raised for generic integrity failures (e.g., newly created cache entry fails immediate verification, write log integrity check fails, error verification fails).
-- Sealed: `@final` decorator prevents subclassing.
-- Import: `from ftllexengine.integrity import IntegrityCheckFailedError` or `from ftllexengine import IntegrityCheckFailedError`
+- Import: `from ftllexengine import IntegrityCheckFailedError`
+- Used for: verification failures that are not specifically checksum, write-conflict, syntax, or formatting failures
 
 ---
 
 ## `WriteConflictError`
 
-Write-once violation: attempt to overwrite an existing cache entry in write-once mode.
+Raised when write-once cache mode rejects an overwrite.
 
 ### Signature
 ```python
@@ -310,103 +247,18 @@ class WriteConflictError(DataIntegrityError):
         existing_seq: int = 0,
         new_seq: int = 0,
     ) -> None: ...
-
-    @property
-    def existing_seq(self) -> int: ...
-    @property
-    def new_seq(self) -> int: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-| `existing_seq` | `int` | N | Sequence number of the existing cache entry (keyword-only). |
-| `new_seq` | `int` | N | Sequence number of the rejected write attempt (keyword-only). |
-
 ### Constraints
-- Purpose: Raised when `CacheConfig.write_once=True` and code attempts to overwrite an existing cached entry. This is a security feature: overwrites can mask data races in financial applications.
-- Properties: `existing_seq` and `new_seq` identify the conflicting entries for audit.
-- Sealed: `@final` decorator prevents subclassing.
-- Import: `from ftllexengine.integrity import WriteConflictError` or `from ftllexengine import WriteConflictError`
-
----
-
-## `ImmutabilityViolationError`
-
-Attempt to mutate an immutable object.
-
-### Signature
-```python
-@final
-class ImmutabilityViolationError(DataIntegrityError):
-    def __init__(
-        self,
-        message: str,
-        context: IntegrityContext | None = None,
-    ) -> None: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Description of mutation attempt. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-
-### Constraints
-- Purpose: Raised when code attempts to modify a frozen `FrozenFluentError`, `DataIntegrityError`, or cache entry.
-- Raised By: `FrozenFluentError.__setattr__()`, `FrozenFluentError.__delattr__()`, `DataIntegrityError.__setattr__()`, `DataIntegrityError.__delattr__()`.
-- Sealed: `@final` decorator prevents subclassing.
-- Import: `from ftllexengine.integrity import ImmutabilityViolationError` or `from ftllexengine import ImmutabilityViolationError`
-
----
-
-## `SyntaxIntegrityError`
-
-Syntax errors detected in strict mode during FTL source loading.
-
-### Signature
-```python
-@final
-class SyntaxIntegrityError(DataIntegrityError):
-    def __init__(
-        self,
-        message: str,
-        context: IntegrityContext | None = None,
-        *,
-        junk_entries: tuple[Junk, ...] = (),
-        source_path: str | None = None,
-    ) -> None: ...
-
-    @property
-    def junk_entries(self) -> tuple[Junk, ...]: ...
-    @property
-    def source_path(self) -> str | None: ...
-    @property
-    def context(self) -> IntegrityContext | None: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-| `junk_entries` | `tuple[Junk, ...]` | N | Junk AST nodes representing syntax errors. |
-| `source_path` | `str \| None` | N | Path to source file for error context. |
-
-### Constraints
-- Purpose: Raised by `FluentBundle.add_resource()` in strict mode when syntax errors (Junk entries) are detected.
-- Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
-- Sealed: `@final` decorator prevents subclassing.
-- Financial: Financial applications require fail-fast behavior. Silent failures during FTL source loading are unacceptable for monetary formatting.
-- Import: `from ftllexengine.integrity import SyntaxIntegrityError` or `from ftllexengine import SyntaxIntegrityError`
+- Import: `from ftllexengine import WriteConflictError`
+- Extra properties: `existing_seq` and `new_seq`
+- Typical meaning: concurrent or forbidden overwrite in write-once cache mode
 
 ---
 
 ## `FormattingIntegrityError`
 
-Formatting errors detected in strict mode during message formatting.
+Strict-mode formatting failure that carries the underlying Fluent errors.
 
 ### Signature
 ```python
@@ -421,607 +273,36 @@ class FormattingIntegrityError(DataIntegrityError):
         fallback_value: str = "",
         message_id: str = "",
     ) -> None: ...
-
-    @property
-    def fluent_errors(self) -> tuple[FrozenFluentError, ...]: ...
-    @property
-    def fallback_value(self) -> str: ...
-    @property
-    def message_id(self) -> str: ...
-    @property
-    def context(self) -> IntegrityContext | None: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `str` | Y | Human-readable error description. |
-| `context` | `IntegrityContext \| None` | N | Structured diagnostic context. |
-| `fluent_errors` | `tuple[FrozenFluentError, ...]` | N | Original Fluent errors that triggered exception. |
-| `fallback_value` | `str` | N | Fallback value that would have been returned in non-strict mode. |
-| `message_id` | `str` | N | Message ID that failed to format. |
-
 ### Constraints
-- Purpose: Raised by `FluentBundle.format_pattern()` and `FluentLocalization.format_pattern()` / `format_value()` in strict mode when formatting errors occur.
-- Immutable: All attributes frozen after construction. Mutation raises `ImmutabilityViolationError`.
-- Sealed: `@final` decorator prevents subclassing.
-- Financial: Financial applications require fail-fast behavior. Silent fallback values are unacceptable when formatting monetary amounts.
-- Import: `from ftllexengine.integrity import FormattingIntegrityError` or `from ftllexengine import FormattingIntegrityError`
+- Import: `from ftllexengine import FormattingIntegrityError`
+- Extra properties: `fluent_errors`, `fallback_value`, `message_id`
+- Raised by: strict formatting paths that refuse to return fallback text
 
 ---
 
-## `BabelImportError`
+## `SyntaxIntegrityError`
+
+Strict-load failure raised when resource loading encounters syntax junk.
 
 ### Signature
 ```python
-class BabelImportError(ImportError):
-    feature: str
-
-    def __init__(self, feature: str) -> None: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `feature` | `str` | Y | Feature name requiring Babel (e.g., "parse_date"). |
-
-### Constraints
-- Purpose: Raised when Babel is required but not installed.
-- Behavior: Provides installation instructions in error message.
-- Raised by: `parse_decimal()`, `parse_fluent_number()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `select_plural_category()`, `LocaleContext.create()`, `get_cldr_version()`, `get_territory()`, `get_currency()`, `list_territories()`, `list_currencies()`, `get_territory_currencies()`, `is_valid_territory_code()`, `is_valid_currency_code()`.
-- Import: `from ftllexengine.core.babel_compat import BabelImportError`
-
----
-
-## `SerializationValidationError`
-
-### Signature
-```python
-class SerializationValidationError(ValueError): ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: AST validation errors during serialization.
-- Raised: When `serialize(validate=True)` detects invalid AST.
-- Common: Identifier names violating `[a-zA-Z][a-zA-Z0-9_-]*`, duplicate named argument names, named argument values not StringLiteral or NumberLiteral.
-- Import: `from ftllexengine.syntax import SerializationValidationError`
-
----
-
-## `SerializationDepthError`
-
-### Signature
-```python
-class SerializationDepthError(ValueError): ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: AST nesting exceeds maximum serialization depth.
-- Cause: Adversarial input, malformed AST, or deep Placeable nesting.
-- Raised: When AST depth exceeds `max_depth` parameter (default: 100).
-- Security: Prevents stack overflow from adversarially constructed ASTs.
-- Import: `from ftllexengine.syntax import SerializationDepthError`
-
----
-
-## `ValidationResult`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class ValidationResult:
-    errors: tuple[ValidationError, ...]
-    warnings: tuple[ValidationWarning, ...]
-    annotations: tuple[Annotation, ...]
-
-    @property
-    def is_valid(self) -> bool: ...
-    @property
-    def error_count(self) -> int: ...       # len(self.errors) only
-    @property
-    def annotation_count(self) -> int: ...  # len(self.annotations) only
-    @property
-    def warning_count(self) -> int: ...
-    @staticmethod
-    def valid() -> ValidationResult: ...
-    @staticmethod
-    def invalid(...) -> ValidationResult: ...
-    @staticmethod
-    def from_annotations(annotations: tuple[Annotation, ...]) -> ValidationResult: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `errors` | `tuple[ValidationError, ...]` | Y | Syntax validation errors. |
-| `warnings` | `tuple[ValidationWarning, ...]` | Y | Semantic warnings. |
-| `annotations` | `tuple[Annotation, ...]` | Y | Parser annotations. |
-
-### Constraints
-- Return: Immutable validation result.
-- State: Frozen dataclass.
-- `error_count`: Count of `ValidationError` entries only (syntax errors); does not include annotations.
-- `annotation_count`: Count of `Annotation` entries only (parser informational notes); does not include syntax errors.
-- `is_valid`: True iff `error_count == 0 AND annotation_count == 0`; annotations DO affect validity — parser annotations indicate parse failures and render the resource invalid.
-
----
-
-## `ValidationResult.format`
-
-### Signature
-```python
-def format(
-    self,
-    *,
-    sanitize: bool = False,
-    redact_content: bool = False,
-    include_warnings: bool = True,
-) -> str:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `sanitize` | `bool` | N | Truncate content to prevent information leakage. |
-| `redact_content` | `bool` | N | Completely redact content (requires sanitize=True). |
-| `include_warnings` | `bool` | N | Include warnings in output (default: True). |
-
-### Constraints
-- Return: Formatted string with errors, annotations, optionally warnings.
-- Security: Set sanitize=True for multi-tenant applications.
-
----
-
-## `ValidationError`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class ValidationError:
-    code: DiagnosticCode
-    message: str
-    content: str
-    line: int | None = None
-    column: int | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `code` | `DiagnosticCode` | Y | Structured error code. |
-| `message` | `str` | Y | Error message. |
-| `content` | `str` | Y | Unparseable FTL content. |
-| `line` | `int \| None` | N | Line number (1-indexed). |
-| `column` | `int \| None` | N | Column number (1-indexed). |
-
-### Constraints
-- Return: Immutable error record.
-- State: Frozen dataclass.
-- Code: `DiagnosticCode` enum, not a string. Use `.name` for the string form.
-
----
-
-## `ValidationError.format`
-
-### Signature
-```python
-def format(
-    self,
-    *,
-    sanitize: bool = False,
-    redact_content: bool = False,
-) -> str:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `sanitize` | `bool` | N | Truncate content to prevent information leakage. |
-| `redact_content` | `bool` | N | Completely redact content (requires sanitize=True). |
-
-### Constraints
-- Return: Formatted error string with location and content.
-- Security: Set sanitize=True for multi-tenant applications.
-
----
-
-## `WarningSeverity`
-
-Severity levels for validation warnings.
-
-### Signature
-```python
-class WarningSeverity(StrEnum):
-    CRITICAL = "critical"
-    WARNING = "warning"
-    INFO = "info"
-```
-
-### Parameters
-| Value | Description |
-|:------|:------------|
-| `CRITICAL` | Will cause runtime failure (undefined reference). |
-| `WARNING` | May cause issues (duplicate ID, missing value). |
-| `INFO` | Informational only (style suggestions). |
-
-### Constraints
-- StrEnum: Members ARE strings. `str(WarningSeverity.CRITICAL) == "critical"`
-- Usage: Filter warnings by severity in tooling.
-- Import: `from ftllexengine.diagnostics import WarningSeverity`
-
----
-
-## `ValidationWarning`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class ValidationWarning:
-    code: DiagnosticCode
-    message: str
-    context: str | None = None
-    line: int | None = None
-    column: int | None = None
-    severity: WarningSeverity = WarningSeverity.WARNING
-
-    def format(
+@final
+class SyntaxIntegrityError(DataIntegrityError):
+    def __init__(
         self,
+        message: str,
+        context: IntegrityContext | None = None,
         *,
-        sanitize: bool = False,
-        redact_content: bool = False,
-    ) -> str: ...
+        junk_entries: tuple[Junk, ...] = (),
+        source_path: str | None = None,
+    ) -> None: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `code` | `DiagnosticCode` | Y | Structured warning code. |
-| `message` | `str` | Y | Warning message. |
-| `context` | `str \| None` | N | Additional context. |
-| `line` | `int \| None` | N | Line number (1-indexed). |
-| `column` | `int \| None` | N | Column number (1-indexed). |
-| `severity` | `WarningSeverity` | N | Severity level (default: WARNING). |
-
 ### Constraints
-- Return: Immutable warning record.
-- State: Frozen dataclass.
-- Code: `DiagnosticCode` enum, not a string. Use `.name` for the string form.
-- IDE: Line/column fields enable IDE/LSP integration for warning display.
-- Severity: Enables filtering by importance (CRITICAL > WARNING > INFO).
-
----
-
-## `ValidationWarning.format`
-
-### Signature
-```python
-def format(
-    self,
-    *,
-    sanitize: bool = False,
-    redact_content: bool = False,
-) -> str:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `sanitize` | `bool` | N | Truncate context to prevent information leakage. |
-| `redact_content` | `bool` | N | Completely redact context (requires sanitize=True). |
-
-### Constraints
-- Return: Formatted warning string with location and optional context.
-- Format: `[code] at line N, column M: message (context: 'ctx')`
-- Security: Set sanitize=True for multi-tenant applications.
-
----
-
-## `DiagnosticCode`
-
-### Signature
-```python
-class DiagnosticCode(Enum):
-    # Reference errors (1000-1999)
-    MESSAGE_NOT_FOUND = 1001
-    ATTRIBUTE_NOT_FOUND = 1002
-    TERM_NOT_FOUND = 1003
-    TERM_ATTRIBUTE_NOT_FOUND = 1004
-    VARIABLE_NOT_PROVIDED = 1005
-    MESSAGE_NO_VALUE = 1006
-
-    # Resolution errors (2000-2999)
-    CYCLIC_REFERENCE = 2001
-    NO_VARIANTS = 2002
-    FUNCTION_NOT_FOUND = 2003
-    FUNCTION_FAILED = 2004
-    UNKNOWN_EXPRESSION = 2005
-    TYPE_MISMATCH = 2006
-    INVALID_ARGUMENT = 2007
-    ARGUMENT_REQUIRED = 2008
-    PATTERN_INVALID = 2009
-    MAX_DEPTH_EXCEEDED = 2010
-    FUNCTION_ARITY_MISMATCH = 2011
-    TERM_POSITIONAL_ARGS_IGNORED = 2012
-    PLURAL_SUPPORT_UNAVAILABLE = 2013
-    FORMATTING_FAILED = 2014
-    EXPANSION_BUDGET_EXCEEDED = 2015
-
-    # Syntax errors (3000-3999)
-    UNEXPECTED_EOF = 3001
-    # 3002, 3003: not assigned — character/token-level errors are AST Annotation codes
-    PARSE_JUNK = 3004
-    PARSE_NESTING_DEPTH_EXCEEDED = 3005
-
-    # Parsing errors (4000-4999) - Bi-directional localization
-    # 4001: not assigned
-    PARSE_DECIMAL_FAILED = 4002
-    PARSE_DATE_FAILED = 4003
-    PARSE_DATETIME_FAILED = 4004
-    PARSE_CURRENCY_FAILED = 4005
-    PARSE_LOCALE_UNKNOWN = 4006
-    PARSE_CURRENCY_AMBIGUOUS = 4007
-    PARSE_CURRENCY_SYMBOL_UNKNOWN = 4008
-    PARSE_AMOUNT_INVALID = 4009
-    PARSE_CURRENCY_CODE_INVALID = 4010
-
-    # Validation errors (5000-5099) - Fluent spec semantic validation
-    # 5001-5003: handled as parse-time syntax errors (Junk), not post-parse codes.
-    # 5008-5009: represented at runtime via VARIABLE_NOT_PROVIDED and NO_VARIANTS.
-    # 5012-5013: not defined by the current Fluent spec valid.md revision.
-    VALIDATION_TERM_NO_VALUE = 5004
-    VALIDATION_SELECT_NO_DEFAULT = 5005
-    VALIDATION_SELECT_NO_VARIANTS = 5006
-    VALIDATION_VARIANT_DUPLICATE = 5007
-    VALIDATION_NAMED_ARG_DUPLICATE = 5010
-    VALIDATION_PLACEABLE_SELECTOR = 5011
-
-    # Validation warnings (5100-5199) - Resource-level validation
-    VALIDATION_PARSE_ERROR = 5100
-    VALIDATION_CRITICAL_PARSE_ERROR = 5101
-    VALIDATION_DUPLICATE_ID = 5102
-    VALIDATION_NO_VALUE_OR_ATTRS = 5103
-    VALIDATION_UNDEFINED_REFERENCE = 5104
-    VALIDATION_CIRCULAR_REFERENCE = 5105
-    VALIDATION_CHAIN_DEPTH_EXCEEDED = 5106
-    VALIDATION_DUPLICATE_ATTRIBUTE = 5107
-    VALIDATION_SHADOW_WARNING = 5108
-    VALIDATION_TERM_POSITIONAL_ARGS = 5109
-    # 5110: not assigned (VALIDATION_PLACEABLE_SELECTOR reclassified to error range, code 5011)
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Purpose: Unique error code identifiers for diagnostics.
-- Ranges: 1000-1999 (reference), 2000-2999 (resolution), 3000-3999 (syntax), 4000-4999 (parsing), 5000-5099 (validation errors), 5100-5199 (validation warnings).
-- Gaps: 4001 is unassigned. Codes 5001-5003, 5008-5009, 5012-5013, 5110 are intentionally unassigned (see inline comments).
-- Import: `from ftllexengine.diagnostics import DiagnosticCode`
-
----
-
-## `Diagnostic`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Diagnostic:
-    code: DiagnosticCode
-    message: str
-    span: SourceSpan | None = None
-    hint: str | None = None
-    help_url: str | None = None
-    function_name: str | None = None
-    argument_name: str | None = None
-    expected_type: str | None = None
-    received_type: str | None = None
-    ftl_location: str | None = None
-    severity: Literal["error", "warning"] = "error"
-    resolution_path: tuple[str, ...] | None = None
-
-    def format_error(self) -> str: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `code` | `DiagnosticCode` | Y | Error code. |
-| `message` | `str` | Y | Error description. |
-| `span` | `SourceSpan \| None` | N | Source location. |
-| `hint` | `str \| None` | N | Fix suggestion. |
-| `help_url` | `str \| None` | N | Documentation URL. |
-| `function_name` | `str \| None` | N | Function where error occurred. |
-| `argument_name` | `str \| None` | N | Argument causing error. |
-| `expected_type` | `str \| None` | N | Expected type. |
-| `received_type` | `str \| None` | N | Actual type received. |
-| `ftl_location` | `str \| None` | N | FTL file location. |
-| `severity` | `Literal[...]` | N | "error" or "warning". |
-| `resolution_path` | `tuple[str, ...] \| None` | N | Resolution stack for debugging nested references. |
-
-### Constraints
-- Return: Immutable diagnostic record.
-- State: Frozen dataclass.
-- Resolution Path: Shows message reference chain (e.g., `("welcome", "greeting", "base")`).
-
----
-
-## `SourceSpan`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class SourceSpan:
-    start: int
-    end: int
-    line: int
-    column: int
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `start` | `int` | Y | Start character offset (0-indexed). |
-| `end` | `int` | Y | End character offset (exclusive, 0-indexed). |
-| `line` | `int` | Y | Line number (1-indexed). |
-| `column` | `int` | Y | Column number (1-indexed). |
-
-### Constraints
-- Immutable: Frozen dataclass. Mutation raises `FrozenInstanceError`.
-- Invariants (enforced by `__post_init__`): `start >= 0`; `end >= start`; `line >= 1` (1-indexed); `column >= 1` (1-indexed). Violation raises `ValueError`.
-- Import: `from ftllexengine.diagnostics import SourceSpan`
-
----
-
-## `OutputFormat`
-
-### Signature
-```python
-class OutputFormat(StrEnum):
-    RUST = "rust"
-    SIMPLE = "simple"
-    JSON = "json"
-```
-
-### Parameters
-| Value | Description |
-|:------|:------------|
-| `RUST` | Rust compiler-style output with hints and help URLs. |
-| `SIMPLE` | Single-line format (code: message). |
-| `JSON` | JSON format for tooling integration. |
-
-### Constraints
-- StrEnum: Members ARE strings. `str(OutputFormat.RUST) == "rust"`
-- Import: `from ftllexengine.diagnostics import OutputFormat`
-
----
-
-## `DiagnosticFormatter`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class DiagnosticFormatter:
-    output_format: OutputFormat = OutputFormat.RUST
-    sanitize: bool = False
-    redact_content: bool = False
-    color: bool = False
-    max_content_length: int = 100
-
-    def format(self, diagnostic: Diagnostic) -> str: ...
-    def format_all(self, diagnostics: Iterable[Diagnostic]) -> str: ...
-    def format_validation_result(self, result: ValidationResult) -> str: ...
-    def format_error(self, error: ValidationError) -> str: ...
-    def format_warning(self, warning: ValidationWarning) -> str: ...
-```
-
-### Parameters
-| Field | Type | Description |
-|:------|:-----|:------------|
-| `output_format` | `OutputFormat` | Output style (rust, simple, json). |
-| `sanitize` | `bool` | Truncate content to prevent information leakage. |
-| `redact_content` | `bool` | Completely redact content (requires sanitize=True). |
-| `color` | `bool` | Enable ANSI color codes (for terminal output). |
-| `max_content_length` | `int` | Maximum content length when sanitizing. |
-
-### Constraints
-- Return: Immutable formatter instance.
-- State: Frozen dataclass.
-- Thread: Safe.
-- Security: All formatted output passes through `_escape_control_chars()` (full C0 range 0x00–0x1f and DEL 0x7f) to prevent log injection via embedded control characters in diagnostic messages.
-- Import: `from ftllexengine.diagnostics import DiagnosticFormatter`
-
----
-
-## `DiagnosticFormatter.format`
-
-### Signature
-```python
-def format(self, diagnostic: Diagnostic) -> str:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `diagnostic` | `Diagnostic` | Y | Diagnostic to format. |
-
-### Constraints
-- Return: Formatted diagnostic string.
-- State: Read-only.
-- Thread: Safe.
-
----
-
-## `DiagnosticFormatter.format_all`
-
-### Signature
-```python
-def format_all(self, diagnostics: Iterable[Diagnostic]) -> str:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `diagnostics` | `Iterable[Diagnostic]` | Y | Diagnostics to format. |
-
-### Constraints
-- Return: Formatted string with all diagnostics separated by newlines.
-- State: Read-only.
-- Thread: Safe.
-
----
-
-## `DiagnosticFormatter.format_validation_result`
-
-### Signature
-```python
-def format_validation_result(
-    self,
-    result: ValidationResult,
-    *,
-    include_warnings: bool = True,
-) -> str:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `result` | `ValidationResult` | Y | Validation result to format. |
-| `include_warnings` | `bool` | N | Include warnings in output (default: True). |
-
-### Constraints
-- Return: Formatted string with summary, errors, warnings, and annotations.
-- State: Read-only.
-- Thread: Safe.
-
----
-
-## Error Fallback Formats
-
-When resolution errors occur, FTLLexEngine returns readable fallback strings instead of raising exceptions. The fallback format varies by expression type.
-
-### Fallback Format Table
-
-| Expression Type | Fallback Format | Example |
-|:----------------|:----------------|:--------|
-| `VariableReference` | `{$name}` | `{$count}` |
-| `MessageReference` | `{message-id}` | `{welcome}` |
-| `TermReference` | `{-term-id}` | `{-brand}` |
-| `FunctionReference` | `{FUNC(...)}` | `{NUMBER(...)}` |
-| `SelectExpression` | `{{selector} -> ...}` | `{{$count} -> ...}` |
-| Unknown expression | `{???}` | `{???}` |
-
-### Constraints
-- Fallbacks preserve FTL-like syntax for debugging.
-- SelectExpression fallback shows selector context.
-- All fallbacks wrapped in braces for visual distinction.
+- Import: `from ftllexengine import SyntaxIntegrityError`
+- Extra properties: `junk_entries`, `source_path`
+- Raised by: strict boot and resource-loading paths that reject partial parse success
 
 ---

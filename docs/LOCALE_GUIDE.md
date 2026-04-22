@@ -1,317 +1,54 @@
 ---
-afad: "3.3"
-version: "0.153.0"
-domain: locale
-updated: "2026-03-13"
+afad: "3.5"
+version: "0.163.0"
+domain: LOCALE
+updated: "2026-04-22"
 route:
-  keywords: [locale, NUMBER, DATETIME, CURRENCY, formatting, BCP-47, locale normalization, str vs NUMBER]
-  questions: ["why isn't my number formatted?", "how does locale formatting work?", "NUMBER vs raw variable?", "how to format numbers with locale?", "how to format currency?"]
+  keywords: [locale, NUMBER, DATETIME, CURRENCY, normalize_locale, get_system_locale, use_isolating]
+  questions: ["why did my number not format?", "what locale string should I use?", "what does use_isolating do?"]
 ---
 
-# Locale Formatting Guide
+# Locale Guide
 
-**Purpose**: Understand Fluent's locale-aware formatting behavior and common misconceptions.
-**Prerequisites**: Basic FluentBundle usage.
+**Purpose**: Explain how locale normalization and locale-aware formatting work in FTLLexEngine.
+**Prerequisites**: Basic Fluent syntax.
 
 ## Overview
 
-Fluent uses **explicit formatting functions** for locale-aware output. Raw variable interpolation produces unformatted strings. This is **by design** per the Fluent specification.
-
-**Key Insight**: If your numbers don't have grouping separators, you need `NUMBER()`. This is not a bug.
-
----
-
-## Raw Interpolation vs. Formatted Output
-
-| Pattern | Input | Output (de_DE) | Reason |
-|:--------|:------|:---------------|:-------|
-| `{ $count }` | `1000` | `1000` | Raw interpolation via `str()` |
-| `{ NUMBER($count) }` | `1000` | `1.000` | Locale-aware via `NUMBER()` |
-| `{ $date }` | `datetime(...)` | `2026-01-12 14:30:00` | Raw `str()` representation |
-| `{ DATETIME($date) }` | `datetime(...)` | `12.01.2026, 14:30` | Locale-aware via `DATETIME()` |
-
----
-
-## Why This Design?
-
-The Fluent specification intentionally separates:
-
-1. **Raw interpolation** (`{ $var }`): Developer controls formatting
-2. **Locale-aware formatting** (`{ NUMBER($var) }`): Locale determines format
-
-**Rationale**:
-- Not all numbers need locale formatting (IDs, codes, versions)
-- Explicit is better than implicit (Python Zen)
-- Developers choose when localization applies
-- Consistent behavior across implementations
-
-**Reference**: [Project Fluent Guide - Variables](https://projectfluent.org/fluent/guide/variables.html)
-
-**Note**: Examples use `use_isolating=False` for readable output. Default bundles wrap interpolated values in Unicode bidi isolation marks (U+2068/U+2069), which are invisible but present in the string. Never disable bidi isolation in production applications that support RTL languages.
-
----
-
-## NUMBER() Function
-
-Formats numeric values with locale-appropriate separators and decimal points.
+Raw Fluent variable interpolation does not perform locale formatting. Locale-aware rendering only happens when the message explicitly calls `NUMBER()`, `DATETIME()`, or `CURRENCY()`.
 
 ```python
+from decimal import Decimal
 from ftllexengine import FluentBundle
 
 bundle = FluentBundle("de_DE", use_isolating=False)
 bundle.add_resource("""
-raw-count = Count: { $count }
-formatted-count = Count: { NUMBER($count) }
+raw = { $amount }
+fmt = { CURRENCY($amount, currency: "EUR") }
 """)
-
-# Raw interpolation
-result, _ = bundle.format_pattern("raw-count", {"count": 1234567})
-# → "Count: 1234567"
-
-# Locale-aware formatting
-result, _ = bundle.format_pattern("formatted-count", {"count": 1234567})
-# → "Count: 1.234.567"
+raw, _ = bundle.format_pattern("raw", {"amount": Decimal("1234.50")})
+fmt, _ = bundle.format_pattern("fmt", {"amount": Decimal("1234.50")})
+assert raw == "1234.50"
+assert fmt == "1.234,50\u00a0€"
 ```
 
-**NUMBER() Options**:
+## Locale Codes
+
+- Public runtime APIs normalize locale codes to the canonical internal form.
+- `normalize_locale()` is useful when you need the exact canonical string yourself.
+- `get_system_locale()` reads the OS and environment variables for a default locale.
 
 ```python
-bundle.add_resource("""
-decimal = { NUMBER($value, minimumFractionDigits: 2) }
-no-grouping = { NUMBER($value, useGrouping: 0) }
-custom = { NUMBER($value, minimumFractionDigits: 2, maximumFractionDigits: 4) }
-""")
+from ftllexengine import get_system_locale, normalize_locale
+
+assert normalize_locale("de-DE") == "de_de"
+try:
+    detected = get_system_locale()
+except ValueError:
+    detected = None
+assert detected is None or isinstance(detected, str)
 ```
 
-| Option | Values | Effect |
-|:-------|:-------|:-------|
-| `minimumFractionDigits` | integer | Minimum decimal places |
-| `maximumFractionDigits` | integer | Maximum decimal places |
-| `useGrouping` | `0` or `1` | Thousands separators (default: enabled). FTL named args accept NumberLiteral, not booleans. |
-| `pattern` | string | Custom Babel number pattern |
+## Bidi Isolation
 
----
-
-## CURRENCY() Function
-
-Formats monetary values with currency symbol and locale-appropriate formatting.
-
-```python
-bundle = FluentBundle("de_DE", use_isolating=False)
-bundle.add_resource("""
-price = { CURRENCY($amount, currency: "EUR") }
-price-code = { CURRENCY($amount, currency: "EUR", currencyDisplay: "code") }
-""")
-
-result, _ = bundle.format_pattern("price", {"amount": 1234.56})
-# → "1.234,56\xa0€"  (NBSP U+00A0 before symbol, per CLDR)
-
-result, _ = bundle.format_pattern("price-code", {"amount": 1234.56})
-# → "1.234,56 EUR"
-```
-
-**Non-Breaking Spaces**: CLDR uses non-breaking space (U+00A0) as the grouping separator in many locales (lv_LV, fr_FR, etc.) and between the amount and currency symbol (de_DE, etc.). This is intentional per the Unicode CLDR standard -- it prevents line breaks between amounts and symbols. When comparing formatted output in tests, use `"\xa0"` or `"\u00a0"` instead of regular space.
-
-**CURRENCY() Options**:
-
-| Option | Values | Effect |
-|:-------|:-------|:-------|
-| `currency` | ISO 4217 code | Required. Currency code (e.g., "EUR", "USD") |
-| `currencyDisplay` | `"symbol"`, `"code"`, `"name"` | Display style (default: "symbol") |
-| `pattern` | string | Custom CLDR currency pattern |
-
----
-
-## DATETIME() Function
-
-Formats date/datetime values with locale-appropriate patterns.
-
-```python
-from datetime import datetime
-from ftllexengine import FluentBundle
-
-bundle = FluentBundle("lv_LV", use_isolating=False)
-bundle.add_resource("""
-raw-date = Date: { $date }
-formatted-date = Date: { DATETIME($date) }
-""")
-
-now = datetime(2026, 1, 12, 14, 30)
-
-# Raw interpolation
-result, _ = bundle.format_pattern("raw-date", {"date": now})
-# → "Date: 2026-01-12 14:30:00"
-
-# Locale-aware formatting
-result, _ = bundle.format_pattern("formatted-date", {"date": now})
-# → "Date: 2026. gada 12. janv."
-```
-
-**DATETIME() Options**:
-
-```python
-bundle.add_resource("""
-short = { DATETIME($date, dateStyle: "short") }
-long = { DATETIME($date, dateStyle: "long", timeStyle: "short") }
-date-only = { DATETIME($date, dateStyle: "medium") }
-""")
-```
-
-| Option | Values | Effect |
-|:-------|:-------|:-------|
-| `dateStyle` | `"full"`, `"long"`, `"medium"`, `"short"` | Preset date format (default: "medium") |
-| `timeStyle` | `"full"`, `"long"`, `"medium"`, `"short"` | Preset time format (omit for date-only) |
-| `pattern` | string | Custom Babel datetime pattern |
-
----
-
-## Common Misconceptions
-
-### "My numbers should auto-format"
-
-**Misconception**: `{ $count }` should produce locale-formatted output.
-
-**Reality**: Raw variables use `str()`. Use `NUMBER($count)` for locale formatting.
-
-**Why**: Fluent is explicit by design. Not all numbers need localization (IDs, version numbers, codes).
-
-### "This must be a bug"
-
-**Misconception**: Seeing `1000` instead of `1,000` means something is broken.
-
-**Reality**: This is spec-compliant behavior. The Fluent specification explicitly requires `NUMBER()` for locale-aware number formatting.
-
-### "Other i18n libraries auto-format"
-
-**Misconception**: Because ICU MessageFormat auto-formats, Fluent should too.
-
-**Reality**: Fluent made a deliberate design choice for explicit formatting. This matches Mozilla's implementation and the official specification.
-
----
-
-## Locale Handling
-
-### Locale Property vs. Babel Locale
-
-`FluentBundle` provides two locale-related properties:
-
-```python
-bundle = FluentBundle("en-US")
-
-# Returns FTLLexEngine's canonical LocaleCode
-bundle.locale  # → "en_us"
-
-# Returns Babel's CLDR identifier
-bundle.get_babel_locale()  # → "en_US"
-```
-
-**Design Rationale**:
-- `locale`: Returns the canonical lowercase underscore `LocaleCode`
-- `get_babel_locale()`: Returns Babel's CLDR-facing identifier
-
-### Locale Normalization
-
-Internally, locales are normalized for consistent cache keys:
-
-```python
-# All of these produce the same canonical LocaleCode:
-"en-US"   → "en_us"
-"en_US"   → "en_us"
-"EN-US"   → "en_us"
-"en-us"   → "en_us"
-```
-
-BCP-47 is case-insensitive by specification, so all variants are equivalent.
-
-### Locale Context Caching
-
-`LocaleContext` normalizes and caches Babel locale objects:
-
-```python
-# Internal: cache key uses normalized form
-cache_key = normalize_locale(locale_code)  # "en_us"
-
-# The public locale_code is canonical too
-ctx.locale_code  # "en_us"
-```
-
----
-
-## Troubleshooting
-
-### Numbers Not Formatted
-
-**Symptom**: `{ $count }` produces `1000` instead of `1,000`.
-
-**Solution**: Use `{ NUMBER($count) }`.
-
-```python
-# Before
-bundle.add_resource("count = { $count }")
-# Output: "1000"
-
-# After
-bundle.add_resource("count = { NUMBER($count) }")
-# Output: "1,000" (for en_US)
-```
-
-### Dates Not Formatted
-
-**Symptom**: `{ $date }` produces `2026-01-12 14:30:00`.
-
-**Solution**: Use `{ DATETIME($date) }`.
-
-```python
-# Before
-bundle.add_resource("date = { $date }")
-# Output: "2026-01-12 14:30:00"
-
-# After
-bundle.add_resource('date = { DATETIME($date, dateStyle: "long") }')
-# Output: "January 12, 2026" (for en_US)
-```
-
-### Wrong Locale Format
-
-**Symptom**: Numbers/dates formatted for wrong locale.
-
-**Check**:
-1. Verify bundle locale: `bundle.locale`
-2. Verify Babel locale: `bundle.get_babel_locale()`
-3. Ensure Babel is installed: `pip install ftllexengine[babel]`
-
----
-
-## Bi-Directional Localization
-
-For parsing locale-formatted user input back to Python types, see [PARSING_GUIDE.md](PARSING_GUIDE.md).
-
-```python
-from ftllexengine import FluentBundle
-from ftllexengine.parsing import parse_decimal
-
-# Format for display
-bundle = FluentBundle("de_DE")
-bundle.add_resource("price = { NUMBER($amount) } EUR")
-formatted, _ = bundle.format_pattern("price", {"amount": 1234.56})
-# → "1.234,56 EUR"
-
-# Parse user input back
-result, errors = parse_decimal("1.234,56", "de_DE")
-# → Decimal('1234.56')
-```
-
----
-
-## Summary
-
-| Concept | Behavior |
-|:--------|:---------|
-| `{ $var }` | Raw `str()` interpolation |
-| `{ NUMBER($var) }` | Locale-aware number formatting |
-| `{ DATETIME($var) }` | Locale-aware date/time formatting |
-| `{ CURRENCY($var, currency: "XXX") }` | Locale-aware currency formatting |
-| `bundle.locale` | Canonical lowercase underscore `LocaleCode` |
-| `bundle.get_babel_locale()` | Normalized Babel identifier |
-
-**Remember**: Fluent's explicit formatting is a feature, not a bug. When in doubt, check the [Fluent specification](https://projectfluent.org/fluent/guide/).
+`use_isolating=True` is the default on bundle and localization classes. It wraps placeables with Unicode bidi isolation marks so interpolated values do not corrupt surrounding RTL/LTR text. Keep it enabled for UI output unless you know the output will stay LTR-only and you need plain strings for logging or snapshot assertions.

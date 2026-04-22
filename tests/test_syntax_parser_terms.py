@@ -1,7 +1,7 @@
 """Parser tests for term definitions (-term-id = pattern).
 
 Phase 3C: Term Parsing Tests
-Coverage Target: +60-70 lines of parser.py (lines 1237-1318 and 100-108)
+Focus: term definitions, attributes, and integration with messages
 
 Tests cover:
 - Basic term parsing

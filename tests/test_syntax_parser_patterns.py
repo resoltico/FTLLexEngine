@@ -386,7 +386,7 @@ class TestParseSimplePattern:
         """Returns None when placeable parsing fails."""
         cursor = Cursor("Text {invalid", 0)
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_placeable",
+            "ftllexengine.syntax.parser.expressions.parse_placeable",
             return_value=None,
         ):
             result = parse_simple_pattern(cursor)
@@ -672,7 +672,7 @@ class TestParsePatternBasic:
         """Returns None when parse_placeable fails."""
         cursor = Cursor("Text {invalid", 0)
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_placeable",
+            "ftllexengine.syntax.parser.expressions.parse_placeable",
             return_value=None,
         ):
             result = parse_pattern(cursor)

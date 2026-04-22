@@ -1,28 +1,13 @@
-"""Type aliases for the localization domain.
+"""Compatibility re-export facade for localization semantic aliases.
 
-Provides semantic type aliases used throughout the localization package
-and by user code when annotating FluentLocalization call sites.
-
-Python 3.13+. Zero external dependencies.
+The canonical definitions live in ``ftllexengine.core.semantic_types`` so lower
+layers can annotate locale and resource boundaries without importing the
+localization package. This module remains as the stable localization namespace
+for callers that prefer ``ftllexengine.localization``-scoped imports.
 """
 
+from __future__ import annotations
 
+from ftllexengine.core.semantic_types import FTLSource, LocaleCode, MessageId, ResourceId
 
-__all__ = [
-    "FTLSource",
-    "LocaleCode",
-    "MessageId",
-    "ResourceId",
-]
-
-type MessageId = str
-"""Identifier for a Fluent message (e.g., 'welcome', 'error-404')."""
-
-type LocaleCode = str
-"""BCP-47 locale code (e.g., 'en', 'lv', 'zh-Hans-CN')."""
-
-type ResourceId = str
-"""FTL resource file identifier (e.g., 'main.ftl', 'errors.ftl')."""
-
-type FTLSource = str
-"""Raw FTL source text as a Python string."""
+__all__ = ["FTLSource", "LocaleCode", "MessageId", "ResourceId"]

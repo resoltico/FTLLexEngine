@@ -1,7 +1,7 @@
 """Parser tests for message attributes (.attribute = pattern).
 
 Phase 3B: Attribute Parsing Tests
-Coverage Target: +60-80 lines of parser.py (lines 1148-1199 and 1145-1182)
+Focus: attribute parsing, multiline patterns, and real-world examples
 
 Tests cover:
 - Basic attribute parsing

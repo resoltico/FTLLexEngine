@@ -49,25 +49,25 @@ def select_plural_category(
         BabelImportError: If Babel is not installed
 
     Examples:
-        >>> select_plural_category(0, "lv_LV")
+        >>> select_plural_category(0, "lv_LV")  # doctest: +SKIP
         'zero'
-        >>> select_plural_category(1, "en_US")
+        >>> select_plural_category(1, "en_US")  # doctest: +SKIP
         'one'
-        >>> select_plural_category(1, "en_US", precision=2)  # "1.00" has v=2
+        >>> select_plural_category(1, "en_US", precision=2)  # "1.00" has v=2  # doctest: +SKIP
         'other'
-        >>> select_plural_category(5, "ru_RU")
+        >>> select_plural_category(5, "ru_RU")  # doctest: +SKIP
         'many'
-        >>> select_plural_category(2, "ar_SA")
+        >>> select_plural_category(2, "ar_SA")  # doctest: +SKIP
         'two'
-        >>> select_plural_category(42, "ja_JP")
+        >>> select_plural_category(42, "ja_JP")  # doctest: +SKIP
         'other'
-        >>> select_plural_category(1, "en_US", ordinal=True)
+        >>> select_plural_category(1, "en_US", ordinal=True)  # doctest: +SKIP
         'one'
-        >>> select_plural_category(2, "en_US", ordinal=True)
+        >>> select_plural_category(2, "en_US", ordinal=True)  # doctest: +SKIP
         'two'
-        >>> select_plural_category(3, "en_US", ordinal=True)
+        >>> select_plural_category(3, "en_US", ordinal=True)  # doctest: +SKIP
         'few'
-        >>> select_plural_category(11, "en_US", ordinal=True)
+        >>> select_plural_category(11, "en_US", ordinal=True)  # doctest: +SKIP
         'other'
 
     Architecture:

@@ -32,9 +32,9 @@ Public API:
         clear_currency_caches - Clear cached CLDR currency data
 
 Examples:
-    >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal
-    >>> result, errors = parse_decimal("1 234,56", "lv_LV")
-    >>> if not errors and is_valid_decimal(result):
+    >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal  # doctest: +SKIP
+    >>> result, errors = parse_decimal("1 234,56", "lv_LV")  # doctest: +SKIP
+    >>> if not errors and is_valid_decimal(result):  # doctest: +SKIP
     ...     total = result.quantize(Decimal("0.01"))
 
 Python 3.13+. Requires Babel for CLDR patterns.

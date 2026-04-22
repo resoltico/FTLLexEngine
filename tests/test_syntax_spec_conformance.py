@@ -1,13 +1,14 @@
-"""Spec conformance tests using official Fluent.js test fixtures.
+"""Spec conformance tests using vendored official Fluent.js test fixtures.
 
 This module implements SYSTEM 8 from the testing strategy: Spec Conformance Testing.
-We import official test fixtures from the Fluent.js reference implementation to ensure
-our parser conforms to the Fluent specification.
+We vendor selected official test fixtures from the Fluent.js reference
+implementation to ensure our parser conforms to the Fluent specification
+without depending on live network fetches at test time.
 
 Strategy:
-1. Fetch official .ftl/.json test fixtures from projectfluent/fluent.js
+1. Load vendored official .ftl fixtures from projectfluent/fluent.js
 2. Parse .ftl files with our parser
-3. Compare structural properties with reference JSON AST
+3. Compare structural properties with counts derived from the reference JSON AST
 4. Focus on semantic equivalence (not exact AST match since schemas differ)
 
 Official fixtures:
@@ -20,70 +21,21 @@ References:
 
 from __future__ import annotations
 
-import json
-from typing import Any
-from urllib.error import URLError
-from urllib.request import urlopen
-
 import pytest
 
 from ftllexengine.syntax.ast import Comment, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
+from tests.helpers.fluentjs_fixtures import STRUCTURE_FIXTURES
 
-# ==============================================================================
-# FIXTURE FETCHING
-# ==============================================================================
-
-FIXTURES_BASE_URL = "https://raw.githubusercontent.com/projectfluent/fluent.js/main/fluent-syntax/test/fixtures_structure"  # pylint: disable=line-too-long
-
-# Selected fixtures covering core functionality
-# Format: (name, description) - expected counts read from reference JSON
-# Note: Only includes fixtures that exist in Fluent.js repository
-CORE_FIXTURES = [
-    ("simple_message", "Basic message"),
-    ("multiline_pattern", "Multiline pattern"),
-    ("multiline_with_placeables", "Pattern with placeables"),
-    ("select_expressions", "Select expressions"),
-    ("blank_lines", "Blank lines handling"),
-    ("term", "Simple term"),
-]
-
-# Error handling fixtures
-ERROR_FIXTURES = [
-    ("empty_resource", "Empty FTL file"),
-]
-
-
-def fetch_fixture(name: str, extension: str) -> str:
-    """Fetch fixture content from GitHub.
-
-    Args:
-        name: Fixture name (without extension)
-        extension: File extension (.ftl or .json)
-
-    Returns:
-        File content as string
-
-    Raises:
-        Exception: If fetch fails (test will be skipped)
-    """
-    url = f"{FIXTURES_BASE_URL}/{name}.{extension}"
-    try:
-        with urlopen(url, timeout=10) as response:
-            return response.read().decode("utf-8")
-    except (URLError, OSError, UnicodeDecodeError) as e:
-        pytest.skip(f"Could not fetch fixture from {url}: {e}")
-
-
-def fetch_ftl_fixture(name: str) -> str:
-    """Fetch .ftl fixture."""
-    return fetch_fixture(name, "ftl")
-
-
-def fetch_json_fixture(name: str) -> dict[str, Any]:
-    """Fetch and parse .json fixture."""
-    content = fetch_fixture(name, "json")
-    return json.loads(content)
+CORE_FIXTURES = (
+    "simple_message",
+    "multiline_pattern",
+    "multiline_with_placeables",
+    "select_expressions",
+    "blank_lines",
+    "term",
+)
+ERROR_FIXTURES = ("empty_resource",)
 
 
 # ==============================================================================
@@ -120,31 +72,6 @@ def count_ast_nodes_by_type(resource: Resource) -> dict[str, int]:
     return counts
 
 
-def count_reference_nodes_by_type(json_ast: dict[str, Any]) -> dict[str, int]:
-    """Count nodes by type in reference JSON AST.
-
-    Args:
-        json_ast: Reference AST from Fluent.js
-
-    Returns:
-        Dictionary mapping node type names to counts
-    """
-    counts: dict[str, int] = {
-        "Message": 0,
-        "Term": 0,
-        "Comment": 0,
-        "Junk": 0,
-    }
-
-    body = json_ast.get("body", ())
-    for entry in body:
-        entry_type = entry.get("type", "")
-        if entry_type in counts:
-            counts[entry_type] += 1
-
-    return counts
-
-
 # ==============================================================================
 # SPEC CONFORMANCE TESTS
 # ==============================================================================
@@ -154,14 +81,13 @@ class TestSpecConformanceCoreFeatures:
     """Test parser conformance with official Fluent.js fixtures for core features."""
 
     @pytest.mark.parametrize(
-        ("fixture_name", "description"),
+        "fixture_name",
         CORE_FIXTURES,
-        ids=[f[0] for f in CORE_FIXTURES],
+        ids=CORE_FIXTURES,
     )
     def test_core_fixture_structural_conformance(
         self,
         fixture_name: str,
-        description: str,
     ) -> None:
         """Test structural conformance with official fixtures.
 
@@ -170,13 +96,11 @@ class TestSpecConformanceCoreFeatures:
         Note: Some fixtures show spec discrepancies where our parser behavior
         differs from Fluent.js reference. These are marked for investigation.
         """
-        # Fetch fixtures
-        ftl_content = fetch_ftl_fixture(fixture_name)
-        reference_ast = fetch_json_fixture(fixture_name)
+        fixture = STRUCTURE_FIXTURES[fixture_name]
 
         # Parse with our parser
         parser = FluentParserV1()
-        resource = parser.parse(ftl_content)
+        resource = parser.parse(fixture.ftl)
 
         # Verify resource type
         assert isinstance(resource, Resource)
@@ -184,32 +108,34 @@ class TestSpecConformanceCoreFeatures:
         # Count nodes in our AST
         our_counts = count_ast_nodes_by_type(resource)
 
-        # Count nodes in reference AST
-        ref_counts = count_reference_nodes_by_type(reference_ast)
-
         # Verify structural equivalence
         assert (
-            our_counts["Message"] == ref_counts["Message"]
-        ), f"Message count mismatch for {fixture_name}: expected {ref_counts['Message']}, got {our_counts['Message']}"
+            our_counts["Message"] == fixture.expected_messages
+        ), (
+            f"Message count mismatch for {fixture_name}: expected "
+            f"{fixture.expected_messages}, got {our_counts['Message']}"
+        )
         assert (
-            our_counts["Term"] == ref_counts["Term"]
-        ), f"Term count mismatch for {fixture_name}: expected {ref_counts['Term']}, got {our_counts['Term']}"
+            our_counts["Term"] == fixture.expected_terms
+        ), (
+            f"Term count mismatch for {fixture_name}: expected "
+            f"{fixture.expected_terms}, got {our_counts['Term']}"
+        )
 
     @pytest.mark.parametrize(
-        ("fixture_name", "description"),
+        "fixture_name",
         CORE_FIXTURES[:5],  # First 5 fixtures for detailed testing
-        ids=[f[0] for f in CORE_FIXTURES[:5]],
+        ids=CORE_FIXTURES[:5],
     )
     def test_parse_determinism_on_fixtures(
         self,
         fixture_name: str,
-        description: str,
     ) -> None:
         """Test parser determinism on official fixtures.
 
         Property: Parsing same fixture twice yields identical results.
         """
-        ftl_content = fetch_ftl_fixture(fixture_name)
+        ftl_content = STRUCTURE_FIXTURES[fixture_name].ftl
         parser = FluentParserV1()
 
         # Parse twice
@@ -229,21 +155,19 @@ class TestSpecConformanceErrorHandling:
     """Test parser error handling conformance with official fixtures."""
 
     @pytest.mark.parametrize(
-        ("fixture_name", "description"),
+        "fixture_name",
         ERROR_FIXTURES,
-        ids=[f[0] for f in ERROR_FIXTURES],
+        ids=ERROR_FIXTURES,
     )
     def test_error_fixture_robustness(
         self,
         fixture_name: str,
-        description: str,
     ) -> None:
         """Test parser robustness on error fixtures.
 
         Property: Parser never crashes on invalid input.
         """
-        # Fetch fixture
-        ftl_content = fetch_ftl_fixture(fixture_name)
+        ftl_content = STRUCTURE_FIXTURES[fixture_name].ftl
 
         # Parse (should not crash)
         parser = FluentParserV1()
@@ -267,14 +191,13 @@ class TestSpecConformanceRoundtrip:
     """Test roundtrip property on official fixtures."""
 
     @pytest.mark.parametrize(
-        ("fixture_name", "description"),
+        "fixture_name",
         CORE_FIXTURES[:5],  # First 5 fixtures for roundtrip
-        ids=[f[0] for f in CORE_FIXTURES[:5]],
+        ids=CORE_FIXTURES[:5],
     )
     def test_parse_serialize_parse_converges(
         self,
         fixture_name: str,
-        description: str,
     ) -> None:
         """Test parse→serialize→parse convergence on official fixtures.
 
@@ -282,7 +205,7 @@ class TestSpecConformanceRoundtrip:
         """
         from ftllexengine.syntax.serializer import serialize
 
-        ftl_content = fetch_ftl_fixture(fixture_name)
+        ftl_content = STRUCTURE_FIXTURES[fixture_name].ftl
         parser = FluentParserV1()
 
         # Parse original
@@ -308,9 +231,9 @@ class TestSpecConformanceRoundtrip:
 class TestSpecConformanceEdgeCases:
     """Test parser behavior on edge cases from official fixtures."""
 
-    def test_empty_resource(self):
+    def test_empty_resource(self) -> None:
         """Test empty FTL resource."""
-        ftl = fetch_ftl_fixture("empty_resource")
+        ftl = STRUCTURE_FIXTURES["empty_resource"].ftl
         parser = FluentParserV1()
         resource = parser.parse(ftl)
 
@@ -318,9 +241,9 @@ class TestSpecConformanceEdgeCases:
         # Empty resource should have no entries or only whitespace/comments
         assert len(resource.entries) >= 0
 
-    def test_blank_lines_handling(self):
+    def test_blank_lines_handling(self) -> None:
         """Test blank lines don't affect parsing."""
-        ftl = fetch_ftl_fixture("blank_lines")
+        ftl = STRUCTURE_FIXTURES["blank_lines"].ftl
         parser = FluentParserV1()
         resource = parser.parse(ftl)
 

@@ -57,7 +57,8 @@ coffee-order = { $bags ->
 """)
 
 result, errors = bundle.format_pattern("coffee-order", {"bags": 500, "origin": "Ethiopian"})
-# "500 bags of Ethiopian coffee"
+assert errors == ()
+assert result == "500 bags of Ethiopian coffee"
 ```
 
 > `use_isolating=False` removes Unicode bidi isolation markers from output, making strings suitable for direct comparison and logging. The default `use_isolating=True` wraps each placeable in U+2068/U+2069 markers for correct bidirectional text rendering in UI contexts.
@@ -65,12 +66,15 @@ result, errors = bundle.format_pattern("coffee-order", {"bags": 500, "origin": "
 **Parse user input back to Python types:**
 
 ```python
+from decimal import Decimal
 from ftllexengine.parsing import parse_currency
 
 # German buyer enters a bid price
 result, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
 if not errors:
     amount, currency = result  # (Decimal('12450.00'), 'EUR')
+    assert amount == Decimal("12450.00")
+    assert currency == "EUR"
 ```
 
 ---
@@ -90,7 +94,7 @@ if not errors:
 - [When to Use FTLLexEngine](#when-to-use-ftllexengine)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
-- [License](#license)
+- [Legal](#legal)
 
 ---
 
@@ -120,12 +124,13 @@ Or: `pip install ftllexengine`
 **Works without Babel:**
 - FTL syntax parsing (`parse_ftl()`, `serialize_ftl()`)
 - AST manipulation and transformation
-- Validation and introspection
+- Validation and message introspection
 
 **Requires Babel:**
 - `FluentBundle` (locale-aware formatting)
 - `FluentLocalization` (multi-locale fallback)
 - Bidirectional parsing (numbers, dates, currency)
+- ISO territory and currency lookups
 
 </details>
 
@@ -153,15 +158,18 @@ invoice-total = Total: { CURRENCY($amount, currency: "USD") }
 """)
 
 result, _ = bundle.format_pattern("shipment-line", {"bags": 500, "origin": "Colombian"})
-# "500 bags of Colombian coffee"
+assert result == "500 bags of Colombian coffee"
 
 result, _ = bundle.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
-# "Total: $187,500.00"
+assert result == "Total: $187,500.00"
 ```
 
 **German (Hamburg buyer):**
 
 ```python
+from decimal import Decimal
+from ftllexengine import FluentBundle
+
 bundle_de = FluentBundle("de_DE", use_isolating=False)
 bundle_de.add_resource("""
 shipment-line = { $bags ->
@@ -174,15 +182,18 @@ invoice-total = Gesamt: { CURRENCY($amount, currency: "EUR") }
 """)
 
 result, _ = bundle_de.format_pattern("shipment-line", {"bags": 500, "origin": "kolumbianischer"})
-# "500 Saecke kolumbianischer Kaffee"
+assert result == "500 Saecke kolumbianischer Kaffee"
 
 result, _ = bundle_de.format_pattern("invoice-total", {"amount": Decimal("187500.00")})
-# "Gesamt: 187.500,00\u00a0€"  (CLDR: non-breaking space before symbol)
+assert result == "Gesamt: 187.500,00\u00a0€"  # CLDR: non-breaking space before symbol
 ```
 
 **Japanese (Tokyo buyer):**
 
 ```python
+from decimal import Decimal
+from ftllexengine import FluentBundle
+
 bundle_ja = FluentBundle("ja_JP", use_isolating=False)
 bundle_ja.add_resource("""
 shipment-line = { $bags ->
@@ -194,10 +205,10 @@ invoice-total = 合計：{ CURRENCY($amount, currency: "JPY") }
 """)
 
 result, _ = bundle_ja.format_pattern("shipment-line", {"bags": 500, "origin": "コロンビア"})
-# "コロンビアコーヒー 500袋"
+assert result == "コロンビアコーヒー 500袋"
 
 result, _ = bundle_ja.format_pattern("invoice-total", {"amount": Decimal("28125000")})
-# "合計：￥28,125,000"
+assert result == "合計：￥28,125,000"
 ```
 
 Bob uses the same pattern at Mars Colony 1. Spanish for the Colombian agronomists? Add one `.ftl` file. Zero code changes.
@@ -213,6 +224,7 @@ Most libraries only format outbound data. That's a one-way trip.
 Bob's colonists type orders and quantities in their local format. A German engineer enters `"12.450,00 EUR"`. A Colombian agronomist enters `"45.000.000 COP"`. A Japanese technician files a delivery date as `"2026年3月15日"`. FTLLexEngine parses them all to exact Python types.
 
 ```python
+from decimal import Decimal
 from ftllexengine.parsing import (
     parse_currency,
     parse_date,
@@ -232,14 +244,16 @@ if not errors:
 
 # Japanese technician enters a delivery date
 contract_date, errors = parse_date("2026年3月15日", "ja_JP")
-# datetime.date(2026, 3, 15)
+assert not errors
+assert contract_date.isoformat() == "2026-03-15"
 
 # German engineer enters a localized amount for use in a Fluent message
 fnum, errors = parse_fluent_number("12.450,00", "de_DE")
 if not errors:
     # FluentNumber(value=Decimal('12450.00'), formatted='12.450,00', precision=2)
     # Pass fnum directly as a $variable — it carries its formatting metadata
-    pass
+    assert fnum.value == Decimal("12450.00")
+    assert str(fnum) == "12.450,00"
 ```
 
 ```mermaid
@@ -262,9 +276,11 @@ flowchart TB
 **When parsing fails, you get structured errors -- not exceptions:**
 
 ```python
+from ftllexengine.parsing import parse_decimal
+
 price, errors = parse_decimal("twelve thousand", "en_US")
-# price = None
-# errors = (FrozenFluentError(...),)
+assert price is None
+assert errors
 
 if errors:
     err = errors[0]
@@ -284,6 +300,8 @@ from ftllexengine.parsing import parse_currency
 price_result, errors = parse_currency("$4.25", "en_US", default_currency="USD")
 if not errors:
     price_per_lb, currency = price_result  # (Decimal('4.25'), 'USD')
+    assert price_per_lb == Decimal("4.25")
+    assert currency == "USD"
 
     bags = 500
     lbs_per_bag = Decimal("132")  # Standard 60kg bag
@@ -309,7 +327,7 @@ bundle.add_resource('confirm = Contract: { $bags } bags at { CURRENCY($price, cu
 
 # Works normally when all variables are provided
 result, _ = bundle.format_pattern("confirm", {"bags": 500, "price": Decimal("4.25")})
-# "Contract: 500 bags at $4.25/lb"
+assert result == "Contract: 500 bags at $4.25/lb"
 
 # Missing variable raises immediately (default strict=True behavior)
 try:
@@ -322,8 +340,8 @@ except FormattingIntegrityError as e:
 # For soft error recovery, opt in with strict=False
 soft_bundle = FluentBundle("en_US", strict=False, use_isolating=False)
 soft_result, soft_errors = soft_bundle.format_pattern("missing-message", {})
-# soft_result = "{missing-message}"  (fallback: key wrapped in braces)
-# soft_errors = (FrozenFluentError(...),)
+assert soft_result == "{missing-message}"  # fallback: key wrapped in braces
+assert soft_errors
 ```
 
 ---
@@ -362,8 +380,8 @@ with ThreadPoolExecutor(max_workers=100) as executor:
         executor.submit(format_confirmation, ja_bundle, Decimal("4.25"), "lb"),
     ]
     confirmations = [f.result() for f in futures]
-    # ["4,25\u00a0$ per lb", "US$4,25 per lb", "$4.25 per lb"]
-    # (CLDR locale-specific symbols; de_DE uses non-breaking space before $)
+    assert confirmations == ["4,25\u00a0$ per lb", "US$4,25 per lb", "$4.25 per lb"]
+    # CLDR locale-specific symbols; de_DE uses non-breaking space before $
 ```
 
 `FluentBundle` and `FluentLocalization` are thread-safe by design:
@@ -380,17 +398,27 @@ Bob's colony manifest system loads `.ftl` files that grow as new message templat
 `add_resource_stream` and `parse_stream_ftl` accept any line iterator. Memory stays proportional to the largest single FTL entry, not the full file:
 
 ```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from ftllexengine import FluentBundle, parse_stream_ftl
 
-# Load directly from a file object — no full-file read
-bundle = FluentBundle("en_US")
-with open("colony_messages.ftl", encoding="utf-8") as f:
-    junk = bundle.add_resource_stream(f, source_path="colony_messages.ftl")
+with TemporaryDirectory() as tmp:
+    source_path = Path(tmp) / "colony_messages.ftl"
+    source_path.write_text(
+        "hello = Hello from orbit\n"
+        "status = Cargo ready\n",
+        encoding="utf-8",
+    )
 
-# Or iterate entries without a bundle (parser-only install works too)
-with open("colony_messages.ftl", encoding="utf-8") as f:
-    for entry in parse_stream_ftl(f):
-        print(type(entry).__name__, getattr(entry.id, "name", ""))
+    bundle = FluentBundle("en_US")
+    with source_path.open(encoding="utf-8") as handle:
+        junk = bundle.add_resource_stream(handle, source_path=source_path.name)
+    assert junk == ()
+
+    with source_path.open(encoding="utf-8") as handle:
+        entry_ids = [entry.id.name for entry in parse_stream_ftl(handle)]
+    assert entry_ids == ["hello", "status"]
+    print(entry_ids)
 ```
 
 **Same guarantees as `add_resource`:**
@@ -401,12 +429,28 @@ with open("colony_messages.ftl", encoding="utf-8") as f:
 `FluentLocalization.add_resource_stream` works identically for multi-locale setups:
 
 ```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from ftllexengine import FluentLocalization
 from ftllexengine.localization import PathResourceLoader
 
-l10n = FluentLocalization(["de_DE", "en_US"], ["messages"], PathResourceLoader("locales/"))
-with open("extra_de.ftl", encoding="utf-8") as f:
-    l10n.add_resource_stream("de_DE", f, source_path="extra_de.ftl")
+with TemporaryDirectory() as tmp:
+    base = Path(tmp) / "locales"
+    (base / "de_de").mkdir(parents=True)
+    (base / "en_us").mkdir(parents=True)
+    (base / "de_de" / "messages.ftl").write_text("hello = Hallo\n", encoding="utf-8")
+    (base / "en_us" / "messages.ftl").write_text("hello = Hello\n", encoding="utf-8")
+    extra_path = Path(tmp) / "extra_de.ftl"
+    extra_path.write_text("shipment = Zusatzdatei\n", encoding="utf-8")
+
+    loader = PathResourceLoader(str(base / "{locale}"))
+    l10n = FluentLocalization(["de_DE", "en_US"], ["messages.ftl"], loader)
+    with extra_path.open(encoding="utf-8") as handle:
+        l10n.add_resource_stream("de_DE", handle, source_path=extra_path.name)
+
+    shipment, errors = l10n.format_value("shipment")
+    assert errors == ()
+    assert shipment == "Zusatzdatei"
 ```
 
 ---
@@ -420,7 +464,7 @@ import asyncio
 from ftllexengine import AsyncFluentBundle
 
 async def handle_request(name: str, bags: int) -> str:
-    async with AsyncFluentBundle("en_US") as bundle:
+    async with AsyncFluentBundle("en_US", use_isolating=False) as bundle:
         await bundle.add_resource("""
 coffee-order = { $bags ->
     [one]   1 bag for { $name }
@@ -431,6 +475,8 @@ coffee-order = { $bags ->
             "coffee-order", {"name": name, "bags": bags}
         )
         return result
+
+assert asyncio.run(handle_request("Alice", 2)) == "2 bags for Alice"
 
 # Shared bundle across requests (create once, reuse):
 _bundle = AsyncFluentBundle("en_US")
@@ -466,17 +512,12 @@ contract = { $buyer } purchases { $bags ->
 
 info = bundle.introspect_message("contract")
 
-info.get_variable_names()
-# frozenset({'buyer', 'bags', 'grade', 'seller', 'price', 'port', 'ship_date'})
-
-info.get_function_names()
-# frozenset({'CURRENCY', 'DATETIME'})
-
-info.has_selectors
-# True (uses plural selection for bags)
-
-info.requires_variable("price")
-# True
+assert info.get_variable_names() == frozenset(
+    {"buyer", "bags", "grade", "seller", "price", "port", "ship_date"}
+)
+assert info.get_function_names() == frozenset({"CURRENCY", "DATETIME"})
+assert info.has_selectors is True
+assert info.requires_variable("price") is True
 ```
 
 **Use cases:**
@@ -490,39 +531,70 @@ info.requires_variable("price")
 
 Alice's trading platform and Bob's colony manifest system can't discover a bad `.ftl` file mid-operation. They validate everything at startup.
 
-`LocalizationBootConfig` is the production boot sequence: load all resources, run `require_clean()` to assert every locale loaded without errors, and validate all message schemas before the first request arrives. If anything is wrong, it raises before traffic starts -- not during it.
+`LocalizationBootConfig` is the production boot sequence: load all resources, run `require_clean()` to assert every locale loaded without errors, and validate all message schemas before the first request arrives. If anything is wrong, it raises before traffic starts -- not during it. Each config instance is single-use, so create a new one for each boot attempt.
 
 ```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from ftllexengine import LocalizationBootConfig
 
-# Load .ftl files from disk, validate schemas, raise before accepting traffic
-cfg = LocalizationBootConfig.from_path(
-    locales=("en_US", "de_DE", "ja_JP"),
-    resource_ids=("invoice.ftl", "shipment.ftl"),
-    base_path="locales/{locale}",
-    message_schemas={
-        "invoice-total": {"amount"},
-        "shipment-line": {"bags", "origin"},
-    },
-    # Enforce that critical messages exist in at least one locale
-    required_messages=frozenset({"invoice-total", "shipment-line"}),
-)
+with TemporaryDirectory() as tmp:
+    base = Path(tmp) / "locales"
+    for locale, invoice_label in {
+        "en_us": "Total",
+        "de_de": "Gesamt",
+        "ja_jp": "合計",
+    }.items():
+        locale_dir = base / locale
+        locale_dir.mkdir(parents=True)
+        (locale_dir / "invoice.ftl").write_text(
+            f'invoice-total = {invoice_label}: {{ CURRENCY($amount, currency: "USD") }}\n',
+            encoding="utf-8",
+        )
+        (locale_dir / "shipment.ftl").write_text(
+            'shipment-line = { $bags } bags of { $origin }\n',
+            encoding="utf-8",
+        )
 
-# Primary API: returns structured evidence for audit trails
-l10n, summary, schema_results = cfg.boot()
-# raises IntegrityCheckFailedError if any resource fails, required message is absent, or schema mismatches
+    cfg = LocalizationBootConfig.from_path(
+        locales=("en_US", "de_DE", "ja_JP"),
+        resource_ids=("invoice.ftl", "shipment.ftl"),
+        base_path=base / "{locale}",
+        message_schemas={
+            "invoice-total": {"amount"},
+            "shipment-line": {"bags", "origin"},
+        },
+        required_messages=frozenset({"invoice-total", "shipment-line"}),
+    )
 
-print(f"Loaded {summary.total_attempted} resources, {summary.errors} errors")
-# "Loaded 6 resources, 0 errors"
-
-# schema_results: tuple[MessageVariableValidationResult, ...] -- one per message_schemas entry
+    l10n, summary, schema_results = cfg.boot()
+    print(f"Loaded {summary.total_attempted} resources, {summary.errors} errors")
+    assert len(schema_results) == 2
 ```
 
 **When only the localization object is needed:**
 
 ```python
-l10n = cfg.boot_simple()  # raises on failure, discards audit evidence
-# l10n is now safe to use for the lifetime of the application
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from ftllexengine import LocalizationBootConfig
+
+with TemporaryDirectory() as tmp:
+    base = Path(tmp) / "locales"
+    (base / "en_us").mkdir(parents=True)
+    (base / "en_us" / "main.ftl").write_text("ready = System ready\n", encoding="utf-8")
+
+    cfg = LocalizationBootConfig.from_path(
+        locales=("en_US",),
+        resource_ids=("main.ftl",),
+        base_path=base / "{locale}",
+        required_messages=frozenset({"ready"}),
+    )
+
+    l10n = cfg.boot_simple()
+    result, errors = l10n.format_value("ready")
+    assert errors == ()
+    print(result)
 ```
 
 **Use cases:**
@@ -541,21 +613,21 @@ from ftllexengine.introspection.iso import get_territory_currencies, get_currenc
 
 # New buyer in Japan -- what currency?
 currencies = get_territory_currencies("JP")
-# ("JPY",)
+assert currencies == ("JPY",)
 
 # How many decimal places for yen?
 jpy = get_currency("JPY")
-jpy.decimal_digits
-# 0 -- no decimal places for yen
+assert jpy is not None
+assert jpy.decimal_digits == 0  # no decimal places for yen
 
 # Compare to Colombian peso
 cop = get_currency("COP")
-cop.decimal_digits
-# 2
+assert cop is not None
+assert cop.decimal_digits == 2
 
 # Multi-currency territories
 panama_currencies = get_territory_currencies("PA")
-# ("PAB", "USD") -- Panama uses both Balboa and US Dollar
+assert panama_currencies == ("PAB", "USD")  # Panama uses both Balboa and US Dollar
 ```
 
 Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New York.
@@ -570,8 +642,9 @@ Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New Y
 | **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`) | Yes |
 | **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains; `LocalizationBootConfig` strict-mode production boot | Yes |
 | **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
-| **Introspection** — `ftllexengine.introspection` | Message variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
-| **Validation** — `ftllexengine.validation` | Cycle detection, reference validation, semantic checks | No |
+| **Introspection** — `ftllexengine.introspection` | Message-variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
+| **Analysis** — `ftllexengine.analysis` | Dependency-graph helpers such as `detect_cycles()` | No |
+| **Validation** — `ftllexengine.validation` | Resource validation, unresolved-reference checks, semantic checks | No |
 | **Diagnostics** — `ftllexengine.diagnostics` | Structured error types, error codes, formatting | No |
 | **Integrity** — `ftllexengine.integrity` | BLAKE2b checksums, strict mode, immutable exceptions | No |
 
@@ -609,10 +682,11 @@ Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New Y
 | Resource | Description |
 |:---------|:------------|
 | [Quick Reference](docs/QUICK_REFERENCE.md) | Copy-paste patterns for common tasks |
-| [API Reference](docs/DOC_00_Index.md) | Complete class and function documentation |
+| [API Reference](docs/DOC_00_Index.md) | Reference coverage for the exported package and module APIs |
 | [Parsing Guide](docs/PARSING_GUIDE.md) | Bidirectional parsing deep-dive |
 | [Data Integrity](docs/DATA_INTEGRITY_ARCHITECTURE.md) | Strict mode, checksums, immutable errors |
 | [Terminology](docs/TERMINOLOGY.md) | Fluent and FTLLexEngine concepts |
+| [Release Protocol](docs/RELEASE_PROTOCOL.md) | `gh`-first release-branch, tag, GitHub Release, and PyPI procedure |
 | [Examples](examples/) | Working code you can run |
 
 ---
@@ -620,13 +694,17 @@ Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New Y
 ## Contributing
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
+The shortest full-repo verification path is `./check.sh`.
 
 ---
 
-## License
+## Legal
 
-MIT License - See [LICENSE](LICENSE).
+ftllexengine is MIT-licensed. It has no required runtime dependencies. The optional
+[babel] extra adds Babel (BSD 3-Clause). ftllexengine is an independent implementation
+of the [FTL Syntax Specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf)
+(Apache 2.0, Mozilla Foundation and others) and is not affiliated with or endorsed
+by Mozilla. See [NOTICE](NOTICE) for attribution and [PATENTS.md](PATENTS.md) for
+patent considerations.
 
-Implements the [Fluent Specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf) (Apache 2.0).
-
-**Legal**: [PATENTS.md](PATENTS.md) | [NOTICE](NOTICE)
+[LICENSE](LICENSE) | [NOTICE](NOTICE) | [PATENTS.md](PATENTS.md)

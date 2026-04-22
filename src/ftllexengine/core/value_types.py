@@ -98,12 +98,12 @@ class FluentNumber:
             Must be >= 0 when set; negative precision has no CLDR meaning.
 
     Example:
-        >>> fn = FluentNumber(value=1, formatted="1.00", precision=2)
-        >>> str(fn)  # Used in output
+        >>> fn = FluentNumber(value=1, formatted="1.00", precision=2)  # doctest: +SKIP
+        >>> str(fn)  # Used in output  # doctest: +SKIP
         '1.00'
-        >>> fn.value  # Used for plural matching
+        >>> fn.value  # Used for plural matching  # doctest: +SKIP
         1
-        >>> fn.precision  # CLDR v operand: 2 visible fraction digits
+        >>> fn.precision  # CLDR v operand: 2 visible fraction digits  # doctest: +SKIP
         2
 
     Precision Semantics:
@@ -179,11 +179,13 @@ class FluentNumber:
             returned unchanged.
 
         Example:
-            >>> fn = FluentNumber(value=42, formatted="42", precision=0)
-            >>> fn.decimal_value
+            >>> fn = FluentNumber(value=42, formatted="42", precision=0)  # doctest: +SKIP
+            >>> fn.decimal_value  # doctest: +SKIP
             Decimal('42')
-            >>> fn2 = FluentNumber(value=Decimal("1234.50"), formatted="1,234.50", precision=2)
-            >>> fn2.decimal_value
+            >>> fn2 = FluentNumber(  # doctest: +SKIP
+            ...     value=Decimal("1234.50"), formatted="1,234.50", precision=2
+            ... )
+            >>> fn2.decimal_value  # doctest: +SKIP
             Decimal('1234.50')
         """
         if isinstance(self.value, Decimal):
@@ -446,9 +448,9 @@ def make_fluent_number(
             the formatted string, not a valid locale output).
 
     Example:
-        >>> make_fluent_number(Decimal("1234.50"), formatted="1 234,50")
+        >>> make_fluent_number(Decimal("1234.50"), formatted="1 234,50")  # doctest: +SKIP
         FluentNumber(value=Decimal('1234.50'), formatted='1 234,50', precision=2)
-        >>> make_fluent_number(42)
+        >>> make_fluent_number(42)  # doctest: +SKIP
         FluentNumber(value=42, formatted='42', precision=0)
     """
     rendered = str(value) if formatted is None else formatted

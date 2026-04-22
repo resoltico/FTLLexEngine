@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # Force all uv commands (sync, run, etc.) to use the same versioned venv as the
     # scripts. Without this, bare "uv sync" creates the default ".venv" while the
     # scripts pivot to ".venv-<version>", wasting ~150 MiB on a duplicate environment.
@@ -26,16 +31,19 @@ jobs:
         # When Python 3.15 releases (~late 2026), add "3.15" here.
         python-version: ["3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
       - name: Make scripts executable
-        run: chmod +x ./scripts/lint.sh ./scripts/test.sh
+        run: chmod +x ./scripts/*.sh
+
+      - name: Verify shell syntax
+        run: bash -n scripts/*.sh
 
       - name: Detect package name
         id: detect
@@ -51,7 +59,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-groups --locked
+          uv sync --group dev --locked
           echo "Locked environment synchronized"
 
       - name: Run Linters

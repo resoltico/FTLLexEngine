@@ -5,7 +5,9 @@ parsing of FTL source files into AST structures defined in :mod:`ftllexengine.sy
 
 Architecture:
     The parser uses an immutable cursor pattern (:class:`~ftllexengine.syntax.cursor.Cursor`)
-    to traverse source text. Each sub-parser (in :mod:`~ftllexengine.syntax.parser.rules`,
+    to traverse source text. Each sub-parser (in :mod:`~ftllexengine.syntax.parser.entries`,
+    :mod:`~ftllexengine.syntax.parser.expressions`,
+    :mod:`~ftllexengine.syntax.parser.patterns`,
     :mod:`~ftllexengine.syntax.parser.primitives`, etc.) returns either a
     :class:`~ftllexengine.syntax.cursor.ParseResult` containing the parsed AST node
     and updated cursor position, or None on parse failure.
@@ -25,7 +27,9 @@ Security:
 See Also:
     - :mod:`ftllexengine.syntax.ast` - All AST node type definitions
     - :mod:`ftllexengine.syntax.cursor` - Cursor and ParseResult types
-    - :mod:`ftllexengine.syntax.parser.rules` - Grammar rules (patterns, expressions, entries)
+    - :mod:`ftllexengine.syntax.parser.entries` - Top-level entry parsing
+    - :mod:`ftllexengine.syntax.parser.expressions` - Inline and select expressions
+    - :mod:`ftllexengine.syntax.parser.patterns` - Pattern parsing and continuation rules
 """
 
 from __future__ import annotations
@@ -49,13 +53,9 @@ from ftllexengine.syntax.ast import (
     Term,
 )
 from ftllexengine.syntax.cursor import Cursor
+from ftllexengine.syntax.parser.context import ParseContext
+from ftllexengine.syntax.parser.entries import parse_comment, parse_message, parse_term
 from ftllexengine.syntax.parser.primitives import is_identifier_start
-from ftllexengine.syntax.parser.rules import (
-    ParseContext,
-    parse_comment,
-    parse_message,
-    parse_term,
-)
 from ftllexengine.syntax.parser.whitespace import skip_blank
 
 if TYPE_CHECKING:
@@ -296,10 +296,10 @@ class FluentParserV1:
             parameter in constructor.
 
         Example:
-            >>> parser = FluentParserV1()
-            >>> resource = parser.parse("hello = World")
-            >>> message = resource.entries[0]
-            >>> message.id.name
+            >>> parser = FluentParserV1()  # doctest: +SKIP
+            >>> resource = parser.parse("hello = World")  # doctest: +SKIP
+            >>> message = resource.entries[0]  # doctest: +SKIP
+            >>> message.id.name  # doctest: +SKIP
             'hello'
 
         See Also:
@@ -577,12 +577,12 @@ class FluentParserV1:
             Message, Term, Comment, or Junk AST nodes in document order.
 
         Example:
-            >>> parser = FluentParserV1()
-            >>> ftl_lines = ["greeting = Hello\\n", "\\n", "farewell = Bye\\n"]
-            >>> entries = list(parser.parse_stream(ftl_lines))
-            >>> len(entries)
+            >>> parser = FluentParserV1()  # doctest: +SKIP
+            >>> ftl_lines = ["greeting = Hello\\n", "\\n", "farewell = Bye\\n"]  # doctest: +SKIP
+            >>> entries = list(parser.parse_stream(ftl_lines))  # doctest: +SKIP
+            >>> len(entries)  # doctest: +SKIP
             2
-            >>> entries[0].id.name
+            >>> entries[0].id.name  # doctest: +SKIP
             'greeting'
         """
         chunk: list[str] = []

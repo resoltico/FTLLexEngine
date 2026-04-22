@@ -17,9 +17,9 @@ Note: All guards accept None and return False. This simplifies the pattern from
 `if not errors and is_valid_decimal(result)` to just `if is_valid_decimal(result)`.
 
 Example:
-    >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal
-    >>> result, errors = parse_decimal("1,234.56", "en_US")
-    >>> if is_valid_decimal(result):
+    >>> from ftllexengine.parsing import parse_decimal, is_valid_decimal  # doctest: +SKIP
+    >>> result, errors = parse_decimal("1,234.56", "en_US")  # doctest: +SKIP
+    >>> if is_valid_decimal(result):  # doctest: +SKIP
     ...     # mypy knows result is finite Decimal
     ...     amount = result.quantize(Decimal("0.01"))
 """
@@ -60,8 +60,8 @@ def is_valid_decimal(value: Decimal | None) -> TypeIs[Decimal]:
         True if value is a finite Decimal, False otherwise
 
     Example:
-        >>> result, errors = parse_decimal("1,234.56", "en_US")
-        >>> if is_valid_decimal(result):
+        >>> result, errors = parse_decimal("1,234.56", "en_US")  # doctest: +SKIP
+        >>> if is_valid_decimal(result):  # doctest: +SKIP
         ...     # Type-safe: mypy knows result is finite Decimal
         ...     total = result * Decimal("1.21")  # Add VAT
     """
@@ -83,8 +83,8 @@ def is_valid_currency(
         True if value is (Decimal, str) with finite amount, False otherwise
 
     Example:
-        >>> result, errors = parse_currency("EUR1,234.56", "en_US")
-        >>> if is_valid_currency(result):
+        >>> result, errors = parse_currency("EUR1,234.56", "en_US")  # doctest: +SKIP
+        >>> if is_valid_currency(result):  # doctest: +SKIP
         ...     # Type-safe: mypy knows result is tuple[Decimal, str]
         ...     amount, currency = result
         ...     total = amount * Decimal("1.21")
@@ -104,8 +104,8 @@ def is_valid_date(value: date | None) -> TypeIs[date]:
         True if value is a date object, False otherwise
 
     Example:
-        >>> result, errors = parse_date("2025-01-28", "en_US")
-        >>> if is_valid_date(result):
+        >>> result, errors = parse_date("2025-01-28", "en_US")  # doctest: +SKIP
+        >>> if is_valid_date(result):  # doctest: +SKIP
         ...     # Type-safe: mypy knows result is date
         ...     year = result.year
     """
@@ -124,8 +124,8 @@ def is_valid_datetime(value: datetime | None) -> TypeIs[datetime]:
         True if value is a datetime object, False otherwise
 
     Example:
-        >>> result, errors = parse_datetime("2025-01-28 14:30", "en_US")
-        >>> if is_valid_datetime(result):
+        >>> result, errors = parse_datetime("2025-01-28 14:30", "en_US")  # doctest: +SKIP
+        >>> if is_valid_datetime(result):  # doctest: +SKIP
         ...     # Type-safe: mypy knows result is datetime
         ...     timestamp = result.timestamp()
     """

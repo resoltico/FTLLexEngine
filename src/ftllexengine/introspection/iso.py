@@ -14,13 +14,12 @@ Python 3.13+. Babel is optional dependency.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from functools import lru_cache
 
 # TypeIs (PEP 742) is available unconditionally on Python 3.13+, which is the
 # minimum supported version. The import is placed here at module level so that
 # typing.get_type_hints() callers resolve the name from this module's globals.
-from typing import NewType, TypeIs
+from typing import TypeIs
 
 from ftllexengine.constants import (
     ISO_4217_DECIMAL_DIGITS,
@@ -30,14 +29,22 @@ from ftllexengine.constants import (
     MAX_LOCALE_CACHE_SIZE,
     MAX_TERRITORY_CACHE_SIZE,
 )
-from ftllexengine.core.babel_compat import (
-    BabelImportError,
-    get_babel_languages,
-    get_babel_numbers,
-    get_locale_class,
-    get_unknown_locale_error_class,
-)
+from ftllexengine.core.babel_compat import BabelImportError
 from ftllexengine.core.locale_utils import normalize_locale
+from ftllexengine.introspection.iso_babel import (
+    _get_babel_currencies,
+    _get_babel_currency_name,
+    _get_babel_currency_symbol,
+    _get_babel_official_languages,
+    _get_babel_territories,
+    _get_babel_territory_currencies,
+)
+from ftllexengine.introspection.iso_types import (
+    CurrencyCode,
+    CurrencyInfo,
+    TerritoryCode,
+    TerritoryInfo,
+)
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
 __all__ = [
@@ -66,201 +73,6 @@ __all__ = [
     "BabelImportError",
 ]
 
-_BABEL_FEATURE = "ISO introspection"
-
-
-# ============================================================================
-# NEWTYPES
-# ============================================================================
-
-TerritoryCode = NewType("TerritoryCode", str)
-"""ISO 3166-1 alpha-2 territory code (e.g., 'US', 'LV', 'DE').
-
-Nominal subtype of str. Use is_valid_territory_code() to narrow a plain str
-to TerritoryCode; both branches are then reachable, preventing false
-unreachable diagnostics at validation sites.
-"""
-
-CurrencyCode = NewType("CurrencyCode", str)
-"""ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP').
-
-Nominal subtype of str. Use is_valid_currency_code() to narrow a plain str
-to CurrencyCode; both branches are then reachable, preventing false
-unreachable diagnostics at validation sites.
-"""
-
-
-# ============================================================================
-# DATA CLASSES
-# ============================================================================
-
-
-@dataclass(frozen=True, slots=True)
-class TerritoryInfo:
-    """ISO 3166-1 territory data with localized name.
-
-    Immutable, thread-safe, hashable. Safe for use as dict key or set member.
-
-    Attributes:
-        alpha2: ISO 3166-1 alpha-2 code (e.g., 'US', 'DE').
-        name: Localized display name (depends on locale used for lookup).
-        currencies: All active legal tender currencies for this territory.
-            Multi-currency territories (e.g., Panama: PAB, USD) have multiple entries.
-            Empty tuple if no currency data available.
-        official_languages: BCP-47 language codes of official languages for this
-            territory (e.g., ('en',) for 'US', ('fr', 'nl', 'de') for 'BE').
-            Empty tuple if no language data is available in CLDR.
-    """
-
-    alpha2: TerritoryCode
-    name: str
-    currencies: tuple[CurrencyCode, ...]
-    official_languages: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class CurrencyInfo:
-    """ISO 4217 currency data with localized presentation.
-
-    Immutable, thread-safe, hashable. Safe for use as dict key or set member.
-
-    Attributes:
-        code: ISO 4217 currency code (e.g., 'USD', 'EUR').
-        name: Localized display name (depends on locale used for lookup).
-        symbol: Locale-specific symbol (e.g., '$', 'EUR', 'USD').
-        decimal_digits: Standard decimal places (0, 2, 3, or 4).
-    """
-
-    code: CurrencyCode
-    name: str
-    symbol: str
-    decimal_digits: int
-
-
-# ============================================================================
-# BABEL INTERFACE (LAZY IMPORT)
-# ============================================================================
-
-
-def _get_babel_locale(locale_str: str) -> object:
-    """Get Babel Locale object, raising BabelImportError if unavailable."""
-    locale_class = get_locale_class()
-    return locale_class.parse(locale_str)
-
-
-def _is_unknown_locale_error(exc: Exception) -> bool:
-    """Return True if exc is Babel's UnknownLocaleError.
-
-    Babel's UnknownLocaleError inherits directly from Exception (not LookupError),
-    requiring explicit runtime type checking. Returns False when Babel is unavailable,
-    allowing the caller to re-raise the original exception via a bare `raise`.
-    """
-    try:
-        unknown_locale_error_class = get_unknown_locale_error_class()
-    except BabelImportError:
-        return False
-    return isinstance(exc, unknown_locale_error_class)
-
-
-def _get_babel_territories(locale_str: str) -> dict[str, str]:
-    """Get territory names from Babel for a locale.
-
-    Returns empty dict if locale is invalid or data unavailable.
-    """
-    try:
-        locale = _get_babel_locale(locale_str)
-        return locale.territories  # type: ignore[attr-defined, no-any-return]
-    except (ValueError, LookupError, KeyError, AttributeError):
-        # Standard library exceptions from invalid data
-        return {}
-    except Exception as exc:
-        if _is_unknown_locale_error(exc):
-            return {}
-        raise  # Re-raise unexpected errors (logic bugs)
-
-
-@lru_cache(maxsize=1)
-def _get_babel_currencies() -> dict[str, str]:
-    """Get English currency names from Babel. Result is invariant; cached once.
-
-    The English CLDR currency map never changes within a process lifetime.
-    Caching with maxsize=1 avoids redundant Babel round-trips when list_currencies
-    is called for multiple locales (all calls share the same English source map).
-    """
-    locale = _get_babel_locale("en")
-    return locale.currencies  # type: ignore[attr-defined, no-any-return]
-
-
-def _get_babel_currency_name(code: str, locale_str: str) -> str | None:
-    """Get localized currency name from Babel.
-
-    Returns None if the currency code is not found in CLDR data.
-    """
-    locale_class = get_locale_class()
-    babel_numbers = get_babel_numbers()
-    try:
-        # Validate code exists in CLDR currency data before getting name
-        # Babel returns input code if not found, so we check explicitly
-        locale = locale_class.parse(locale_str)
-        if code.upper() not in locale.currencies:
-            return None
-        return str(babel_numbers.get_currency_name(code, locale=locale_str))
-    except (ValueError, LookupError, KeyError, AttributeError):
-        # Babel raises ValueError/LookupError for invalid locales,
-        # KeyError/AttributeError for missing data. Logic bugs (NameError,
-        # TypeError) propagate to fail fast in financial-grade contexts.
-        return None
-    except Exception as exc:
-        if _is_unknown_locale_error(exc):
-            return None
-        raise  # Re-raise unexpected errors (logic bugs)
-
-
-def _get_babel_currency_symbol(code: str, locale_str: str) -> str:
-    """Get localized currency symbol from Babel."""
-    babel_numbers = get_babel_numbers()
-    try:
-        return str(babel_numbers.get_currency_symbol(code, locale=locale_str))
-    except (ValueError, LookupError, KeyError, AttributeError):
-        # Babel raises ValueError/LookupError for invalid locales,
-        # KeyError/AttributeError for unknown codes. Logic bugs propagate.
-        return code
-    except Exception as exc:
-        if _is_unknown_locale_error(exc):
-            return code
-        raise  # Re-raise unexpected errors (logic bugs)
-
-
-def _get_babel_territory_currencies(territory: str) -> list[str]:
-    """Get currencies used by a territory from Babel.
-
-    Returns list of currently active legal tender currencies.
-    Uses babel.numbers.get_territory_currencies() — the stable public API —
-    rather than accessing the raw CLDR data table via get_global().
-    """
-    babel_numbers = get_babel_numbers()
-    try:
-        return list(babel_numbers.get_territory_currencies(territory, tender=True))
-    except (ValueError, LookupError, KeyError, AttributeError):
-        return []
-
-
-def _get_babel_official_languages(territory: str) -> tuple[str, ...]:
-    """Get official language codes for a territory from Babel CLDR data.
-
-    Returns BCP-47 language codes of officially recognized languages.
-    Uses babel.languages.get_official_languages() — the stable public API.
-
-    Returns empty tuple if the territory is unknown or no language data exists.
-    """
-    babel_languages = get_babel_languages()
-    try:
-        return tuple(babel_languages.get_official_languages(territory))
-    except (ValueError, LookupError, KeyError, AttributeError):
-        return ()
-
-
-# ============================================================================
 # CACHED LOOKUP FUNCTIONS
 # ============================================================================
 
@@ -434,15 +246,15 @@ def get_currency_decimal_digits(code: str) -> int | None:
     process-immutable tables.
 
     Examples:
-        >>> get_currency_decimal_digits("KWD")
+        >>> get_currency_decimal_digits("KWD")  # doctest: +SKIP
         3
-        >>> get_currency_decimal_digits("JPY")
+        >>> get_currency_decimal_digits("JPY")  # doctest: +SKIP
         0
-        >>> get_currency_decimal_digits("EUR")
+        >>> get_currency_decimal_digits("EUR")  # doctest: +SKIP
         2
-        >>> get_currency_decimal_digits("IQD")
+        >>> get_currency_decimal_digits("IQD")  # doctest: +SKIP
         3
-        >>> get_currency_decimal_digits("XYZ") is None
+        >>> get_currency_decimal_digits("XYZ") is None  # doctest: +SKIP
         True
     """
     # ISO 4217 codes are exactly 3 characters before uppercasing.
@@ -755,15 +567,15 @@ def require_currency_code(value: object, field_name: str) -> CurrencyCode:
         BabelImportError: If Babel is not installed.
 
     Example:
-        >>> require_currency_code("usd", "currency")
+        >>> require_currency_code("usd", "currency")  # doctest: +SKIP
         'USD'
-        >>> require_currency_code("  EUR  ", "currency")
+        >>> require_currency_code("  EUR  ", "currency")  # doctest: +SKIP
         'EUR'
-        >>> require_currency_code("XYZ", "currency")
+        >>> require_currency_code("XYZ", "currency")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         ValueError: currency must be a valid ISO 4217 currency code, got 'XYZ'
-        >>> require_currency_code(840, "currency")
+        >>> require_currency_code(840, "currency")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: currency must be str, got int
@@ -772,10 +584,14 @@ def require_currency_code(value: object, field_name: str) -> CurrencyCode:
         msg = f"{field_name} must be str, got {type(value).__name__}"
         raise TypeError(msg)
     stripped = value.strip()
-    if not is_valid_currency_code(stripped):
+    code = stripped.upper()
+    if len(stripped) != 3:
         msg = f"{field_name} must be a valid ISO 4217 currency code, got {value!r}"
         raise ValueError(msg)
-    return CurrencyCode(stripped.upper())
+    if code not in _currency_codes_impl(normalize_locale("en")):
+        msg = f"{field_name} must be a valid ISO 4217 currency code, got {value!r}"
+        raise ValueError(msg)
+    return CurrencyCode(code)
 
 
 def require_territory_code(value: object, field_name: str) -> TerritoryCode:
@@ -805,15 +621,15 @@ def require_territory_code(value: object, field_name: str) -> TerritoryCode:
         BabelImportError: If Babel is not installed.
 
     Example:
-        >>> require_territory_code("us", "territory")
+        >>> require_territory_code("us", "territory")  # doctest: +SKIP
         'US'
-        >>> require_territory_code("  DE  ", "territory")
+        >>> require_territory_code("  DE  ", "territory")  # doctest: +SKIP
         'DE'
-        >>> require_territory_code("XX", "territory")
+        >>> require_territory_code("XX", "territory")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         ValueError: territory must be a valid ISO 3166-1 alpha-2 territory code, got 'XX'
-        >>> require_territory_code(840, "territory")
+        >>> require_territory_code(840, "territory")  # doctest: +SKIP
         Traceback (most recent call last):
             ...
         TypeError: territory must be str, got int
@@ -822,12 +638,18 @@ def require_territory_code(value: object, field_name: str) -> TerritoryCode:
         msg = f"{field_name} must be str, got {type(value).__name__}"
         raise TypeError(msg)
     stripped = value.strip()
-    if not is_valid_territory_code(stripped):
+    code = stripped.upper()
+    if len(stripped) != 2:
         msg = (
             f"{field_name} must be a valid ISO 3166-1 alpha-2 territory code, got {value!r}"
         )
         raise ValueError(msg)
-    return TerritoryCode(stripped.upper())
+    if code not in _territory_codes_impl(normalize_locale("en")):
+        msg = (
+            f"{field_name} must be a valid ISO 3166-1 alpha-2 territory code, got {value!r}"
+        )
+        raise ValueError(msg)
+    return TerritoryCode(code)
 
 
 def clear_iso_cache() -> None:

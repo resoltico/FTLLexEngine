@@ -494,9 +494,8 @@ class TestFormatNumberMinMaxClamping:
     ) -> None:
         """When min > max, output has at least min decimal places (clamping, not error).
 
-        Pre-v0.145.0: min=3, max=2 would quantize to 2 places but format with
-        3 required digits, producing "1.230" — wrong and incoherent.
-        Post-v0.145.0: max is clamped to max(min, max), output is consistent.
+        When minimumFractionDigits exceeds maximumFractionDigits, the effective
+        maximum is clamped upward so quantization and formatting stay coherent.
 
         Events emitted:
         - relation=min_gt_max: min > max (clamping applies)

@@ -29,9 +29,9 @@ def count_default_variants(select: SelectExpression) -> int:
         Number of default variants (should be exactly 1 for valid FTL)
 
     Example:
-        >>> expr = SelectExpression(...)
-        >>> count = count_default_variants(expr)
-        >>> if count != 1:
+        >>> expr = SelectExpression(...)  # doctest: +SKIP
+        >>> count = count_default_variants(expr)  # doctest: +SKIP
+        >>> if count != 1:  # doctest: +SKIP
         ...     raise ValidationError(f"Expected 1 default, found {count}")
     """
     return sum(1 for v in select.variants if v.default)

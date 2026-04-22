@@ -1,7 +1,6 @@
 """Parser tests for FunctionReference (NUMBER, DATETIME, custom functions).
 
-These tests cover 193 lines of parser code (lines 689-881) that were previously
-at ZERO coverage. Function parsing includes:
+These tests exercise function-call parsing, including:
 - Basic function calls: NUMBER($value)
 - Positional arguments: CUSTOM($a, $b, $c)
 - Named arguments: NUMBER($val, minimumFractionDigits: 2)
@@ -9,7 +8,7 @@ at ZERO coverage. Function parsing includes:
 - String/Number literals as arguments
 - Error cases: invalid syntax, argument ordering
 
-Phase 3A Coverage Target: +193 lines (54% → 68% parser coverage)
+Phase 3A focus: function-call grammar and argument handling
 """
 
 from __future__ import annotations

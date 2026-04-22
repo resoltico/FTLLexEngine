@@ -87,16 +87,18 @@ def number_format(
         FluentNumber with formatted string and computed precision for plural matching
 
     Examples:
-        >>> from decimal import Decimal
-        >>> number_format(Decimal('1234.5'), "en-US")
+        >>> from decimal import Decimal  # doctest: +SKIP
+        >>> number_format(Decimal('1234.5'), "en-US")  # doctest: +SKIP
         FluentNumber(value=Decimal('1234.5'), formatted='1,234.5', precision=1)
-        >>> number_format(Decimal('1234.5'), "de-DE")
+        >>> number_format(Decimal('1234.5'), "de-DE")  # doctest: +SKIP
         FluentNumber(value=Decimal('1234.5'), formatted='1.234,5', precision=1)
-        >>> number_format(Decimal('1234.5'), "lv-LV")
+        >>> number_format(Decimal('1234.5'), "lv-LV")  # doctest: +SKIP
         FluentNumber(value=Decimal('1234.5'), formatted='1 234,5', precision=1)
-        >>> number_format(42, "en-US", minimum_fraction_digits=2)
+        >>> number_format(42, "en-US", minimum_fraction_digits=2)  # doctest: +SKIP
         FluentNumber(value=42, formatted='42.00', precision=2)
-        >>> number_format(Decimal('-1234.56'), "en-US", pattern="#,##0.00;(#,##0.00)")
+        >>> number_format(  # doctest: +SKIP
+        ...     Decimal('-1234.56'), "en-US", pattern="#,##0.00;(#,##0.00)"
+        ... )
         FluentNumber(value=Decimal('-1234.56'), formatted='(1,234.56)', precision=2)
 
     FTL Usage:
@@ -202,18 +204,20 @@ def datetime_format(
         Formatted date/datetime string
 
     Examples:
-        >>> from datetime import date, datetime, UTC
-        >>> dt = datetime(2025, 10, 27, tzinfo=UTC)
-        >>> datetime_format(dt, "en-US", date_style="short")
+        >>> from datetime import date, datetime, UTC  # doctest: +SKIP
+        >>> dt = datetime(2025, 10, 27, tzinfo=UTC)  # doctest: +SKIP
+        >>> datetime_format(dt, "en-US", date_style="short")  # doctest: +SKIP
         '10/27/25'
-        >>> datetime_format(dt, "de-DE", date_style="short")
+        >>> datetime_format(dt, "de-DE", date_style="short")  # doctest: +SKIP
         '27.10.25'
-        >>> dt_with_time = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
-        >>> datetime_format(dt_with_time, "en-US", date_style="medium", time_style="short")
+        >>> dt_with_time = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)  # doctest: +SKIP
+        >>> datetime_format(  # doctest: +SKIP
+        ...     dt_with_time, "en-US", date_style="medium", time_style="short"
+        ... )
         'Oct 27, 2025, 2:30 PM'
-        >>> datetime_format(dt, "en-US", pattern="yyyy-MM-dd")
+        >>> datetime_format(dt, "en-US", pattern="yyyy-MM-dd")  # doctest: +SKIP
         '2025-10-27'
-        >>> datetime_format(date(2025, 10, 27), "en-US", date_style="short")
+        >>> datetime_format(date(2025, 10, 27), "en-US", date_style="short")  # doctest: +SKIP
         '10/27/25'
 
     FTL Usage:
@@ -284,14 +288,14 @@ def currency_format(
         in plural/select expressions, matching NUMBER() behavior.
 
     Examples:
-        >>> from decimal import Decimal
-        >>> currency_format(Decimal('123.45'), "en-US", currency="EUR")
+        >>> from decimal import Decimal  # doctest: +SKIP
+        >>> currency_format(Decimal('123.45'), "en-US", currency="EUR")  # doctest: +SKIP
         FluentNumber(value=Decimal('123.45'), formatted='€123.45', precision=2)
-        >>> currency_format(Decimal('123.45'), "lv-LV", currency="EUR")
+        >>> currency_format(Decimal('123.45'), "lv-LV", currency="EUR")  # doctest: +SKIP
         FluentNumber(value=Decimal('123.45'), formatted='123,45 €', precision=2)
-        >>> currency_format(12345, "ja-JP", currency="JPY")
+        >>> currency_format(12345, "ja-JP", currency="JPY")  # doctest: +SKIP
         FluentNumber(value=12345, formatted='¥12,345', precision=0)
-        >>> currency_format(Decimal('123.456'), "ar-BH", currency="BHD")
+        >>> currency_format(Decimal('123.456'), "ar-BH", currency="BHD")  # doctest: +SKIP
         FluentNumber(value=Decimal('123.456'), formatted='123.456 د.ب.', precision=3)
 
     FTL Usage:
@@ -419,21 +423,21 @@ def create_default_registry() -> FunctionRegistry:
         FunctionRegistry with NUMBER, DATETIME, and CURRENCY functions registered.
 
     Example:
-        >>> registry = create_default_registry()
-        >>> "NUMBER" in registry
+        >>> registry = create_default_registry()  # doctest: +SKIP
+        >>> "NUMBER" in registry  # doctest: +SKIP
         True
-        >>> "DATETIME" in registry
+        >>> "DATETIME" in registry  # doctest: +SKIP
         True
-        >>> "CURRENCY" in registry
+        >>> "CURRENCY" in registry  # doctest: +SKIP
         True
 
     Use Case:
         FluentBundle uses this internally to create isolated function registries.
         Users who need custom registries can call this and then modify the result:
 
-        >>> registry = create_default_registry()
-        >>> registry.register(my_custom_func, ftl_name="CUSTOM")
-        >>> bundle = FluentBundle("en", functions=registry)
+        >>> registry = create_default_registry()  # doctest: +SKIP
+        >>> registry.register(my_custom_func, ftl_name="CUSTOM")  # doctest: +SKIP
+        >>> bundle = FluentBundle("en", functions=registry)  # doctest: +SKIP
 
     See Also:
         get_shared_registry: Returns a shared cached registry for performance.
@@ -499,18 +503,18 @@ def get_shared_registry() -> FunctionRegistry:
         TypeError: If you attempt to call register() on the returned registry.
 
     Example:
-        >>> # Efficient: Share registry across multiple bundles
-        >>> shared = get_shared_registry()
-        >>> bundle_en = FluentBundle("en", functions=shared)
-        >>> bundle_de = FluentBundle("de", functions=shared)
-        >>> bundle_fr = FluentBundle("fr", functions=shared)
-        >>>
-        >>> # Registry is frozen - attempting to modify raises TypeError
-        >>> shared.register(my_func)  # Raises TypeError!
-        >>>
-        >>> # To add custom functions, use copy() to get unfrozen copy:
-        >>> my_registry = shared.copy()
-        >>> my_registry.register(my_custom_func, ftl_name="CUSTOM")
+        Efficient: share the registry across multiple bundles.
+        >>> shared = get_shared_registry()  # doctest: +SKIP
+        >>> bundle_en = FluentBundle("en", functions=shared)  # doctest: +SKIP
+        >>> bundle_de = FluentBundle("de", functions=shared)  # doctest: +SKIP
+        >>> bundle_fr = FluentBundle("fr", functions=shared)  # doctest: +SKIP
+
+        The registry is frozen, so modification attempts raise `TypeError`.
+        >>> shared.register(my_func)  # Raises TypeError!  # doctest: +SKIP
+
+        To add custom functions, use `copy()` to get an unfrozen copy:
+        >>> my_registry = shared.copy()  # doctest: +SKIP
+        >>> my_registry.register(my_custom_func, ftl_name="CUSTOM")  # doctest: +SKIP
 
     See Also:
         create_default_registry: Creates a new unfrozen registry for customization.

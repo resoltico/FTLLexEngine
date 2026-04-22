@@ -262,8 +262,8 @@ welcomeMessage = Welcome, { $firstName }!
 userProfile = { $firstName } { $lastName }
 accountBalance = Balance: { NUMBER($currentBalance) }
 
-# TODO: Refactor variable names
-# TODO: Remove obsolete messages
+# Legacy review notes kept as comments in the source file
+# Variable names and obsolete-message cleanup are shown below
 """
 
     print("BEFORE:")

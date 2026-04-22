@@ -315,7 +315,7 @@ def test_concurrent(thread_count, operation_count):
 
 
 # =============================================================================
-# INTEGRITY AND CORRECTNESS TESTS (v0.80.0+)
+# INTEGRITY AND CORRECTNESS TESTS
 # =============================================================================
 
 class TestRuntimeIntegrityBehavior:

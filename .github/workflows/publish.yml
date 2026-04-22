@@ -1,22 +1,40 @@
 name: Build and Publish
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build, publish, or verify
+        required: true
+        type: string
+      publish_to_testpypi:
+        description: Also publish the tagged distribution to TestPyPI
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
+
+concurrency:
+  group: publication-${{ github.workflow }}-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build:
     name: Build & Verify Quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     # Force all uv commands (sync, run, etc.) to use the same versioned venv as the
     # scripts. Without this, bare "uv sync" creates the default ".venv" while the
     # scripts pivot to ".venv-<version>", wasting ~150 MiB on a duplicate environment.
     env:
       UV_PROJECT_ENVIRONMENT: .venv-${{ matrix.python-version }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +43,10 @@ jobs:
         # When Python 3.15 releases (~late 2026), add "3.15" here.
         python-version: ["3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
       - name: Verify clean working tree
         run: |
@@ -41,13 +62,16 @@ jobs:
           echo "Working tree is clean"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
       - name: Make scripts executable
-        run: chmod +x ./scripts/lint.sh ./scripts/test.sh
+        run: chmod +x ./scripts/*.sh
+
+      - name: Verify shell syntax
+        run: bash -n scripts/*.sh
 
       - name: Detect package name
         id: detect
@@ -63,12 +87,10 @@ jobs:
           echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
           echo "Detected package: $PACKAGE_NAME"
 
-      - name: Validate version tag (Release only)
-        if: github.event_name == 'release'
+      - name: Validate version tag
         run: |
           set -euo pipefail
-          TAG_VERSION="${GITHUB_REF#refs/tags/}"
-          TAG_VERSION="${TAG_VERSION#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
 
           # Validate tag format
           if ! [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
@@ -89,19 +111,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --all-groups --locked
+          uv sync --group dev --group release --locked
           echo "Locked environment synchronized"
 
       - name: Validate runtime version matches tag
-        if: github.event_name == 'release'
         run: |
           set -euo pipefail
 
           PACKAGE="${{ steps.detect.outputs.name }}"
 
           RUNTIME_VERSION=$(uv run python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
-          TAG_VERSION="${GITHUB_REF#refs/tags/}"
-          TAG_VERSION="${TAG_VERSION#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
 
           echo "Package: $PACKAGE"
           echo "Runtime version: $RUNTIME_VERSION"
@@ -126,7 +146,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: matrix.python-version == '3.14'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
@@ -177,13 +197,26 @@ jobs:
 
           echo "Package integrity verified"
 
+      - name: Create release checksum receipt
+        if: matrix.python-version == '3.14'
+        run: |
+          set -euo pipefail
+          PACKAGE="${{ steps.detect.outputs.name }}"
+          VERSION="${RELEASE_TAG#v}"
+
+          cd dist
+          shasum -a 256 \
+            "${PACKAGE}-${VERSION}.tar.gz" \
+            "${PACKAGE}-${VERSION}-py3-none-any.whl" \
+            > "${PACKAGE}-${VERSION}.sha256"
+
       - name: Debug Artifacts
         if: matrix.python-version == '3.14'
         run: ls -laR dist/
 
       - name: Store build artifacts
         if: matrix.python-version == '3.14'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist
           path: dist/
@@ -193,15 +226,16 @@ jobs:
   test-publish:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_to_testpypi
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist
           path: dist/
 
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           repository-url: https://test.pypi.org/legacy/
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
@@ -211,16 +245,22 @@ jobs:
     name: Verify TestPyPI Publication
     needs: test-publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_to_testpypi
     strategy:
       matrix:
         # Test installation on both minimum and latest supported Python versions.
         python-version: ["3.13", "3.14"]
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag }}
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -236,14 +276,6 @@ jobs:
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "Detected package: $PACKAGE_NAME"
 
-      - name: Extract version
-        id: version
-        run: |
-          set -euo pipefail
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
       - name: Wait for TestPyPI CDN propagation
         run: |
           echo "Waiting 60 seconds for TestPyPI CDN to propagate..."
@@ -253,7 +285,7 @@ jobs:
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${RELEASE_TAG#v}"
           
           MAX_ATTEMPTS=5
           ATTEMPT=1
@@ -282,7 +314,7 @@ jobs:
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
           INSTALLED_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
-          EXPECTED_VERSION="${{ steps.version.outputs.version }}"
+          EXPECTED_VERSION="${RELEASE_TAG#v}"
 
           echo "Installed version: $INSTALLED_VERSION"
           echo "Expected version: $EXPECTED_VERSION"
@@ -299,37 +331,86 @@ jobs:
           PACKAGE="${{ steps.detect.outputs.name }}"
           python -c "import ${PACKAGE} as pkg; r = pkg.parse_ftl('greeting = Hello, World!'); s = pkg.serialize_ftl(r); assert 'greeting' in s; print('Smoke test passed: ${PACKAGE} v' + pkg.__version__)"
 
+  publish-release-assets:
+    name: Publish GitHub Release Assets
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+      - name: Make scripts executable
+        run: chmod +x ./scripts/*.sh
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish GitHub release assets
+        run: ./scripts/publish-github-release-assets.sh "$RELEASE_TAG"
+
+  verify-github-release:
+    name: Verify GitHub Release
+    needs: publish-release-assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+
+      - name: Make scripts executable
+        run: chmod +x ./scripts/*.sh
+
+      - name: Verify GitHub release handoff
+        run: ./scripts/verify-github-release.sh "$RELEASE_TAG"
+
   publish:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
-    permissions:
-      id-token: write
+    timeout-minutes: 20
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist
           path: dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           attestations: true
+          skip-existing: true
 
   verify-publish:
     name: Verify PyPI Publication
     needs: publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    timeout-minutes: 30
     strategy:
       matrix:
         # Test installation on both minimum and latest supported Python versions.
         python-version: ["3.13", "3.14"]
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -353,8 +434,7 @@ jobs:
       - name: Install from PyPI with retry
         run: |
           set -euo pipefail
-          TAG_VERSION="${GITHUB_REF#refs/tags/}"
-          TAG_VERSION="${TAG_VERSION#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
           PACKAGE="${{ steps.detect.outputs.name }}"
 
           MAX_ATTEMPTS=5
@@ -383,8 +463,7 @@ jobs:
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
           INSTALLED_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
-          TAG_VERSION="${GITHUB_REF#refs/tags/}"
-          TAG_VERSION="${TAG_VERSION#v}"
+          TAG_VERSION="${RELEASE_TAG#v}"
 
           echo "Installed version: $INSTALLED_VERSION"
           echo "Expected version: $TAG_VERSION"
@@ -405,9 +484,14 @@ jobs:
     name: Verify Python 3.13+ Requirement
     needs: publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
       - name: Detect package name
         id: detect
@@ -428,18 +512,19 @@ jobs:
       # available on GitHub Actions runners by default.
       # GitHub Actions runners ship with Python 3.12 as their system Python as of 2025.
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
       - name: Verify install is blocked on Python 3.12 (below requires-python floor)
         run: |
           set -euo pipefail
+          TAG_VERSION="${RELEASE_TAG#v}"
           PACKAGE="${{ steps.detect.outputs.name }}"
 
-          echo "Attempting to install $PACKAGE on Python 3.12 (should fail)..."
+          echo "Attempting to install $PACKAGE==$TAG_VERSION on Python 3.12 (should fail)..."
 
-          if pip install "$PACKAGE" 2>/dev/null; then
+          if pip install --no-cache-dir "${PACKAGE}==${TAG_VERSION}" 2>/dev/null; then
             echo "::error::Installation succeeded on Python 3.12 (should have failed)"
             echo "::error::Check requires-python in pyproject.toml"
             exit 1

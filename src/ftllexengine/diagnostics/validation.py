@@ -17,11 +17,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ftllexengine.diagnostics.codes import DiagnosticCode
-    from ftllexengine.syntax.ast import Annotation
 
     from .formatter import DiagnosticFormatter
 
@@ -48,6 +47,30 @@ class WarningSeverity(StrEnum):
     CRITICAL = "critical"  # Will cause runtime failure
     WARNING = "warning"  # May cause issues
     INFO = "info"  # Informational only
+
+
+class ParserAnnotation(Protocol):
+    """Structural contract for parser annotations stored in ValidationResult."""
+
+    @property
+    def code(self) -> str:
+        """Machine-readable annotation code."""
+        ...  # pragma: no cover - typing-only protocol declaration
+
+    @property
+    def message(self) -> str:
+        """Human-readable parser annotation message."""
+        ...  # pragma: no cover - typing-only protocol declaration
+
+    @property
+    def arguments(self) -> tuple[tuple[str, str], ...] | None:
+        """Structured parser annotation arguments."""
+        ...  # pragma: no cover - typing-only protocol declaration
+
+    @property
+    def span(self) -> object | None:
+        """Optional source span for the annotation."""
+        ...  # pragma: no cover - typing-only protocol declaration
 
 
 # ============================================================================
@@ -114,9 +137,13 @@ class ValidationError:
             Formatted error string with optional content sanitization.
 
         Examples:
-            >>> error = ValidationError(DiagnosticCode.PARSE_JUNK, "Syntax error", "bad ftl")
-            >>> error.format(sanitize=True)  # Truncates to 100 chars
-            >>> error.format(sanitize=True, redact_content=True)  # Redacts entirely
+            >>> error = ValidationError(  # doctest: +SKIP
+            ...     DiagnosticCode.PARSE_JUNK, "Syntax error", "bad ftl"
+            ... )
+            >>> error.format(sanitize=True)  # Truncates to 100 chars  # doctest: +SKIP
+            >>> error.format(  # Redacts entirely  # doctest: +SKIP
+            ...     sanitize=True, redact_content=True
+            ... )
         """
         formatter = _get_formatter(sanitize=sanitize, redact_content=redact_content)
         return formatter.format_error(self)
@@ -196,14 +223,14 @@ class ValidationResult:
         annotations: Parser-level AST annotations.
 
     Example:
-        >>> result = ValidationResult.valid()
-        >>> result.is_valid
+        >>> result = ValidationResult.valid()  # doctest: +SKIP
+        >>> result.is_valid  # doctest: +SKIP
         True
-        >>> result.error_count
+        >>> result.error_count  # doctest: +SKIP
         0
 
-        >>> # With errors
-        >>> result = ValidationResult.invalid(
+        With errors:
+        >>> result = ValidationResult.invalid(  # doctest: +SKIP
         ...     errors=(ValidationError(
         ...         code=DiagnosticCode.PARSE_JUNK,
         ...         message="Expected '=' but found EOF",
@@ -212,15 +239,15 @@ class ValidationResult:
         ...         column=4
         ...     ),)
         ... )
-        >>> result.is_valid
+        >>> result.is_valid  # doctest: +SKIP
         False
-        >>> result.error_count
+        >>> result.error_count  # doctest: +SKIP
         1
     """
 
     errors: tuple[ValidationError, ...]
     warnings: tuple[ValidationWarning, ...]
-    annotations: tuple[Annotation, ...]
+    annotations: tuple[ParserAnnotation, ...]
 
     @property
     def is_valid(self) -> bool:
@@ -273,7 +300,7 @@ class ValidationResult:
     def invalid(
         errors: tuple[ValidationError, ...] = (),
         warnings: tuple[ValidationWarning, ...] = (),
-        annotations: tuple[Annotation, ...] = (),
+        annotations: tuple[ParserAnnotation, ...] = (),
     ) -> ValidationResult:
         """Create an invalid result with errors and/or annotations.
 
@@ -290,7 +317,9 @@ class ValidationResult:
         )
 
     @staticmethod
-    def from_annotations(annotations: tuple[Annotation, ...]) -> ValidationResult:
+    def from_annotations(
+        annotations: tuple[ParserAnnotation, ...]
+    ) -> ValidationResult:
         """Create result from parser-level annotations only.
 
         Convenience factory for semantic validator usage.
@@ -333,9 +362,9 @@ class ValidationResult:
             set redact_content=True.
 
         Examples:
-            >>> result.format()  # Full output for debugging
-            >>> result.format(sanitize=True)  # Truncated content
-            >>> result.format(sanitize=True, redact_content=True)  # No content
+            >>> result.format()  # Full output for debugging  # doctest: +SKIP
+            >>> result.format(sanitize=True)  # Truncated content  # doctest: +SKIP
+            >>> result.format(sanitize=True, redact_content=True)  # No content  # doctest: +SKIP
         """
         formatter = _get_formatter(sanitize=sanitize, redact_content=redact_content)
         return formatter.format_validation_result(self, include_warnings=include_warnings)

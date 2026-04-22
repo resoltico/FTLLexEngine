@@ -1023,7 +1023,7 @@ class TestIdempotentWritesConcurrency:
 
 
 # ============================================================================
-# CACHE KEY COLLISION PREVENTION TESTS (v0.93.0)
+# CACHE KEY COLLISION PREVENTION TESTS
 # ============================================================================
 
 
