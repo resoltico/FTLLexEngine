@@ -215,7 +215,7 @@ msg-c = value
 
 
 class TestIntegration:
-    """Integration tests for v0.94.0 fixes."""
+    """Integration tests for currency decimal handling."""
 
     def test_currency_in_fluent_bundle(self) -> None:
         """Currency formatting in FluentBundle uses ISO decimals."""

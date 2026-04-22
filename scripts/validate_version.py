@@ -12,22 +12,21 @@ PHILOSOPHY:
 
 CHECKS PERFORMED:
     CRITICAL (exit 1 — fail build):
-    1. Runtime __version__ matches pyproject.toml                [version_sync]
+    1. Installed package version matches pyproject.toml          [version_sync]
     2. Version follows semantic versioning (MAJOR.MINOR.PATCH)   [semver]
     3. Version is not a development placeholder                  [not_placeholder]
 
     DOCUMENTATION (exit 2 — fail build):
-    4. All docs/DOC_*.md frontmatter has correct project_version [doc_frontmatter]
-    5. docs/QUICK_REFERENCE.md footer has correct version        [quick_reference]
-    6. docs/TERMINOLOGY.md footer has correct version            [terminology]
+    4. Configured markdown frontmatter declares the current version [configurable_frontmatter]
+    5. Configured markdown footers declare the current version      [configurable_footers]
 
     INFORMATIONAL (exit 0 — warn only):
-    7. CHANGELOG.md mentions current version                     [changelog_entry]
-    8. CHANGELOG.md has version link at bottom                   [changelog_link]
+    6. CHANGELOG.md mentions current version                     [changelog_entry]
+    7. CHANGELOG.md has version link at bottom                   [changelog_link]
 
 NOTES ON VACUOUS PASSES:
-    Checks 4-6 are "if present, must be correct."  If a doc file does not
-    exist, or does not contain the version field/footer, the check passes and
+    Documentation checks are "if present, must be correct." If a configured doc
+    file does not exist, or does not contain the configured version field, the check passes and
     reports "(skipped)".  This is intentional: the checks activate as the
     project grows, without requiring maintenance of this script.
 
@@ -52,14 +51,16 @@ import os
 import re
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
 
 NO_COLOR = os.environ.get("NO_COLOR", "") == "1"
+type PyProjectData = dict[str, Any]
 
 
 class Colors:
@@ -80,7 +81,8 @@ SEVERITY_DOC = "doc"  # exit 2
 SEVERITY_WARNING = "warning"  # exit 0 (informational)
 
 
-class CheckResult(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class CheckResult:
     """Result of a single validation check."""
 
     name: str
@@ -94,7 +96,7 @@ class CheckResult(NamedTuple):
 # ==============================================================================
 
 
-def load_pyproject(root: Path) -> dict:  # type: ignore[type-arg]
+def load_pyproject(root: Path) -> PyProjectData:
     """Load and return the pyproject.toml data dict.
 
     Raises SystemExit(3) if the file is missing or malformed.
@@ -117,13 +119,13 @@ def load_pyproject(root: Path) -> dict:  # type: ignore[type-arg]
         sys.exit(3)
 
 
-def get_pyproject_version(data: dict) -> str | None:  # type: ignore[type-arg]
+def get_pyproject_version(data: PyProjectData) -> str | None:
     """Extract version from already-loaded pyproject.toml data."""
     raw = data.get("project", {}).get("version")
     return str(raw) if raw is not None else None
 
 
-def get_project_name(data: dict) -> str:  # type: ignore[type-arg]
+def get_project_name(data: PyProjectData) -> str:
     """Extract [project].name from already-loaded pyproject.toml data."""
     return str(data.get("project", {}).get("name", "unknown"))
 
@@ -150,7 +152,7 @@ def get_runtime_version(package_name: str) -> str | None:
 # ==============================================================================
 
 
-def check_version_sync(data: dict, package_name: str) -> CheckResult:  # type: ignore[type-arg]
+def check_version_sync(data: PyProjectData, package_name: str) -> CheckResult:
     """CRITICAL: installed package version must match pyproject.toml."""
     pyproject_version = get_pyproject_version(data)
 
@@ -194,7 +196,7 @@ def check_version_sync(data: dict, package_name: str) -> CheckResult:  # type: i
     )
 
 
-def check_semver(data: dict) -> CheckResult:  # type: ignore[type-arg]
+def check_semver(data: PyProjectData) -> CheckResult:
     """CRITICAL: version must be valid semantic versioning (MAJOR.MINOR.PATCH)
     with non-negative integer components.
 
@@ -244,7 +246,7 @@ def check_semver(data: dict) -> CheckResult:  # type: ignore[type-arg]
     )
 
 
-def check_not_placeholder(data: dict) -> CheckResult:  # type: ignore[type-arg]
+def check_not_placeholder(data: PyProjectData) -> CheckResult:
     """CRITICAL: version must not be a development placeholder."""
     version = get_pyproject_version(data)
 
@@ -439,7 +441,7 @@ def check_configurable_footers(
     return results
 
 
-def check_changelog_entry(data: dict, root: Path) -> CheckResult:  # type: ignore[type-arg]
+def check_changelog_entry(data: PyProjectData, root: Path) -> CheckResult:
     """INFORMATIONAL: CHANGELOG.md should document the current version."""
     version = get_pyproject_version(data)
     if version is None:
@@ -497,7 +499,7 @@ def check_changelog_entry(data: dict, root: Path) -> CheckResult:  # type: ignor
     )
 
 
-def check_changelog_link(data: dict, root: Path) -> CheckResult:  # type: ignore[type-arg]
+def check_changelog_link(data: PyProjectData, root: Path) -> CheckResult:
     """INFORMATIONAL: CHANGELOG.md should have a hyperlink for the current version."""
     version = get_pyproject_version(data)
     if version is None:
@@ -629,11 +631,9 @@ def main() -> int:
     data = load_pyproject(root)
 
     # Derive project identity dynamically — no hardcoded strings
-    package_name = get_project_name(data)  # e.g. "ftllexengine"
-    project_display_name = package_name.capitalize()  # e.g. "Ftllexengine"
-    # Better: if the project name uses title-casing hints, derive it properly
-    # e.g. "ftllexengine" → "FTLLexEngine" via pyproject [tool.project-display-name]
-    # Fallback: capitalise first letter only (safe for any project name)
+    package_name = get_project_name(data)
+    val_config = data.get("tool", {}).get("validate-version", {})
+    project_display_name = str(val_config.get("project_display_name", package_name))
     canonical_version = get_pyproject_version(data) or "unknown"
 
     print(f"{Colors.BOLD}{Colors.CYAN}=== Version Consistency Check ==={Colors.RESET}")
@@ -651,7 +651,6 @@ def main() -> int:
     ]
 
     # Configurable documentation checks
-    val_config = data.get("tool", {}).get("validate-version", {})
     if val_config:
         frontmatter_globs = val_config.get("frontmatter_globs", [])
         frontmatter_key = val_config.get("frontmatter_key", "")

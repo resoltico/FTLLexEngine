@@ -16,9 +16,7 @@ from hypothesis import event, example, given, settings
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
-from ftllexengine.core.depth_guard import DepthGuard, depth_clamp
-from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
-from ftllexengine.diagnostics.templates import ErrorTemplate
+from ftllexengine.core.depth_guard import DepthGuard, DepthLimitExceededError, depth_clamp
 
 # ============================================================================
 # Construction
@@ -95,15 +93,15 @@ class TestDepthGuardContextManager:
         assert guard.current_depth == 0
 
     def test_context_manager_raises_on_exceeded(self) -> None:
-        """Context manager raises FrozenFluentError when depth exceeded."""
+        """Context manager raises DepthLimitExceededError when depth exceeded."""
         guard = DepthGuard(max_depth=3)
 
         with guard, guard, guard:  # noqa: SIM117 - nested with
-            with pytest.raises(FrozenFluentError) as exc_info:
+            with pytest.raises(DepthLimitExceededError) as exc_info:
                 with guard:
                     pass
 
-        assert exc_info.value.category == ErrorCategory.RESOLUTION
+        assert exc_info.value.max_depth == 3
         assert "3" in str(exc_info.value)
 
     def test_context_manager_depth_restoration_on_error(self) -> None:
@@ -140,7 +138,7 @@ class TestDepthGuardContextManager:
 
         with guard, guard:
             assert guard.current_depth == 2
-            with pytest.raises(FrozenFluentError), guard:
+            with pytest.raises(DepthLimitExceededError), guard:
                 pass
             # current_depth must still be 2, not 3
             assert guard.current_depth == 2
@@ -164,13 +162,13 @@ class TestCheckMethod:
             guard.check()  # Should not raise
 
     def test_check_raises_at_limit(self) -> None:
-        """check() raises FrozenFluentError when depth >= max_depth."""
+        """check() raises DepthLimitExceededError when depth >= max_depth."""
         guard = DepthGuard(max_depth=2)
 
-        with guard, guard, pytest.raises(FrozenFluentError) as exc_info:
+        with guard, guard, pytest.raises(DepthLimitExceededError) as exc_info:
             guard.check()
 
-        assert exc_info.value.category == ErrorCategory.RESOLUTION
+        assert exc_info.value.max_depth == 2
         assert "2" in str(exc_info.value)
 
     def test_check_raises_above_limit(self) -> None:
@@ -178,45 +176,40 @@ class TestCheckMethod:
         guard = DepthGuard(max_depth=2)
         guard.current_depth = 5
 
-        with pytest.raises(FrozenFluentError) as exc_info:
+        with pytest.raises(DepthLimitExceededError) as exc_info:
             guard.check()
-        assert exc_info.value.category == ErrorCategory.RESOLUTION
+        assert exc_info.value.max_depth == 2
 
 
 # ============================================================================
-# FrozenFluentError from DepthGuard
+# DepthLimitExceededError from DepthGuard
 # ============================================================================
 
 
 class TestDepthGuardError:
-    """Test FrozenFluentError raised by DepthGuard."""
+    """Test DepthLimitExceededError raised by DepthGuard."""
 
-    def test_error_is_frozen_fluent_error(self) -> None:
-        """DepthGuard raises FrozenFluentError with RESOLUTION category."""
+    def test_error_is_depth_limit_error(self) -> None:
+        """DepthGuard raises DepthLimitExceededError with the configured limit."""
         guard = DepthGuard(max_depth=1)
 
-        with guard, pytest.raises(FrozenFluentError) as exc_info, guard:
+        with guard, pytest.raises(DepthLimitExceededError) as exc_info, guard:
             pass
 
-        assert exc_info.value.category == ErrorCategory.RESOLUTION
+        assert exc_info.value.max_depth == 1
         assert isinstance(exc_info.value, Exception)
 
-    def test_error_carries_diagnostic(self) -> None:
-        """DepthGuard error carries diagnostic template data."""
-        diagnostic = ErrorTemplate.depth_exceeded(50)
-        error = FrozenFluentError(
-            str(diagnostic),
-            ErrorCategory.RESOLUTION,
-            diagnostic=diagnostic,
-        )
-
+    def test_error_records_max_depth(self) -> None:
+        """DepthLimitExceededError stores the configured limit."""
+        error = DepthLimitExceededError(50)
+        assert error.max_depth == 50
         assert "50" in str(error)
 
     def test_error_includes_max_depth_value(self) -> None:
         """Error message includes the configured max_depth."""
         guard = DepthGuard(max_depth=2)
 
-        with guard, guard, pytest.raises(FrozenFluentError, match="2"), guard:
+        with guard, guard, pytest.raises(DepthLimitExceededError, match="2"), guard:
             pass
 
 
@@ -276,7 +269,7 @@ def test_property_context_manager_enforces_limit(max_depth: int) -> None:
 
     For any max_depth in [1, 100]:
     - Nesting max_depth times succeeds
-    - Nesting max_depth + 1 times raises FrozenFluentError
+    - Nesting max_depth + 1 times raises DepthLimitExceededError
     """
     event(f"max_depth={max_depth}")
     guard = DepthGuard(max_depth=max_depth)
@@ -290,9 +283,9 @@ def test_property_context_manager_enforces_limit(max_depth: int) -> None:
     nest(max_depth)
     assert guard.current_depth == 0
 
-    with pytest.raises(FrozenFluentError) as exc_info:
+    with pytest.raises(DepthLimitExceededError) as exc_info:
         nest(max_depth + 1)
-    assert exc_info.value.category == ErrorCategory.RESOLUTION
+    assert exc_info.value.max_depth == max_depth
 
 
 @given(max_depth=st.integers(min_value=1, max_value=100))
@@ -336,9 +329,9 @@ def test_property_check_consistent_with_context_manager(
     guard.current_depth = target_depth
 
     if target_depth >= max_depth:
-        with pytest.raises(FrozenFluentError):
+        with pytest.raises(DepthLimitExceededError):
             guard.check()
-        with pytest.raises(FrozenFluentError), guard:
+        with pytest.raises(DepthLimitExceededError), guard:
             pass
     else:
         guard.check()  # Should not raise

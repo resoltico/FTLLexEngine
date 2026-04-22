@@ -67,10 +67,10 @@ class TestVariantKeyErrorPaths:
         """
         with (
             patch(
-                "ftllexengine.syntax.parser.rules.parse_number"
+                "ftllexengine.syntax.parser.expressions.parse_number"
             ) as mock_num,
             patch(
-                "ftllexengine.syntax.parser.rules.parse_identifier"
+                "ftllexengine.syntax.parser.expressions.parse_identifier"
             ) as mock_id,
         ):
             mock_num.return_value = ParseError("forced failure", Cursor("-test", 0))
@@ -138,7 +138,7 @@ class TestArgumentExpressionErrorPaths:
         Requires mocking because parse_number is robust for digit start.
         """
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_number"
+            "ftllexengine.syntax.parser.expressions.parse_number"
         ) as mock:
             mock.return_value = ParseError("forced failure", Cursor("9)", 0))
             assert parse_argument_expression(Cursor("9)", 0)) is None
@@ -149,7 +149,7 @@ class TestArgumentExpressionErrorPaths:
         Requires mocking because is_identifier_start guarantees success.
         """
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_identifier"
+            "ftllexengine.syntax.parser.expressions.parse_identifier"
         ) as mock:
             mock.return_value = ParseError("forced failure", Cursor("x)", 0))
             assert parse_argument_expression(Cursor("x)", 0)) is None
@@ -463,7 +463,7 @@ class TestDefensiveMocking:
     def test_parse_message_attrs_returns_none(self) -> None:
         """parse_message_attributes returns None (defensive)."""
         with patch(
-            "ftllexengine.syntax.parser.rules"
+            "ftllexengine.syntax.parser.entries"
             ".parse_message_attributes"
         ) as mock:
             mock.return_value = None
@@ -474,7 +474,7 @@ class TestDefensiveMocking:
     def test_parse_attribute_pattern_returns_none(self) -> None:
         """parse_pattern returns None in parse_attribute (defensive)."""
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern"
+            "ftllexengine.syntax.parser.entries.parse_pattern"
         ) as mock:
             mock.return_value = None
             assert parse_attribute(
@@ -484,7 +484,7 @@ class TestDefensiveMocking:
     def test_parse_term_pattern_returns_none(self) -> None:
         """parse_pattern returns None in parse_term (defensive)."""
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern"
+            "ftllexengine.syntax.parser.entries.parse_pattern"
         ) as mock:
             mock.return_value = None
             assert parse_term(
@@ -494,7 +494,7 @@ class TestDefensiveMocking:
     def test_parse_term_attrs_returns_none_line_2038(self) -> None:
         """Line 2038: parse_message_attributes returns None in term."""
         with patch(
-            "ftllexengine.syntax.parser.rules"
+            "ftllexengine.syntax.parser.entries"
             ".parse_message_attributes"
         ) as mock:
             mock.return_value = None
@@ -505,7 +505,7 @@ class TestDefensiveMocking:
     def test_parse_message_pattern_returns_none(self) -> None:
         """parse_pattern returns None in parse_message (defensive)."""
         with patch(
-            "ftllexengine.syntax.parser.rules.parse_pattern"
+            "ftllexengine.syntax.parser.entries.parse_pattern"
         ) as mock:
             mock.return_value = None
             assert parse_message(

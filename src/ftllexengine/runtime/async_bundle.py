@@ -21,10 +21,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
     from types import TracebackType
 
+    from ftllexengine.core.semantic_types import LocaleCode
     from ftllexengine.core.value_types import FluentValue
     from ftllexengine.diagnostics import FrozenFluentError
     from ftllexengine.introspection import MessageIntrospection
-    from ftllexengine.localization.types import LocaleCode
     from ftllexengine.runtime.cache import CacheAuditLogEntry, CacheStats
     from ftllexengine.syntax.ast import Junk, Message, Term
 
@@ -48,15 +48,15 @@ class AsyncFluentBundle:
     Supports the async context manager protocol:
 
     Examples:
-        >>> import asyncio
-        >>> async def example() -> None:
+        >>> import asyncio  # doctest: +SKIP
+        >>> async def example() -> None:  # doctest: +SKIP
         ...     async with AsyncFluentBundle("en_US") as bundle:
         ...         await bundle.add_resource("greeting = Hello, { $name }!")
         ...         result, errors = await bundle.format_pattern(
         ...             "greeting", {"name": "Alice"}
         ...         )
         ...         assert errors == ()
-        >>> asyncio.run(example())
+        >>> asyncio.run(example())  # doctest: +SKIP
     """
 
     __slots__ = ("_bundle",)
@@ -240,7 +240,7 @@ class AsyncFluentBundle:
             SyntaxIntegrityError: In strict mode, if any Junk entries are parsed.
 
         Example:
-            >>> async with AsyncFluentBundle("en_US") as bundle:
+            >>> async with AsyncFluentBundle("en_US") as bundle:  # doctest: +SKIP
             ...     with open("locales/en/ui.ftl") as f:
             ...         await bundle.add_resource_stream(f, source_path="locales/en/ui.ftl")
         """

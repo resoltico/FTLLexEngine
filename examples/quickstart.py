@@ -10,6 +10,8 @@ Note: Examples ignore the 'errors' return value for brevity. In production,
 always check errors and log/report translation issues.
 """
 
+import contextlib
+import io
 import tempfile
 from decimal import Decimal
 from pathlib import Path
@@ -285,7 +287,8 @@ print(f"[OK] Formatted: {result}")
 
 # Missing variable in strict mode raises exception
 try:
-    strict_bundle.format_pattern("amount", {})  # Missing $value
+    with contextlib.redirect_stderr(io.StringIO()):
+        strict_bundle.format_pattern("amount", {})  # Missing $value
 except FormattingIntegrityError as e:
     print(f"[FAIL-FAST] {e.message_id}: {len(e.fluent_errors)} error(s)")
     print(f"  Fallback would have been: {e.fallback_value!r}")

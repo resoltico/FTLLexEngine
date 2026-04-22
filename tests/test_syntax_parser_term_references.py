@@ -1,7 +1,7 @@
 """Parser tests for term references in inline expressions ({ -term }).
 
 Phase 3D: TermReference Parsing Tests
-Coverage Target: +50-60 lines of parser.py (lines 1348-1409 and 937-953)
+Focus: term references with attributes, arguments, and integration cases
 
 Tests cover:
 - Basic term reference: { -brand }

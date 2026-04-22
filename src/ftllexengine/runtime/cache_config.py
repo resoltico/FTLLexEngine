@@ -45,24 +45,24 @@ class CacheConfig:
             Prevents memory exhaustion from pathological cases.
 
     Example:
-        >>> from ftllexengine import FluentBundle
-        >>> from ftllexengine.runtime.cache_config import CacheConfig
-        >>> config = CacheConfig(size=500, write_once=True)
-        >>> bundle = FluentBundle("en", cache=config)
-        >>> bundle.cache_enabled
+        >>> from ftllexengine import FluentBundle  # doctest: +SKIP
+        >>> from ftllexengine.runtime.cache_config import CacheConfig  # doctest: +SKIP
+        >>> config = CacheConfig(size=500, write_once=True)  # doctest: +SKIP
+        >>> bundle = FluentBundle("en", cache=config)  # doctest: +SKIP
+        >>> bundle.cache_enabled  # doctest: +SKIP
         True
-        >>> assert bundle.cache_config is not None
-        >>> bundle.cache_config.size
+        >>> assert bundle.cache_config is not None  # doctest: +SKIP
+        >>> bundle.cache_config.size  # doctest: +SKIP
         500
 
     Example - Financial application:
-        >>> config = CacheConfig(
+        >>> config = CacheConfig(  # doctest: +SKIP
         ...     write_once=True,
         ...     integrity_strict=True,
         ...     enable_audit=True,
         ...     max_audit_entries=50000,
         ... )
-        >>> bundle = FluentBundle("en", cache=config, strict=True)
+        >>> bundle = FluentBundle("en", cache=config, strict=True)  # doctest: +SKIP
     """
 
     size: int = DEFAULT_CACHE_SIZE

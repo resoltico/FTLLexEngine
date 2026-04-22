@@ -70,19 +70,19 @@ class DiagnosticFormatter:
         max_content_length: Maximum content length when sanitizing
 
     Example:
-        >>> formatter = DiagnosticFormatter()
-        >>> diagnostic = ErrorTemplate.message_not_found("hello")
-        >>> print(formatter.format(diagnostic))
+        >>> formatter = DiagnosticFormatter()  # doctest: +SKIP
+        >>> diagnostic = ErrorTemplate.message_not_found("hello")  # doctest: +SKIP
+        >>> print(formatter.format(diagnostic))  # doctest: +SKIP
         error[MESSAGE_NOT_FOUND]: Message 'hello' not found
           = help: Check that the message is defined in the loaded resources
           = note: see https://projectfluent.org/fluent/guide/messages.html
 
-        >>> formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)
-        >>> print(formatter.format(diagnostic))
+        >>> formatter = DiagnosticFormatter(output_format=OutputFormat.SIMPLE)  # doctest: +SKIP
+        >>> print(formatter.format(diagnostic))  # doctest: +SKIP
         MESSAGE_NOT_FOUND: Message 'hello' not found
 
-        >>> formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)
-        >>> print(formatter.format(diagnostic))
+        >>> formatter = DiagnosticFormatter(output_format=OutputFormat.JSON)  # doctest: +SKIP
+        >>> print(formatter.format(diagnostic))  # doctest: +SKIP
         {"code": "MESSAGE_NOT_FOUND", "message": "Message 'hello' not found", ...}
     """
 

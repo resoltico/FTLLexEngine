@@ -32,24 +32,39 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import struct
 import time
 from collections import OrderedDict, deque
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from datetime import date, datetime
-from decimal import Decimal
 from threading import Lock
-from typing import TypedDict, final
+from typing import TYPE_CHECKING, final
 
 from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT, MAX_DEPTH
-from ftllexengine.core.value_types import FluentNumber, FluentValue
-from ftllexengine.diagnostics import FrozenFluentError
 from ftllexengine.integrity import (
     CacheCorruptionError,
     IntegrityContext,
     WriteConflictError,
 )
+from ftllexengine.runtime.cache_keys import (
+    HASHABLE_NODE_BUDGET,
+    compute_key_hash,
+    make_hashable,
+    make_key,
+)
+from ftllexengine.runtime.cache_types import (
+    _DEFAULT_MAX_ERRORS_PER_ENTRY,
+    CacheAuditLogEntry,
+    CacheStats,
+    HashableValue,
+    IntegrityCacheEntry,
+    WriteLogEntry,
+    _CacheKey,
+    _estimate_error_weight,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ftllexengine.core.value_types import FluentValue
+    from ftllexengine.diagnostics import FrozenFluentError
 
 __all__ = [
     "CacheAuditLogEntry",
@@ -59,408 +74,6 @@ __all__ = [
     "IntegrityCacheEntry",
     "WriteLogEntry",
 ]
-
-class CacheStats(TypedDict):
-    """Typed statistics snapshot returned by IntegrityCache.get_stats().
-
-    All fields are point-in-time readings taken under the cache lock.
-    Use get_stats() (not individual properties) for a consistent snapshot.
-
-    Attributes:
-        size: Current number of cached entries.
-        maxsize: Maximum cache capacity.
-        max_entry_weight: Maximum memory weight for a single cached result.
-        max_errors_per_entry: Maximum errors stored per cache entry.
-        hits: Total cache hits since creation (not reset on clear()).
-        misses: True cache misses since creation: key was hashable, looked up,
-            but not found (or found corrupted in non-strict mode). Unhashable
-            bypasses are excluded; those increment unhashable_skips only. Not
-            reset on clear().
-        hit_rate: Hit rate as a percentage (0.0-100.0), rounded to 2 decimal
-            places. Computed over hashable-key interactions only:
-            hits / (hits + misses). Unhashable bypasses do not affect this
-            metric, so the rate reflects true cache efficiency.
-        unhashable_skips: Puts skipped because the args could not be hashed.
-        oversize_skips: Puts skipped because the formatted string alone exceeded
-            max_entry_weight (before errors are considered).
-        error_bloat_skips: Puts skipped because the number of errors exceeded
-            max_errors_per_entry.
-        combined_weight_skips: Puts skipped because len(formatted) + total error
-            weight exceeded max_entry_weight (formatted alone was within limit but
-            combined content was not). Distinct from oversize_skips and error_bloat_skips
-            to enable accurate diagnosis: high combined_weight_skips points to the
-            combination of message length and error payload, not one alone.
-        corruption_detected: Number of BLAKE2b checksum mismatches detected.
-        idempotent_writes: Concurrent puts of identical content (benign races).
-        write_once_conflicts: True write-once violations: different content attempted
-            for an existing key under write_once=True. In strict mode these raise
-            WriteConflictError; in non-strict mode they are silently rejected. This
-            counter increments for both modes, enabling detection of data races without
-            requiring the audit log.
-        sequence: Monotonically increasing total-put counter (audit trail).
-        write_once: Whether write-once mode is enabled.
-        strict: Whether strict (fail-fast) mode is enabled.
-        audit_enabled: Whether the audit log is active.
-        audit_entries: Current number of entries in the audit log.
-    """
-
-    size: int
-    maxsize: int
-    max_entry_weight: int
-    max_errors_per_entry: int
-    hits: int
-    misses: int
-    hit_rate: float
-    unhashable_skips: int
-    oversize_skips: int
-    error_bloat_skips: int
-    corruption_detected: int
-    idempotent_writes: int
-    write_once_conflicts: int
-    combined_weight_skips: int
-    sequence: int
-    write_once: bool
-    strict: bool
-    audit_enabled: bool
-    audit_entries: int
-
-
-# Base overhead per FrozenFluentError object (dataclass, slots, references).
-# Dynamic weight calculation adds actual string lengths on top of this.
-_ERROR_BASE_OVERHEAD: int = 100
-
-# Maximum number of errors allowed per cache entry.
-# Prevents memory exhaustion from pathological cases where resolution produces
-# many errors (e.g., cyclic references, deeply nested validation failures).
-_DEFAULT_MAX_ERRORS_PER_ENTRY: int = 50
-
-
-def _estimate_error_weight(error: FrozenFluentError) -> int:
-    """Estimate memory weight of a FrozenFluentError.
-
-    Computes actual weight based on error content rather than using a static
-    estimate. This provides accurate memory budget enforcement for financial
-    applications where complex errors with detailed diagnostics may exceed
-    simple estimates.
-
-    Args:
-        error: FrozenFluentError to estimate
-
-    Returns:
-        Estimated byte weight of the error
-    """
-    weight = _ERROR_BASE_OVERHEAD + len(error.message)
-
-    if error.diagnostic is not None:
-        diag = error.diagnostic
-        weight += len(diag.message)
-        # Optional string fields
-        for attr in (
-            diag.hint,
-            diag.help_url,
-            diag.function_name,
-            diag.argument_name,
-            diag.expected_type,
-            diag.received_type,
-            diag.ftl_location,
-        ):
-            if attr is not None:
-                weight += len(attr)
-        # Resolution path
-        if diag.resolution_path is not None:
-            for path_element in diag.resolution_path:
-                weight += len(path_element)
-
-    if error.context is not None:
-        ctx = error.context
-        weight += len(ctx.input_value)
-        weight += len(ctx.locale_code)
-        weight += len(ctx.parse_type)
-        weight += len(ctx.fallback_value)
-
-    return weight
-
-# Type alias for hashable values produced by _make_hashable().
-# Recursive definition: primitives plus tuple/frozenset of self.
-#
-# Type-Tagging: _make_hashable never returns primitive types (int, bool, Decimal,
-# datetime, date, FluentNumber) directly. Every non-string, non-None value is
-# converted to a type-tagged tuple: e.g., 1 -> ("__int__", 1), True -> ("__bool__",
-# True), Decimal("1.5") -> ("__decimal__", "1.5"). These primitives appear in the
-# union because the tagged tuples contain them as second/subsequent elements, and
-# HashableValue is recursive — tuple["HashableValue", ...] must accept int, bool, etc.
-# as inner elements. str and None are the only types returned directly (as-is).
-#
-# Collision Prevention Rationale:
-#   Python's hash equality means hash(1) == hash(True), causing cache collisions
-#   when these values produce different formatted outputs.
-#   To prevent this, _make_hashable() returns type-tagged tuples for bool/int:
-#   - True  -> ("__bool__", True)
-#   - 1     -> ("__int__", 1)
-#   - Decimal("1") -> ("__decimal__", "1")
-#   These are distinct cache keys despite Python's hash equality.
-type HashableValue = (
-    str
-    | int
-    | bool
-    | Decimal
-    | datetime
-    | date
-    | FluentNumber
-    | None
-    | tuple["HashableValue", ...]
-    | frozenset["HashableValue"]
-)
-
-# Internal type alias for cache keys (prefixed with _ per naming convention)
-# 5-tuple: (message_id, args_tuple, attribute, locale_code, use_isolating)
-type _CacheKey = tuple[str, tuple[tuple[str, HashableValue], ...], str | None, str, bool]
-
-# Internal type alias for cache entry values returned by IntegrityCacheEntry.as_result()
-type _CacheValue = tuple[str, tuple[FrozenFluentError, ...]]
-
-
-@dataclass(frozen=True, slots=True)
-class IntegrityCacheEntry:
-    """Immutable cache entry with integrity metadata.
-
-    Each entry contains the formatted result, any errors, and two BLAKE2b-128
-    hashes: a content-only hash and a full checksum covering content + metadata.
-    Both enable detection of memory corruption, hardware faults, or tampering.
-
-    Attributes:
-        formatted: Formatted message string
-        errors: Tuple of FrozenFluentError instances (immutable)
-        checksum: BLAKE2b-128 hash of (formatted, errors, created_at, sequence, key_hash)
-        created_at: Monotonic timestamp when entry was created (time.monotonic())
-        sequence: Monotonically increasing sequence number for audit trail
-        key_hash: BLAKE2b-8 hash of the cache key computed at put() time. Included
-            in the checksum to make the entry tamper-evident: the key_hash field cannot
-            be altered without invalidating the checksum. IntegrityCache.get() verifies
-            entry.key_hash matches the lookup key's hash (key confusion detection).
-        content_hash: BLAKE2b-128 hash of (formatted, errors) only. Computed once
-            at construction via __post_init__; not part of the constructor signature.
-            Used for idempotent write detection without recomputation. Intentionally
-            key-agnostic: same content under any key has the same content_hash, which
-            is correct for the thundering-herd idempotency check in write_once mode.
-    """
-
-    formatted: str
-    errors: tuple[FrozenFluentError, ...]
-    checksum: bytes
-    created_at: float
-    sequence: int
-    key_hash: bytes
-    # Computed once from (formatted, errors) at construction; not an __init__ parameter.
-    # Stored to avoid BLAKE2b recomputation on every put() idempotency check.
-    # Uses object.__setattr__ because frozen=True prevents normal assignment in __post_init__.
-    content_hash: bytes = field(init=False, repr=False, compare=False, hash=False)
-
-    def __post_init__(self) -> None:
-        """Compute and store content_hash after field initialization."""
-        object.__setattr__(
-            self, "content_hash", self._compute_content_hash(self.formatted, self.errors)
-        )
-
-    @classmethod
-    def create(
-        cls,
-        formatted: str,
-        errors: tuple[FrozenFluentError, ...],
-        sequence: int,
-        key_hash: bytes,
-    ) -> IntegrityCacheEntry:
-        """Create entry with computed checksum.
-
-        Factory method that computes the BLAKE2b-128 checksum from the content
-        and creates an immutable entry with the current monotonic timestamp.
-
-        Args:
-            formatted: Formatted message string
-            errors: Tuple of FrozenFluentError instances
-            sequence: Sequence number for audit trail
-            key_hash: BLAKE2b-8 hash of the cache key (from IntegrityCache._compute_key_hash).
-                Binds the entry to its storage position for key confusion detection.
-
-        Returns:
-            New IntegrityCacheEntry with computed checksum and content_hash
-        """
-        # Capture timestamp BEFORE computing checksum to ensure consistency
-        created_at = time.monotonic()
-        checksum = cls._compute_checksum(formatted, errors, created_at, sequence, key_hash)
-        return cls(
-            formatted=formatted,
-            errors=errors,
-            checksum=checksum,
-            created_at=created_at,
-            sequence=sequence,
-            key_hash=key_hash,
-        )
-
-    @staticmethod
-    def _feed_errors(h: hashlib.blake2b, errors: tuple[FrozenFluentError, ...]) -> None:
-        """Feed error sequence into hasher via content_hash.
-
-        Shared by both _compute_checksum and _compute_content_hash to eliminate
-        duplicated hashing logic. FrozenFluentError is @final and always carries
-        a content_hash (bytes), so direct attribute access is safe and correct.
-        The b"\\x01" type marker provides structural disambiguation between the
-        count field and each hash entry.
-
-        Args:
-            h: Active BLAKE2b hasher to update in-place
-            errors: Tuple of errors to include in hash
-        """
-        h.update(len(errors).to_bytes(4, "big"))
-        for error in errors:
-            # FrozenFluentError is @final; content_hash is always a bytes field.
-            # Accessing it directly enforces the type contract and eliminates dead code.
-            h.update(b"\x01")  # Type marker: content hash follows
-            h.update(error.content_hash)
-
-    @staticmethod
-    def _compute_checksum(
-        formatted: str,
-        errors: tuple[FrozenFluentError, ...],
-        created_at: float,
-        sequence: int,
-        key_hash: bytes,
-    ) -> bytes:
-        """Compute BLAKE2b-128 hash of cache entry (content + metadata + key binding).
-
-        Uses BLAKE2b with 128-bit (16 byte) digest for fast cryptographic
-        hashing. This provides collision resistance sufficient for integrity
-        verification while minimizing memory overhead.
-
-        Hash Composition:
-            All variable-length fields are length-prefixed to prevent collision
-            between semantically different values. The checksum covers ALL entry
-            fields for complete audit trail integrity:
-            1. formatted: Message output (length-prefixed UTF-8)
-            2. errors: Count + each error as (b"\\x01" + content_hash) using
-               FrozenFluentError.content_hash (BLAKE2b-128, always present)
-            3. created_at: Monotonic timestamp (8-byte IEEE 754 double)
-            4. sequence: Entry sequence number (8-byte unsigned big-endian)
-            5. key_hash: Cache key binding (8 bytes, BLAKE2b-8 of storage key).
-               Including key_hash makes it tamper-evident: moving this entry to a
-               different cache slot and altering key_hash would break the checksum.
-
-        Args:
-            formatted: Formatted message string
-            errors: Tuple of errors to include in hash
-            created_at: Monotonic timestamp when entry was created
-            sequence: Sequence number for audit trail
-            key_hash: BLAKE2b-8 hash of cache key (8 bytes, fixed length)
-
-        Returns:
-            16-byte BLAKE2b digest
-        """
-        h = hashlib.blake2b(digest_size=16)
-        # Length-prefix formatted string for collision resistance
-        encoded = formatted.encode("utf-8", errors="surrogatepass")
-        h.update(len(encoded).to_bytes(4, "big"))
-        h.update(encoded)
-        IntegrityCacheEntry._feed_errors(h, errors)
-        # Include metadata fields for complete audit trail integrity
-        h.update(struct.pack(">d", created_at))  # 8-byte big-endian IEEE 754 double
-        h.update(sequence.to_bytes(8, "big"))  # 8-byte unsigned int; sequence is always >= 0
-        h.update(key_hash)  # 8 bytes, fixed length; no length prefix needed
-        return h.digest()
-
-    def verify(self) -> bool:
-        """Verify entry integrity recursively.
-
-        Recomputes both the content hash and the full checksum from current
-        content, then compares against stored values using constant-time
-        comparison (defense against timing attacks). Also recursively verifies
-        each contained error's integrity for defense-in-depth.
-
-        Returns:
-            True if content_hash matches AND checksum matches AND all errors verify
-        """
-        # Verify stored content_hash matches recomputed (catches field-level corruption)
-        expected_content = self._compute_content_hash(self.formatted, self.errors)
-        if not hmac.compare_digest(self.content_hash, expected_content):
-            return False
-        # Verify full checksum (includes metadata and key binding)
-        expected = self._compute_checksum(
-            self.formatted, self.errors, self.created_at, self.sequence, self.key_hash
-        )
-        if not hmac.compare_digest(self.checksum, expected):
-            return False
-        # Recursively verify each error's integrity (defense-in-depth).
-        # FrozenFluentError is @final, so verify_integrity() is always present.
-        # Direct call eliminates the duck-typing overhead and clarifies intent.
-        return all(error.verify_integrity() for error in self.errors)
-
-    def as_result(self) -> _CacheValue:
-        """Extract formatted result and errors as a tuple.
-
-        Returns:
-            (formatted, errors) pair for resolver consumption.
-        """
-        return (self.formatted, self.errors)
-
-    @staticmethod
-    def _compute_content_hash(
-        formatted: str,
-        errors: tuple[FrozenFluentError, ...],
-    ) -> bytes:
-        """Compute BLAKE2b-128 hash of content only (excludes metadata).
-
-        Used for idempotent write detection: two entries with identical content
-        should have identical content hashes regardless of created_at/sequence.
-
-        Hash Composition:
-            1. formatted: Message output (length-prefixed UTF-8)
-            2. errors: Count + each error as (b"\\x01" + content_hash) using
-               FrozenFluentError.content_hash (BLAKE2b-128, always present)
-
-        Args:
-            formatted: Formatted message string
-            errors: Tuple of errors to include in hash
-
-        Returns:
-            16-byte BLAKE2b digest of content only
-        """
-        h = hashlib.blake2b(digest_size=16)
-        # Length-prefix formatted string for collision resistance
-        encoded = formatted.encode("utf-8", errors="surrogatepass")
-        h.update(len(encoded).to_bytes(4, "big"))
-        h.update(encoded)
-        IntegrityCacheEntry._feed_errors(h, errors)
-        return h.digest()
-
-
-@dataclass(frozen=True, slots=True)
-class WriteLogEntry:
-    """Immutable audit log entry for cache operations.
-
-    Records cache operations for post-mortem analysis and debugging.
-    Used when audit logging is enabled on IntegrityCache.
-
-    Attributes:
-        operation: Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION)
-        key_hash: Hash of cache key (privacy-preserving)
-        timestamp: Monotonic timestamp of operation (time.monotonic()).
-            Use for ordering within a single process.
-        sequence: Cache entry sequence number (for PUT operations)
-        checksum_hex: Hex representation of entry checksum (for tracing)
-        wall_time_unix: Unix wall-clock timestamp of operation (time.time()).
-            Use for cross-system incident correlation and persisting audit
-            trails as standalone evidence outside the originating process.
-    """
-
-    operation: str
-    key_hash: str
-    timestamp: float
-    sequence: int
-    checksum_hex: str
-    wall_time_unix: float
-
-
-# Public alias for cache audit-log entries returned by runtime/localization facades.
-CacheAuditLogEntry = WriteLogEntry
 
 
 @final
@@ -492,12 +105,20 @@ class IntegrityCache:
         - Audit log provides complete operation history
 
     Example:
-        >>> cache = IntegrityCache(maxsize=1000, strict=True)
-        >>> cache.put("msg", None, None, "en_US", use_isolating=False, formatted="Hello", errors=())
-        >>> entry = cache.get("msg", None, None, "en_US", use_isolating=False)
-        >>> assert entry is not None
-        >>> assert entry.verify()  # Integrity check
-        >>> result, errors = entry.as_result()
+        >>> cache = IntegrityCache(maxsize=1000, strict=True)  # doctest: +SKIP
+        >>> cache.put(  # doctest: +SKIP
+        ...     "msg",
+        ...     None,
+        ...     None,
+        ...     "en_US",
+        ...     use_isolating=False,
+        ...     formatted="Hello",
+        ...     errors=(),
+        ... )
+        >>> entry = cache.get("msg", None, None, "en_US", use_isolating=False)  # doctest: +SKIP
+        >>> assert entry is not None  # doctest: +SKIP
+        >>> assert entry.verify()  # Integrity check  # doctest: +SKIP
+        >>> result, errors = entry.as_result()  # doctest: +SKIP
     """
 
     __slots__ = (
@@ -912,208 +533,18 @@ class IntegrityCache:
         # deque with maxlen provides automatic O(1) eviction of oldest entries
         self._audit_log.append(log_entry)
 
-    # Maximum nodes traversed during _make_hashable to prevent exponential
-    # expansion of DAG structures with shared references. A 25-level binary
-    # DAG has only 25 nodes but expands to 2^25 during tree flattening.
-    # 10,000 nodes is generous for legitimate use while blocking abuse.
-    _MAX_HASHABLE_NODES: int = 10_000
+    # Bound recursive cache-key normalization to prevent DAG expansion abuse.
+    _MAX_HASHABLE_NODES: int = HASHABLE_NODE_BUDGET
 
     @staticmethod
-    def _make_hashable(
-        value: object, depth: int = MAX_DEPTH
-    ) -> HashableValue:
-        """Convert potentially unhashable value to hashable equivalent.
-
-        Converts:
-            - list -> ("__list__", tuple) - type-tagged for collision prevention
-            - tuple -> ("__tuple__", tuple) - type-tagged for collision prevention
-            - dict -> tuple of sorted key-value tuples (recursively)
-            - set -> frozenset (recursively)
-            - Decimal -> ("__decimal__", str) - str preserves scale for CLDR rules
-            - datetime -> ("__datetime__", isoformat, tzinfo_str) - includes timezone
-            - date -> ("__date__", isoformat) - no timezone
-            - FluentNumber -> type-tagged with underlying type info
-            - Mapping ABC -> tuple of sorted key-value tuples (for ChainMap, etc.)
-            - Sequence ABC -> ("__seq__", tuple) - for UserList, etc.
-            - Known primitive types -> type-tagged tuples
-
-        Type-Tagging Rationale:
-            Python's hash equality creates collision risk:
-            - hash(1) == hash(True)
-            - Decimal("1.0") == Decimal("1") but produce different plural forms
-            - datetime objects at same UTC instant with different tzinfo are equal
-              but format to different local time strings
-            - list vs tuple: str([1,2]) != str((1,2)) but would hash same
-            Type-tagging creates distinct cache keys for semantically different values.
-
-        Depth Protection:
-            Uses explicit depth tracking consistent with codebase pattern
-            (parser, resolver, serializer all use MAX_DEPTH=100). Raises
-            TypeError when depth is exhausted, which is caught by _make_key
-            and results in graceful cache bypass.
-
-        Node Budget Protection:
-            An integer counter in the enclosing scope, mutated by ``_go`` via
-            ``nonlocal``, tracks total nodes visited across all recursive calls.
-            This prevents exponential expansion of DAG structures where shared
-            references are traversed independently (e.g., l=[l,l] repeated 25
-            times creates 2^25 tree traversal despite only 25 depth levels).
-            The counter is fully encapsulated inside the method body and is not
-            part of the public signature.
-
-        Args:
-            value: Value to convert (typically FluentValue or nested collection)
-            depth: Remaining recursion depth (default: MAX_DEPTH)
-
-        Returns:
-            Hashable equivalent of the value
-
-        Raises:
-            TypeError: If depth limit exceeded, node budget exceeded, or unknown type
-        """
-        # Node budget counter shared across all recursive calls via closure.
-        # nonlocal allows _go to mutate _node_count in the enclosing _make_hashable scope.
-        _node_count: int = 0
-
-        def _go(v: object, d: int) -> HashableValue:
-            nonlocal _node_count
-            _node_count += 1
-            if _node_count > IntegrityCache._MAX_HASHABLE_NODES:
-                msg = (
-                    "Node budget exceeded in cache key conversion "
-                    "(possible DAG expansion attack)"
-                )
-                raise TypeError(msg)
-            if d <= 0:
-                msg = "Maximum nesting depth exceeded in cache key conversion"
-                raise TypeError(msg)
-
-            def _recurse(x: object) -> HashableValue:
-                return _go(x, d - 1)
-
-            match v:
-                # str and None: return as-is. Must check str before Sequence (str is Sequence).
-                case str() | None:
-                    return v
-                # Type-tag list and tuple distinctly: str([1,2])="[1, 2]" vs str((1,2))="(1, 2)"
-                case list():
-                    return (
-                        "__list__",
-                        tuple(_recurse(i) for i in v),
-                    )
-                case tuple():
-                    return (
-                        "__tuple__",
-                        tuple(_recurse(i) for i in v),
-                    )
-                case dict():
-                    # Type-tag dict to distinguish from Mapping ABC (e.g., ChainMap).
-                    # str(dict({"a": 1})) = "{'a': 1}" vs str(ChainMap({"a": 1})) differs.
-                    # Both must produce distinct cache keys since formatting differs.
-                    return (
-                        "__dict__",
-                        tuple(
-                            sorted(
-                                (k, _recurse(val)) for k, val in v.items()
-                            )
-                        ),
-                    )
-                case set():
-                    # Convert mutable set to immutable frozenset for hashability.
-                    # Tag distinguishes from frozenset since str(set) != str(frozenset).
-                    return (
-                        "__set__",
-                        frozenset(_recurse(i) for i in v),
-                    )
-                case frozenset():
-                    # Explicit frozenset case - already hashable but tag for type distinction.
-                    # str(frozenset({1})) = "frozenset({1})" vs str({1}) = "{1}"
-                    return (
-                        "__frozenset__",
-                        frozenset(_recurse(i) for i in v),
-                    )
-                # Type-tagging for collision prevention: bool MUST be checked before int
-                # because bool is a subclass of int in Python. Without separate cases,
-                # True and 1 would hash-collide despite producing different formatted output.
-                case bool():
-                    return ("__bool__", v)
-                case int():
-                    return ("__int__", v)
-                # Decimal: use str() to preserve scale (Decimal("1.0") vs Decimal("1"))
-                # CLDR plural rules use visible fraction digits (v operand) which differs
-                case Decimal():
-                    # NaN normalization: Decimal("NaN").is_nan() for IEEE 754 compliance.
-                    # Same rationale as float NaN - prevents cache pollution.
-                    if v.is_nan():
-                        return ("__decimal__", "__NaN__")
-                    return ("__decimal__", str(v))
-                case datetime():
-                    # Include timezone info to distinguish same-instant different-offset datetimes.
-                    # Two datetimes representing the same UTC instant but with different tzinfo
-                    # compare equal, but they format to different local time strings.
-                    tz_key = str(v.tzinfo) if v.tzinfo else "__naive__"
-                    return ("__datetime__", v.isoformat(), tz_key)
-                case date():
-                    # date has no timezone, isoformat is sufficient for unique key
-                    return ("__date__", v.isoformat())
-                # FluentNumber: type-tag with underlying value type for financial precision
-                # Recursively normalize inner value to handle Decimal NaN correctly.
-                # Without this, FluentNumber(value=Decimal('NaN')...) creates unretrievable keys.
-                case FluentNumber():
-                    return (
-                        "__fluentnumber__",
-                        type(v.value).__name__,
-                        _recurse(v.value),
-                        v.formatted,
-                        v.precision,
-                    )
-                case _:
-                    # Handle Mapping and Sequence ABCs for types like ChainMap, UserList.
-                    # This fallback catches any Mapping/Sequence not matched above.
-                    # Must be after specific type checks (dict, list, tuple, str).
-                    if isinstance(v, Mapping):
-                        # Type-tag Mapping ABC to distinguish from dict.
-                        return (
-                            "__mapping__",
-                            tuple(
-                                sorted(
-                                    (k, _recurse(val))
-                                    for k, val in v.items()
-                                )
-                            ),
-                        )
-                    if isinstance(v, Sequence):
-                        # Generic Sequence (UserList, etc.) - tag distinctly from list/tuple
-                        return (
-                            "__seq__",
-                            tuple(_recurse(i) for i in v),
-                        )
-                    msg = f"Unknown type in cache key: {type(v).__name__}"
-                    raise TypeError(msg)
-
-        return _go(value, depth)
+    def _make_hashable(value: object, depth: int = MAX_DEPTH) -> HashableValue:
+        """Convert potentially unhashable cache arguments into a stable hashable form."""
+        return make_hashable(value, depth=depth)
 
     @staticmethod
     def _compute_key_hash(key: _CacheKey) -> bytes:
-        """Compute BLAKE2b-8 hash of a cache key for entry binding.
-
-        Returns an 8-byte digest used to bind an IntegrityCacheEntry to its
-        storage position. Called by put() to compute the key_hash stored in the
-        entry, and by get() to verify the stored key_hash matches the lookup key.
-
-        8-byte (64-bit) digest provides sufficient collision resistance for
-        integrity binding while keeping per-entry memory overhead minimal.
-
-        Args:
-            key: Cache key tuple (message_id, args_tuple, attribute, locale_code, use_isolating)
-
-        Returns:
-            8-byte BLAKE2b digest
-        """
-        return hashlib.blake2b(
-            str(key).encode("utf-8", errors="surrogatepass"),
-            digest_size=8,
-        ).digest()
+        """Compute the 8-byte key binding used to detect cache slot confusion."""
+        return compute_key_hash(key)
 
     @staticmethod
     def _make_key(
@@ -1124,33 +555,14 @@ class IntegrityCache:
         *,
         use_isolating: bool,
     ) -> _CacheKey | None:
-        """Create immutable cache key from arguments.
-
-        Converts unhashable types (lists, dicts, sets) to hashable equivalents.
-
-        Args:
-            message_id: Message identifier
-            args: Message arguments (may contain unhashable values)
-            attribute: Attribute name
-            locale_code: Locale code
-            use_isolating: Whether Unicode isolation marks are used
-
-        Returns:
-            Immutable cache key tuple, or None if conversion fails
-        """
-        if args is None:
-            args_tuple: tuple[tuple[str, HashableValue], ...] = ()
-        else:
-            try:
-                items: list[tuple[str, HashableValue]] = []
-                for k, v in args.items():
-                    items.append((k, IntegrityCache._make_hashable(v)))
-                args_tuple = tuple(sorted(items))
-                hash(args_tuple)
-            except (TypeError, RecursionError):
-                return None
-
-        return (message_id, args_tuple, attribute, locale_code, use_isolating)
+        """Create the immutable lookup key for a formatting request."""
+        return make_key(
+            message_id,
+            args,
+            attribute,
+            locale_code,
+            use_isolating=use_isolating,
+        )
 
     def __len__(self) -> int:
         """Get current cache size. Thread-safe."""

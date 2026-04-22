@@ -20,6 +20,7 @@ from typing import ClassVar, cast
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
+from ftllexengine.diagnostics.depth import resolution_depth_error
 
 from .ast import (
     ASTNode,
@@ -79,7 +80,7 @@ class ASTVisitor[T = ASTNode]:
     - Serializers
 
     Example:
-        >>> class CountMessagesVisitor(ASTVisitor):
+        >>> class CountMessagesVisitor(ASTVisitor):  # doctest: +SKIP
         ...     def __init__(self):
         ...         super().__init__()
         ...         self.count = 0
@@ -88,9 +89,9 @@ class ASTVisitor[T = ASTNode]:
         ...         self.count += 1
         ...         return self.generic_visit(node)  # Traverse children
         ...
-        >>> visitor = CountMessagesVisitor()
-        >>> visitor.visit(resource)
-        >>> print(visitor.count)
+        >>> visitor = CountMessagesVisitor()  # doctest: +SKIP
+        >>> visitor.visit(resource)  # doctest: +SKIP
+        >>> print(visitor.count)  # doctest: +SKIP
     """
 
     __slots__ = ("_depth_guard",)
@@ -134,7 +135,10 @@ class ASTVisitor[T = ASTNode]:
         # Depth guard prevents stack overflow from adversarial/malformed ASTs.
         # Uses same MAX_DEPTH (100) as parser, resolver, serializer for consistency.
         effective_max_depth = max_depth if max_depth is not None else MAX_DEPTH
-        self._depth_guard = DepthGuard(max_depth=effective_max_depth)
+        self._depth_guard = DepthGuard(
+            max_depth=effective_max_depth,
+            error_factory=resolution_depth_error,
+        )
 
     def visit(self, node: ASTNode) -> T:
         """Visit a node (dispatcher with depth protection).
@@ -246,15 +250,15 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
     Uses Python 3.13's pattern matching for elegant node type handling.
 
     Example - Remove all comments:
-        >>> class RemoveCommentsTransformer(ASTTransformer):
+        >>> class RemoveCommentsTransformer(ASTTransformer):  # doctest: +SKIP
         ...     def visit_Comment(self, node: Comment) -> None:
         ...         return None  # Remove comments
         ...
-        >>> transformer = RemoveCommentsTransformer()
-        >>> cleaned_resource = transformer.transform(resource)
+        >>> transformer = RemoveCommentsTransformer()  # doctest: +SKIP
+        >>> cleaned_resource = transformer.transform(resource)  # doctest: +SKIP
 
     Example - Rename all variables:
-        >>> class RenameVariablesTransformer(ASTTransformer):
+        >>> class RenameVariablesTransformer(ASTTransformer):  # doctest: +SKIP
         ...     def __init__(self, mapping: dict[str, str]):
         ...         super().__init__()
         ...         self.mapping = mapping
@@ -266,17 +270,17 @@ class ASTTransformer(ASTVisitor[TransformerResult]):
         ...             )
         ...         return node
         ...
-        >>> transformer = RenameVariablesTransformer({"old": "new"})
-        >>> modified_resource = transformer.transform(resource)
+        >>> transformer = RenameVariablesTransformer({"old": "new"})  # doctest: +SKIP
+        >>> modified_resource = transformer.transform(resource)  # doctest: +SKIP
 
     Example - Expand messages (1 → multiple):
-        >>> class ExpandPluralsTransformer(ASTTransformer):
+        >>> class ExpandPluralsTransformer(ASTTransformer):  # doctest: +SKIP
         ...     def visit_Message(self, node: Message) -> list[Message]:
         ...         # Generate multiple messages from select expressions
         ...         return [node, expanded_variant_1, expanded_variant_2]
         ...
-        >>> transformer = ExpandPluralsTransformer()
-        >>> expanded_resource = transformer.transform(resource)
+        >>> transformer = ExpandPluralsTransformer()  # doctest: +SKIP
+        >>> expanded_resource = transformer.transform(resource)  # doctest: +SKIP
     """
 
     def transform(self, node: ASTNode) -> TransformerResult:

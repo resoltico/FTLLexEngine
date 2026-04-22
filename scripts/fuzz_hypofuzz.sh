@@ -216,7 +216,7 @@ _run_with_heartbeat() {
 show_help() {
     local project_name="Project"
     if [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
-        project_name=$(python -c 'import sys; sys.path.append(sys.argv[1]); import tomllib; print(tomllib.load(open(sys.argv[2], "rb")).get("project", {}).get("name", "Project").capitalize())' "$PROJECT_ROOT" "$PROJECT_ROOT/pyproject.toml" 2>/dev/null || echo "Project")
+        project_name=$(python -c 'import pathlib, tomllib; pyproject = pathlib.Path(__import__("sys").argv[1]); print(tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {}).get("name", "Project").capitalize())' "$PROJECT_ROOT/pyproject.toml" 2>/dev/null || echo "Project")
     fi
 
     cat << HELPEOF

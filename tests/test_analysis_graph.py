@@ -16,7 +16,9 @@ from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
 import ftllexengine.analysis.graph as _graph_mod
+import ftllexengine.core.reference_graph as _core_graph_mod
 from ftllexengine.analysis.graph import (
+    _canonicalize_cycle,
     detect_cycles,
     entry_dependency_set,
     make_cycle_key,
@@ -133,6 +135,14 @@ class TestEntryDependencySet:
 
 class TestMakeCycleKey:
     """Tests for make_cycle_key canonical display format."""
+
+    def test_private_canonicalize_cycle_wrapper(self) -> None:
+        """Compatibility wrapper delegates to the canonical tuple helper."""
+        assert _canonicalize_cycle(["term:b", "term:a", "term:b"]) == (
+            "term:a",
+            "term:b",
+            "term:a",
+        )
 
     def test_empty_cycle_yields_empty_string(self) -> None:
         """Empty input produces empty key."""
@@ -559,3 +569,17 @@ class TestDetectCyclesMonkeypatched:
         # Function must not raise and must return a valid list
         assert isinstance(cycles, list)
         assert all(isinstance(c, list) for c in cycles)
+
+    def test_monkeypatched_limits_do_not_leak_into_core_module(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Compatibility wrapper restores core graph limits after monkeypatch runs."""
+        original_max_cycles = _core_graph_mod.MAX_DETECTED_CYCLES
+        original_max_stack = _core_graph_mod.MAX_GRAPH_DFS_STACK
+        monkeypatch.setattr(_graph_mod, "MAX_DETECTED_CYCLES", 1)
+        monkeypatch.setattr(_graph_mod, "MAX_GRAPH_DFS_STACK", 2)
+
+        detect_cycles({"a": {"a"}})
+
+        assert original_max_cycles == _core_graph_mod.MAX_DETECTED_CYCLES
+        assert original_max_stack == _core_graph_mod.MAX_GRAPH_DFS_STACK

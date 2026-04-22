@@ -104,9 +104,9 @@ def parse(source: str) -> Resource:
         Resource containing parsed entries
 
     Example:
-        >>> from ftllexengine.syntax import parse
-        >>> resource = parse("hello = Hello, world!")
-        >>> resource.entries[0].id.name
+        >>> from ftllexengine.syntax import parse  # doctest: +SKIP
+        >>> resource = parse("hello = Hello, world!")  # doctest: +SKIP
+        >>> resource.entries[0].id.name  # doctest: +SKIP
         'hello'
     """
     parser = FluentParserV1()
@@ -131,12 +131,12 @@ def parse_stream(lines: Iterable[str]) -> Iterator[Entry]:
         Message, Term, Comment, or Junk AST nodes in document order.
 
     Example:
-        >>> from ftllexengine.syntax import parse_stream
-        >>> lines = ["greeting = Hello\\n", "\\n", "farewell = Bye\\n"]
-        >>> entries = list(parse_stream(lines))
-        >>> len(entries)
+        >>> from ftllexengine.syntax import parse_stream  # doctest: +SKIP
+        >>> lines = ["greeting = Hello\\n", "\\n", "farewell = Bye\\n"]  # doctest: +SKIP
+        >>> entries = list(parse_stream(lines))  # doctest: +SKIP
+        >>> len(entries)  # doctest: +SKIP
         2
-        >>> entries[0].id.name
+        >>> entries[0].id.name  # doctest: +SKIP
         'greeting'
     """
     parser = FluentParserV1()

@@ -162,6 +162,15 @@ discover_plugins
 # =============================================================================
 
 _find_python313() {
+    # Prefer uv-managed interpreters in the current workspace.
+    if command -v uv &>/dev/null; then
+        local uv_python
+        uv_python=$(uv python find 3.13 2>/dev/null || echo "")
+        if [[ -n "$uv_python" ]] && [[ -x "$uv_python" ]]; then
+            echo "$uv_python"
+            return 0
+        fi
+    fi
     # Prefer pyenv (most reliable on macOS dev machines)
     if command -v pyenv &>/dev/null; then
         local pyenv_root resolved
@@ -181,20 +190,30 @@ _find_python313() {
 }
 
 ensure_atheris_venv() {
+    if [[ -d "$ATHERIS_VENV" ]] && [[ ! -x "$ATHERIS_PYTHON" ]]; then
+        echo -e "${YELLOW}[WARN] .venv-atheris exists but its Python is missing or broken. Recreating...${NC}"
+        rm -rf "$ATHERIS_VENV"
+    fi
+
     # If venv exists and is already Python 3.13, nothing to do.
-    if [[ -f "$ATHERIS_PYTHON" ]]; then
+    if [[ -x "$ATHERIS_PYTHON" ]]; then
         local venv_mm
         venv_mm=$("$ATHERIS_PYTHON" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
         if [[ "$venv_mm" == "3.13" ]]; then
-            return 0
+            if "$ATHERIS_PYTHON" -c "import atheris, ftllexengine, psutil" &>/dev/null; then
+                return 0
+            fi
+            echo -e "${YELLOW}[WARN] .venv-atheris is missing required packages. Recreating...${NC}"
+            rm -rf "$ATHERIS_VENV"
+        else
+            echo -e "${YELLOW}[WARN] .venv-atheris has Python $venv_mm (need 3.13). Recreating...${NC}"
+            rm -rf "$ATHERIS_VENV"
         fi
-        echo -e "${YELLOW}[WARN] .venv-atheris has Python $venv_mm (need 3.13). Recreating...${NC}"
-        rm -rf "$ATHERIS_VENV"
     fi
 
     local python313
     if ! python313=$(_find_python313); then
-        log_error "Python 3.13 not found. Install with: pyenv install 3.13"
+        log_error "Python 3.13 not found. Install it or make it discoverable via uv/python3.13/pyenv."
         exit 1
     fi
 
@@ -409,7 +428,7 @@ AUTO-HEAL:
 
 EXAMPLES:
     ./scripts/fuzz_atheris.sh currency --time 60
-    ./scripts/fuzz_atheris.sh stability --workers 8
+    ./scripts/fuzz_atheris.sh runtime --workers 8
     ./scripts/fuzz_atheris.sh --setup
     ./scripts/fuzz_atheris.sh --minimize currency .fuzz_atheris_corpus/crash_abc123
     ./scripts/fuzz_atheris.sh --replay structured
@@ -499,6 +518,7 @@ run_corpus_health() {
         log_error "Corpus health script not found: $health_script"
         exit 1
     fi
+    run_diagnostics
     echo -e "${BOLD}Checking Corpus Health...${NC}"
     "$ATHERIS_PYTHON" "$health_script"
 }

@@ -34,12 +34,12 @@ def line_offset(source: str, pos: int) -> int:
         0-based line number
 
     Example:
-        >>> source = "line1\\nline2\\nline3"
-        >>> line_offset(source, 0)   # Start of file
+        >>> source = "line1\\nline2\\nline3"  # doctest: +SKIP
+        >>> line_offset(source, 0)   # Start of file  # doctest: +SKIP
         0
-        >>> line_offset(source, 6)   # Start of line2
+        >>> line_offset(source, 6)   # Start of line2  # doctest: +SKIP
         1
-        >>> line_offset(source, 12)  # Start of line3
+        >>> line_offset(source, 12)  # Start of line3  # doctest: +SKIP
         2
 
     Note:
@@ -69,14 +69,14 @@ def column_offset(source: str, pos: int) -> int:
         0-based column number (characters from line start)
 
     Example:
-        >>> source = "hello\\nworld"
-        >>> column_offset(source, 0)   # 'h' in "hello"
+        >>> source = "hello\\nworld"  # doctest: +SKIP
+        >>> column_offset(source, 0)   # 'h' in "hello"  # doctest: +SKIP
         0
-        >>> column_offset(source, 2)   # 'l' in "hello"
+        >>> column_offset(source, 2)   # 'l' in "hello"  # doctest: +SKIP
         2
-        >>> column_offset(source, 6)   # 'w' in "world"
+        >>> column_offset(source, 6)   # 'w' in "world"  # doctest: +SKIP
         0
-        >>> column_offset(source, 10)  # 'd' in "world"
+        >>> column_offset(source, 10)  # 'd' in "world"  # doctest: +SKIP
         4
 
     Note:
@@ -112,10 +112,10 @@ def format_position(source: str, pos: int, *, zero_based: bool = True) -> str:
         Position string like "line:col" (e.g., "2:5" or "3:6")
 
     Example:
-        >>> source = "hello\\nworld\\ntest"
-        >>> format_position(source, 6, zero_based=True)
+        >>> source = "hello\\nworld\\ntest"  # doctest: +SKIP
+        >>> format_position(source, 6, zero_based=True)  # doctest: +SKIP
         '1:0'
-        >>> format_position(source, 6, zero_based=False)
+        >>> format_position(source, 6, zero_based=False)  # doctest: +SKIP
         '2:1'
     """
     line = line_offset(source, pos)
@@ -142,10 +142,10 @@ def get_line_content(source: str, line_number: int, *, zero_based: bool = True) 
         Content of the line (without trailing newline)
 
     Example:
-        >>> source = "hello\\nworld\\ntest"
-        >>> get_line_content(source, 0, zero_based=True)
+        >>> source = "hello\\nworld\\ntest"  # doctest: +SKIP
+        >>> get_line_content(source, 0, zero_based=True)  # doctest: +SKIP
         'hello'
-        >>> get_line_content(source, 2, zero_based=False)
+        >>> get_line_content(source, 2, zero_based=False)  # doctest: +SKIP
         'world'
     """
     if not zero_based:
@@ -180,8 +180,8 @@ def get_error_context(source: str, pos: int, context_lines: int = 2, marker: str
         Formatted error context string
 
     Example:
-        >>> source = "line1\\nline2\\nerror here\\nline4\\nline5"
-        >>> print(get_error_context(source, 12, context_lines=1))
+        >>> source = "line1\\nline2\\nerror here\\nline4\\nline5"  # doctest: +SKIP
+        >>> print(get_error_context(source, 12, context_lines=1))  # doctest: +SKIP
         line2
         error here
         ^

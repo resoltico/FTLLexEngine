@@ -1,154 +1,135 @@
 ---
-afad: "3.1"
-version: "0.107.0"
-domain: contributing
-updated: "2026-03-10"
+afad: "3.5"
+version: "0.163.0"
+domain: CONTRIBUTING
+updated: "2026-04-22"
 route:
-  keywords: [contributing, development, setup, pull request, code style, workflow, pivot]
-  questions: ["how to contribute?", "how to set up development?", "how to submit PR?"]
+  keywords: [contributing, development, uv, lint, test, fuzz, benchmark, release, virtualenv]
+  questions: ["how do I set up development?", "how do I run lint and tests?", "how do I work on fuzzing?", "how do I prepare a release?"]
 ---
 
 # Contributing to FTLLexEngine
 
-## Setup
+**Purpose**: Set up a working development environment and run the same validation paths the repo expects.
+**Prerequisites**: `uv`, Bash 5+, Python 3.13 available locally. Python 3.14 is recommended for forward-compat checks.
 
-FTLLexEngine uses `uv` for ultra-fast, deterministic dependency management. We employ a **Pivot** architecture that isolates your IDE environment from the validation silos.
+## Overview
+
+This repository uses `uv` for dependency management and self-isolating shell scripts for the main quality gates. The root `.venv` is the manual development environment; the scripted gates pivot into versioned environments such as `.venv-3.13`, `.venv-3.14`, and `.venv-atheris` as needed.
+
+The shortest reliable workflow is:
+
+```bash
+uv sync --group dev --group release
+./check.sh
+```
+
+The default test gate enforces **100% line coverage and 100% branch coverage** for `src/ftllexengine`.
+
+## Setup
 
 ```bash
 git clone https://github.com/resoltico/FTLLexEngine.git
-cd ftllexengine
-
-# 1. Setup your "IDE Sanctuary" (.venv)
-# This environment is for your editor, LSP, and manual exploration.
-uv sync --all-groups
-
-# 2. Verify and Initialize Atheris (macOS)
-# This sets up the isolated .venv-fuzzing environment.
-./scripts/check-atheris.sh --install
+cd FTLLexEngine
+uv sync --group dev --group release
+uv sync --group fuzz
 ```
 
----
+Optional environments:
 
-## Environment Hierarchy
+- `PY_VERSION=3.14 ./scripts/lint.sh` and `PY_VERSION=3.14 ./scripts/test.sh` create or reuse `.venv-3.14`.
+- `./scripts/fuzz_atheris.sh --help` bootstraps `.venv-atheris` on demand and requires Python 3.13.
 
-To ensure data integrity and zero "environment stomping," the project is strictly siloed:
+## Daily Workflow
 
-| Environment | Purpose | Managed By |
-|-------------|---------|------------|
-| `.venv` (Root) | **IDE Sanctuary** - Autocomplete, LSP, manual runs. | You (`uv sync`) |
-| `.venv-3.13` | **Validation Silo** - Clean-room lint/test baseline (Python 3.13, declared minimum). | `scripts/lint.sh`, `scripts/test.sh` |
-| `.venv-atheris` | **Atheris Fuzzing** - Python 3.13 venv; active on 3.13 baseline. | `scripts/fuzz_atheris.sh --setup` |
-
----
-
-## Automated Scripts (The Pivot)
-
-All validation scripts are **self-isolating**. They automatically "pivot" into `.venv-3.13`, ensuring a clean, reproducible baseline independent of your IDE venv or Atheris toolchain.
-
-| Script | Purpose | Preferred Command |
-|--------|---------|-------------------|
-| `scripts/lint.sh` | Quality checks (ruff, mypy, pylint) | `./scripts/lint.sh` |
-| `scripts/test.sh` | Test suite with coverage | `./scripts/test.sh` |
-| `scripts/check-atheris.sh` | Atheris/LLVM health check | `./scripts/check-atheris.sh` |
-| `scripts/fuzz_hypofuzz.sh` | Hypothesis/HypoFuzz fuzzing | `./scripts/fuzz_hypofuzz.sh` |
-| `scripts/fuzz_atheris.sh` | Atheris/libFuzzer fuzzing | `./scripts/fuzz_atheris.sh` |
-| `scripts/benchmark.sh` | Performance benchmarks | `./scripts/benchmark.sh` |
-
-**Optimization**: Do not use `uv run --python X.Y` with these scripts. The scripts handle their internally versioned `uv run` pivots silently to avoid noise and environment overlap.
-
----
-
-## Multi-Version Development
-
-Python 3.13 is the declared minimum. Python 3.14 is the current stable target; Python 3.15 is the forward-compatibility target (N+1 policy).
-
-### The Master Control: `PY_VERSION`
-
-The `PY_VERSION` environment variable selects the target Python version. The default is 3.13.
-
-| Task | Command | Target Silo |
-|------|---------|-------------|
-| **Lint (default)** | `./scripts/lint.sh` | `.venv-3.13` |
-| **Lint (3.14 forward-compat)** | `PY_VERSION=3.14 ./scripts/lint.sh` | `.venv-3.14` |
-| **Test (default)** | `./scripts/test.sh` | `.venv-3.13` |
-| **Test (3.14 forward-compat)** | `PY_VERSION=3.14 ./scripts/test.sh` | `.venv-3.14` |
-| **Benchmark (default)** | `./scripts/benchmark.sh` | `.venv-3.13` |
-| **Benchmark (3.14 forward-compat)** | `PY_VERSION=3.14 ./scripts/benchmark.sh` | `.venv-3.14` |
-
-### Why this works
-- **Zero Stomping**: Running 3.14 checks will **never** wipe your 3.13 environment.
-- **Instant Switching**: Switching between 3.13 and 3.14 is instant (no `uv sync` overhead).
-- **Parallel Testing**: You can run 3.13 tests in one terminal and 3.14 tests in another simultaneously.
-
----
-
-## Code Standards
-
-Style:
-- **PEP 8** adherence via Ruff.
-- **100 char** line limit.
-- **Strict Typing**: Type hints are mandatory.
-- **Immutability**: Preference for `frozen=True, slots=True` dataclasses.
-
-```python
-from __future__ import annotations
-from dataclasses import dataclass
-
-@dataclass(frozen=True, slots=True)
-class LocaleContext:
-    """Context-aware locale container."""
-    tag: str
-    is_clobbered: bool = False
-```
-
----
-
-## Testing & Coverage
-
-All logic must be verified via deterministic unit tests and non-deterministic property tests.
+Run the repo gates directly; the scripts manage their own interpreter pivots.
 
 ```bash
-./scripts/test.sh           # Full suite (95%+ requirement)
-./scripts/test.sh --quick   # Fast mode (no coverage)
+./check.sh
 ```
 
-### Property-Based Testing (Hypothesis)
-If you see `HYPOTHESIS DETECTED A LOGIC FLAW`, an edge case has been found.
-1. The failing input is saved to `.hypothesis/examples/`.
-2. Review the `Falsifying example:` output.
-3. Fix the bug and re-run `./scripts/test.sh`.
+Useful variants:
 
----
+- `uv run python scripts/run_examples.py`
+- `PY_VERSION=3.14 ./scripts/lint.sh`
+- `PY_VERSION=3.14 ./scripts/test.sh`
+- `./scripts/benchmark.sh`
+- `./scripts/fuzz_hypofuzz.sh`
+- `./scripts/fuzz_hypofuzz.sh --deep --time 300`
+- `./scripts/fuzz_atheris.sh --list`
+
+## Documentation Work
+
+Markdown changes should stay synchronized with the code and examples they describe.
+
+```bash
+uv run python scripts/validate_docs.py
+uv run python scripts/validate_version.py
+uv run python scripts/run_examples.py
+```
+
+Expectations:
+
+- README and guide Python snippets should run as written.
+- `examples/*.py` should execute cleanly under the dev environment.
+- Source-code docstring transcripts are illustrative API notes, not an executable test suite. Keep runnable examples in Markdown or `examples/`, and mark any source `>>>` transcript with `# doctest: +SKIP`.
+- Reference docs should describe current symbols, not removed or internal machinery.
+
+## Type Checking Examples
+
+The `examples/` directory has its own `mypy.ini` and local stubs.
+
+```bash
+uv run mypy --config-file examples/mypy.ini examples
+```
+
+## Fuzzing
+
+Two fuzzing surfaces are maintained:
+
+- `./scripts/fuzz_hypofuzz.sh` for Hypothesis and HypoFuzz.
+- `./scripts/fuzz_atheris.sh` for native Atheris/libFuzzer targets.
+
+See:
+
+- [docs/FUZZING_GUIDE.md](docs/FUZZING_GUIDE.md)
+- [docs/FUZZING_GUIDE_HYPOFUZZ.md](docs/FUZZING_GUIDE_HYPOFUZZ.md)
+- [docs/FUZZING_GUIDE_ATHERIS.md](docs/FUZZING_GUIDE_ATHERIS.md)
+
+## Benchmarks
+
+```bash
+./scripts/benchmark.sh
+./scripts/benchmark.sh --save baseline
+./scripts/benchmark.sh --compare <baseline-id>
+```
+
+## Releases
+
+Release work goes through a release branch and `gh`-driven verification.
+
+Authoritative procedure:
+
+- [docs/RELEASE_PROTOCOL.md](docs/RELEASE_PROTOCOL.md)
+
+Support scripts:
+
+- `./scripts/publish-github-release-assets.sh`
+- `./scripts/verify-github-release.sh`
 
 ## Pull Requests
 
-### Mandatory Pre-Flight
-Before submitting a PR, ensure both versions pass verification:
+Before opening a PR, make sure the baseline gates pass:
 
 ```bash
-# Verify Baseline (Python 3.13)
-./scripts/lint.sh && ./scripts/test.sh
-
-# Verify Tomorrow (Python 3.15 forward-compat)
-PY_VERSION=3.15 ./scripts/lint.sh && PY_VERSION=3.15 ./scripts/test.sh
+./check.sh
 ```
 
-### CI Requirements
-- Parallel matrix testing on 3.13 and 3.14.
-- Coverage >= 95.00%.
-- Strict type checking (mypy) on all targets.
-- Successful documentation validation (`scripts/validate_docs.py`).
+`./scripts/test.sh` is expected to fail on any coverage regression below the repository's 100% line-and-branch baseline.
 
----
-
-## Versioning
-
-**Single Source of Truth**: The version is managed exclusively in `pyproject.toml`. Do not manually edit `__version__` in `src/`. It is auto-derived from package metadata at runtime to prevent version drift.
-
-Standard workflow:
-1. Update version in pyproject.toml
-2. Sync to refresh package metadata
+When the change touches runtime behavior or supported Python versions, also run the forward-compat pass:
 
 ```bash
-uv sync
+PY_VERSION=3.14 ./scripts/lint.sh
+PY_VERSION=3.14 ./scripts/test.sh
 ```

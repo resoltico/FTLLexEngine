@@ -10,6 +10,7 @@ Select expression edge cases and error paths live in test_resolver_selection.py.
 
 from __future__ import annotations
 
+import importlib
 from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import patch
@@ -475,6 +476,15 @@ class TestFluentResolverIntegration:
 class TestResolverModuleExports:
     """Test resolver module export boundaries."""
 
+    @staticmethod
+    def _import_fluent_value_from_resolver() -> object:
+        module = importlib.import_module("ftllexengine.runtime.resolver")
+        try:
+            return module.__dict__["FluentValue"]
+        except KeyError as exc:
+            msg = "cannot import name 'FluentValue'"
+            raise ImportError(msg) from exc
+
     def test_fluent_value_available_from_function_bridge(self) -> None:
         """FluentValue is available from function_bridge module."""
         from ftllexengine.runtime.function_bridge import (
@@ -486,11 +496,7 @@ class TestResolverModuleExports:
     def test_importing_fluent_value_from_resolver_fails(self) -> None:
         """FluentValue is not importable from resolver module."""
         with pytest.raises(ImportError, match="cannot import name 'FluentValue'"):
-            # pylint: disable=unused-import
-            # Intentional ImportError test — FluentValue removed from resolver exports.
-            from ftllexengine.runtime.resolver import (  # noqa: F401 - lazy import and re-export
-                FluentValue,
-            )
+            self._import_fluent_value_from_resolver()
 
     def test_fluent_resolver_still_exported_from_resolver(self) -> None:
         """FluentResolver is exported from resolver module."""
@@ -711,7 +717,7 @@ class TestResolverIntegrationEdgeCases:
             def __str__(self) -> str:
                 return "custom"
 
-        assert resolver._format_value(CustomObj()) == "custom"  # type: ignore[arg-type]
+        assert resolver._format_value(CustomObj()) == "custom"
 
 
 # ============================================================================

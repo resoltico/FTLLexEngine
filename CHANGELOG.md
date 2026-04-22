@@ -1,8 +1,8 @@
 ---
-afad: "3.3"
-version: "0.162.0"
+afad: "3.5"
+version: "0.163.0"
 domain: CHANGELOG
-updated: "2026-03-24"
+updated: "2026-04-22"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,75 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.163.0] - 2026-04-22
+
+### Added
+
+- **`docs/RELEASE_PROTOCOL.md` maintainer runbook.** Release operations are now documented as a
+  `gh`-first branch-protected procedure with clean-worktree guidance for dirty primary checkouts,
+  explicit PR scope checks, merged-`main` verification before tagging, remote tag verification,
+  workflow-dispatch reruns against an existing tag, GitHub Release inspection, and PyPI
+  verification.
+- **`./check.sh`, `scripts/run_examples.py`, and architecture regression tests.** The repo
+  now has a single top-level verification entrypoint that runs version/docs validation, shipped
+  examples, lint, tests, HypoFuzz preflight, and bounded live Atheris smoke checks. The new
+  architecture tests also lock in layer direction and reject `sys.path`/`PYTHONPATH=src`
+  import hacks from code and public docs.
+
+### Changed
+
+- **Oversized runtime, introspection, and parsing modules are now split by responsibility, with regression guards to keep them that way.** `runtime.bundle`, `runtime.resolver`, `runtime.cache`, `runtime.locale_context`, `introspection.iso`, `localization.orchestrator`, `parsing.currency`, `parsing.dates`, and `syntax.serializer` now delegate focused responsibilities into dedicated internal modules instead of accumulating more behavior in single god-files, and `tests/test_architecture_contract.py` now enforces module line budgets, rejects tracked generated `,cover` artifacts, and blocks version-provenance annotations outside `CHANGELOG.md`.
+- **Public examples now model explicit ownership instead of `threading.local()` tricks.** The thread-safety example switched its per-worker customization path to worker-owned bundles, the example mypy config no longer depends on a local threading stub overlay, and the example type-checking guide now documents the simpler strict-check workflow.
+- **Fluent parser grammar internals are now split by responsibility instead of living in one monolith.**
+  `syntax.parser.rules` is now a thin aggregated surface over focused `context`,
+  `patterns`, `expressions`, and `entries` modules, so pattern continuation logic,
+  inline/select expression parsing, and entry parsing can evolve independently
+  without collapsing back into a single 2,100-line implementation bucket.
+- **Release automation hardened around pinned actions and explicit handoff checks.** The `Test`
+  and `Build and Publish` workflows now pin GitHub Actions by commit SHA, add concurrency and job
+  timeouts, verify shell syntax for all `scripts/*.sh`, and allow targeted `workflow_dispatch`
+  reruns against an explicit `release_tag` instead of relying on ambient branch state.
+- **Coverage policy is now explicitly enforced at 100% line and 100% branch coverage.** The
+  `pytest-cov` project configuration and `./scripts/test.sh` default gate now both require
+  `100.0%`, and the contributor/testing docs state the same baseline instead of leaving the
+  stricter standard implicit.
+- **Fuzz-only toolchains are now outside the default gate surface.** `hypofuzz` moved out of the
+  default `dev` group into an explicit `fuzz` group, and GitHub Actions now sync only the
+  dependency groups required for routine lint, test, build, and release work. Atheris remains an
+  opt-in specialist toolchain instead of a release prerequisite.
+- **Published GitHub Releases now carry the Python distribution artifacts.** The publish workflow
+  now attaches `ftllexengine-X.Y.Z.tar.gz`, `ftllexengine-X.Y.Z-py3-none-any.whl`, and
+  `ftllexengine-X.Y.Z.sha256` to the GitHub Release and verifies that handoff directly with `gh`
+  before treating the release as complete.
+- **Maintainer docs now assume protected `main` and automatic branch cleanup.** `README.md`,
+  `CONTRIBUTING.md`, and the docs index now point to the release protocol under `docs/` so the
+  documented workflow matches the repository-side `main` protection and
+  `delete_branch_on_merge` posture.
+- **Semantic localization aliases now live at the core layer and are exported from the root facade.**
+  `LocaleCode`, `MessageId`, `ResourceId`, and `FTLSource` now resolve from `ftllexengine` and
+  share a lower-layer implementation home, eliminating upward imports from core/runtime modules
+  and aligning public docs with stable package facades instead of helper submodules.
+- **Reference extraction and dependency-graph helpers were split into lower, shared modules.**
+  AST-only reference extraction now lives under `ftllexengine.syntax`, dependency-graph
+  algorithms now live under `ftllexengine.core`, and `validation.resource`/`introspection.message`
+  were trimmed to orchestration-focused roles instead of carrying unrelated graph logic.
+- **Repo tooling now runs against the installed package surface instead of `src` path injection.**
+  Documentation validation, example execution, lint, tests, and Atheris corpus health all clear
+  `PYTHONPATH`/`sys.path` overrides so quality gates exercise the same import contract users get.
+- **Atheris corpus health now bootstraps its dedicated environment on demand.** The
+  `./scripts/fuzz_atheris.sh --corpus` path now creates `.venv-atheris` before invoking the
+  health checker, so fresh machines and `./check.sh` no longer depend on a pre-existing
+  Atheris venv.
+- **Public examples and parser-focused tests now describe current behavior instead of stale cleanup notes or old line coordinates.**
+  The shipped transformer example no longer embeds inline `TODO` markers, parser coverage tests
+  now describe behavior rather than historical line numbers from the pre-split parser, and the
+  docs/tooling regression suite enforces that public docs/examples stay free of `TODO`/`FIXME`/`HACK`
+  markers.
+- **`scripts/validate_version.py` now uses modern typed dataclasses and accurate check descriptions.**
+  The result model no longer relies on `NamedTuple` plus `type: ignore[type-arg]` workarounds,
+  configurable footer checks are documented alongside frontmatter checks, and display-name handling
+  now comes from explicit configuration instead of a misleading `capitalize()` fallback.
 
 ## [0.162.0] - 2026-03-24
 
@@ -6820,3 +6889,6 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0
+[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...HEAD
+[0.163.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.162.0...v0.163.0
+[0.162.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.161.0...v0.162.0

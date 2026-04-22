@@ -6,13 +6,9 @@ Property-based testing with Hypothesis for budget enforcement invariants.
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
-
-sys.path.insert(0, "src")
 
 from ftllexengine.constants import DEFAULT_MAX_EXPANSION_SIZE
 from ftllexengine.diagnostics import DiagnosticCode

@@ -1,225 +1,40 @@
 ---
-afad: "3.3"
-version: "0.153.0"
-domain: fuzzing
-updated: "2026-03-13"
+afad: "3.5"
+version: "0.163.0"
+domain: FUZZING
+updated: "2026-04-22"
 route:
-  keywords: [fuzzing, testing, hypothesis, hypofuzz, atheris, property-based, coverage, crash, security, metrics, workers]
-  questions: ["how to run fuzzing?", "how to fuzz the parser?", "how to find bugs with fuzzing?", "which fuzzer to use?", "how do workers affect metrics?"]
+  keywords: [fuzzing, HypoFuzz, Atheris, Hypothesis, fuzz_hypofuzz.sh, fuzz_atheris.sh]
+  questions: ["which fuzzer should I use?", "how do I start fuzzing?", "how do I reproduce a fuzz failure?"]
 ---
 
 # Fuzzing Guide
 
-**Purpose**: Overview of FTLLexEngine's fuzzing infrastructure.
-**Prerequisites**: Basic pytest knowledge.
+**Purpose**: Choose the right fuzzing entry point and run it with the repo-supported scripts.
+**Prerequisites**: Dev environment synced with `uv`; Python 3.13 available locally for Atheris.
 
-FTLLexEngine uses two complementary fuzzing systems:
+## Overview
 
-| System | Script | Best For |
-|--------|--------|----------|
-| **HypoFuzz** (Hypothesis) | `fuzz_hypofuzz.sh` | Logic errors, property violations, edge cases |
-| **Atheris** (libFuzzer) | `fuzz_atheris.sh` | Crashes, security issues, memory safety |
+Use:
 
-**Detailed Guides:**
-- [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md) - Hypothesis/HypoFuzz property testing
-- [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md) - Native fuzzing with Atheris
+- `./scripts/fuzz_hypofuzz.sh` for Hypothesis and HypoFuzz property exploration.
+- `./scripts/fuzz_atheris.sh` for native Atheris/libFuzzer targets.
 
----
-
-## Quick Start (30 Seconds)
+## Fast Start
 
 ```bash
-# Quick property test check (recommended before committing)
 ./scripts/fuzz_hypofuzz.sh
-```
-
-You will see either:
-- **[PASS]** - All tests passed
-- **[FAIL]** - A bug was found. Follow the "Next steps" shown.
-
----
-
-## Testing Pyramid
-
-```
-+---------------------------------------------------------------+
-|                      FUZZING LAYER                            |
-|  +---------------------------+  +---------------------------+ |
-|  | fuzz_hypofuzz.sh --deep   |  | fuzz_atheris.sh native    | |
-|  | - Property-based testing  |  | - Byte-level mutation     | |
-|  | - Coverage-guided         |  | - Crash detection         | |
-|  | - Logic errors            |  | - Security issues         | |
-|  +---------------------------+  +---------------------------+ |
-+---------------------------------------------------------------+
-|                      UNIT TEST LAYER                          |
-|  +----------------------------------------------------------+ |
-|  | uv run scripts/test.sh                                   | |
-|  | - Comprehensive unit tests (95%+ coverage)               | |
-|  +----------------------------------------------------------+ |
-+---------------------------------------------------------------+
-```
-
-Fuzzing finds issues that traditional unit tests miss by exploring vast input spaces automatically.
-
----
-
-## Choosing a Fuzzer
-
-### Use HypoFuzz (Hypothesis) When:
-
-- Testing **properties** (e.g., "parse then serialize equals original")
-- Finding **logic errors** and **edge cases**
-- Working with **typed data structures** (strategies generate valid Python objects)
-- You want **automatic shrinking** to minimal failing examples
-- Running **before every commit** (fast, no special setup)
-
-```bash
-./scripts/fuzz_hypofuzz.sh              # Quick check
-./scripts/fuzz_hypofuzz.sh --deep       # Continuous fuzzing (until Ctrl+C)
-./scripts/fuzz_hypofuzz.sh --deep --metrics  # Single-pass with metrics
-```
-
-### Use Atheris (libFuzzer) When:
-
-- Testing **crash resistance** and **memory safety**
-- Looking for **security vulnerabilities**
-- Testing **byte-level parsing** robustness
-- Doing **security audits** before releases
-- You need **raw mutation** that ignores grammar rules
-
-```bash
-./scripts/fuzz_atheris.sh native        # Crash detection
-./scripts/fuzz_atheris.sh structured    # Grammar-aware fuzzing
-```
-
----
-
-## Command Reference
-
-### HypoFuzz Commands
-
-| Command | Description |
-|---------|-------------|
-| `./scripts/fuzz_hypofuzz.sh` | Quick property tests |
-| `./scripts/fuzz_hypofuzz.sh --deep` | Continuous HypoFuzz (until Ctrl+C) |
-| `./scripts/fuzz_hypofuzz.sh --deep --metrics` | Single-pass pytest with strategy metrics |
-| `./scripts/fuzz_hypofuzz.sh --preflight` | Audit test infrastructure |
-| `./scripts/fuzz_hypofuzz.sh --list` | Show reproduction info |
-| `./scripts/fuzz_hypofuzz.sh --repro TEST` | Reproduce failing test |
-| `./scripts/fuzz_hypofuzz.sh --clean` | Remove .hypothesis/ |
-
-### Atheris Commands
-
-| Command | Description |
-|---------|-------------|
-| `./scripts/fuzz_atheris.sh native` | Stability fuzzing |
-| `./scripts/fuzz_atheris.sh structured` | Grammar-aware fuzzing |
-| `./scripts/fuzz_atheris.sh --list` | List crashes/findings |
-| `./scripts/fuzz_atheris.sh --corpus` | Check seed health |
-| `./scripts/fuzz_atheris.sh --replay TARGET` | Replay findings |
-
----
-
-## Key Differences
-
-| Aspect | HypoFuzz | Atheris |
-|--------|----------|---------|
-| Input type | Python objects | Raw bytes |
-| Grammar awareness | Yes (via strategies) | No (mutations) |
-| Storage | `.hypothesis/examples/` | `.fuzz_atheris_corpus/` |
-| Filename format | SHA-384 hashes | `crash_*`, `finding_p{PID}_*` |
-| Reproduction | Automatic pytest replay | Manual via repro script |
-| Corpus | Implicit (coverage DB) | Explicit (seeds/) |
-| Workers | Multiprocessing (metrics need single-worker) | fork() (metrics need `--workers 1`) |
-| Best for | Logic bugs | Crashes, security |
-
----
-
-## Parallelism and Metrics
-
-Both fuzzing systems use multiprocessing, which fragments in-process
-metrics across worker processes. Each system handles this differently:
-
-| System | Worker Model | Metrics Constraint |
-|--------|-------------|-------------------|
-| HypoFuzz | Python `multiprocessing` | `--metrics` forces single-process pytest |
-| Atheris | libFuzzer `fork()` | `--workers 1` (default) for reliable metrics |
-
-**Root cause:** Both systems accumulate metrics (iterations, coverage,
-performance history) in process-local state. Forked/spawned workers each
-get independent copies. There is no cross-process aggregation.
-
-**Recommendation:** Use single-worker mode for metrics-sensitive runs
-(debugging, performance analysis, weight skew detection). Use
-multi-worker mode only for throughput-oriented crash detection.
-
-See [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md) for details on
-Atheris worker behavior under `fork()`.
-
----
-
-## Data Directories
-
-| Directory | System | Git Tracked | Contents |
-|-----------|--------|-------------|----------|
-| `.hypothesis/examples/` | HypoFuzz | No | Coverage database |
-| `.hypothesis/hypofuzz.log` | HypoFuzz | No | Session log |
-| `.fuzz_atheris_corpus/` | Atheris | No | Working corpus, crashes |
-| `fuzz_atheris/seeds/` | Atheris | Yes | Seed corpus |
-
----
-
-## Workflow Summary
-
-### Daily Development
-
-```bash
-# Before committing
-./scripts/fuzz_hypofuzz.sh
-```
-
-### Deep Testing
-
-```bash
-# Run HypoFuzz for extended period
 ./scripts/fuzz_hypofuzz.sh --deep --time 300
+./scripts/fuzz_atheris.sh --list
 ```
 
-### Security Audit
+## Choosing A Surface
 
-```bash
-# Run all Atheris modes
-./scripts/fuzz_atheris.sh native --time 300
-./scripts/fuzz_atheris.sh structured --time 300
-./scripts/fuzz_atheris.sh perf --time 300
-```
+- Prefer HypoFuzz when you are exploring Python-level invariants and stateful/property-based tests.
+- Prefer Atheris when you need native-style mutation, corpus management, or target-specific replay/minimization.
 
-### Reproducing Failures
+## Related Guides
 
-```bash
-# HypoFuzz failures (automatic replay)
-./scripts/fuzz_hypofuzz.sh --repro tests/fuzz/test_syntax_parser_property.py::test_roundtrip
-
-# Atheris crashes (manual)
-uv run python scripts/fuzz_atheris_repro.py .fuzz_atheris_corpus/crash_xxx
-```
-
----
-
-## Scripts Reference
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/fuzz_hypofuzz.sh` | HypoFuzz entry point |
-| `scripts/fuzz_hypofuzz_repro.py` | Reproduce Hypothesis failures |
-| `scripts/fuzz_atheris.sh` | Atheris entry point |
-| `scripts/fuzz_atheris_repro.py` | Reproduce Atheris crashes |
-| `scripts/fuzz_atheris_corpus_health.py` | Seed corpus health check |
-
----
-
-## See Also
-
-- [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md) - Full HypoFuzz documentation
-- [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md) - Full Atheris documentation
-- [DOC_06_Testing.md](DOC_06_Testing.md) - Testing overview
+- [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md)
+- [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md)
+- [DOC_06_Testing.md](DOC_06_Testing.md)

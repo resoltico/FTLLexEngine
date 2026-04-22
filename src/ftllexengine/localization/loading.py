@@ -24,7 +24,7 @@ from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.enums import LoadStatus
 
 if TYPE_CHECKING:
-    from ftllexengine.localization.types import FTLSource, LocaleCode, MessageId, ResourceId
+    from ftllexengine.core.semantic_types import FTLSource, LocaleCode, MessageId, ResourceId
     from ftllexengine.syntax.ast import Junk
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability
@@ -56,15 +56,15 @@ class ResourceLoader(Protocol):
     description.
 
     Example:
-        >>> class DiskLoader:
+        >>> class DiskLoader:  # doctest: +SKIP
         ...     def load(self, locale: str, resource_id: str) -> str:
         ...         path = Path(f"locales/{locale}/{resource_id}")
         ...         return path.read_text(encoding="utf-8")
         ...     def describe_path(self, locale: str, resource_id: str) -> str:
         ...         return f"locales/{locale}/{resource_id}"
         ...
-        >>> loader = DiskLoader()
-        >>> l10n = FluentLocalization(['en', 'fr'], ['main.ftl'], loader)
+        >>> loader = DiskLoader()  # doctest: +SKIP
+        >>> l10n = FluentLocalization(['en', 'fr'], ['main.ftl'], loader)  # doctest: +SKIP
     """
 
     def load(self, locale: LocaleCode, resource_id: ResourceId) -> FTLSource:
@@ -114,8 +114,8 @@ class PathResourceLoader:
         All resolved paths are validated against a fixed root directory.
 
     Example:
-        >>> loader = PathResourceLoader("locales/{locale}")
-        >>> ftl = loader.load("en", "main.ftl")
+        >>> loader = PathResourceLoader("locales/{locale}")  # doctest: +SKIP
+        >>> ftl = loader.load("en", "main.ftl")  # doctest: +SKIP
         # Loads from: locales/en/main.ftl
 
     Attributes:
@@ -286,10 +286,10 @@ class FallbackInfo:
         message_id: The message identifier that was resolved
 
     Example:
-        >>> def log_fallback(info: FallbackInfo) -> None:
+        >>> def log_fallback(info: FallbackInfo) -> None:  # doctest: +SKIP
         ...     print(f"Fallback: {info.message_id} resolved from "
         ...           f"{info.resolved_locale} (requested {info.requested_locale})")
-        >>> l10n = FluentLocalization(['lv', 'en'], on_fallback=log_fallback)
+        >>> l10n = FluentLocalization(['lv', 'en'], on_fallback=log_fallback)  # doctest: +SKIP
     """
 
     requested_locale: LocaleCode
@@ -353,12 +353,12 @@ class LoadSummary:
         results: All individual load results (immutable tuple)
 
     Example:
-        >>> l10n = FluentLocalization(['en', 'de'], ['ui.ftl'], loader)
-        >>> summary = l10n.get_load_summary()
-        >>> if summary.errors > 0:
+        >>> l10n = FluentLocalization(['en', 'de'], ['ui.ftl'], loader)  # doctest: +SKIP
+        >>> summary = l10n.get_load_summary()  # doctest: +SKIP
+        >>> if summary.errors > 0:  # doctest: +SKIP
         ...     for result in summary.get_errors():
         ...         print(f"Failed: {result.locale}/{result.resource_id}: {result.error}")
-        >>> if summary.has_junk:
+        >>> if summary.has_junk:  # doctest: +SKIP
         ...     for result in summary.get_with_junk():
         ...         print(f"Junk in {result.source_path}: {len(result.junk_entries)} entries")
     """

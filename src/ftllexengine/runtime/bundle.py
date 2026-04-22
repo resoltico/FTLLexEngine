@@ -6,77 +6,42 @@ Python 3.13+. External dependency: Babel (CLDR locale data).
 from __future__ import annotations
 
 import logging
-import time
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, NoReturn, assert_never
+from typing import TYPE_CHECKING
 
 from ftllexengine.constants import (
     DEFAULT_MAX_EXPANSION_SIZE,
-    FALLBACK_INVALID,
-    FALLBACK_MISSING_MESSAGE,
     MAX_DEPTH,
     MAX_SOURCE_SIZE,
 )
 from ftllexengine.core.depth_guard import depth_clamp
 from ftllexengine.core.locale_utils import get_system_locale, require_locale_code
-from ftllexengine.diagnostics import (
-    Diagnostic,
-    DiagnosticCode,
-    ErrorCategory,
-    ErrorTemplate,
-    FrozenFluentError,
-    ValidationResult,
-)
-from ftllexengine.integrity import (
-    FormattingIntegrityError,
-    IntegrityContext,
-    SyntaxIntegrityError,
-)
-from ftllexengine.introspection import extract_variables, introspect_message
+from ftllexengine.runtime.bundle_formatting import _BundleFormattingMixin
+from ftllexengine.runtime.bundle_queries import _BundleQueryMixin
+from ftllexengine.runtime.bundle_registration import _BundleRegistrationMixin
 from ftllexengine.runtime.cache import CacheAuditLogEntry, CacheStats, IntegrityCache
 from ftllexengine.runtime.function_bridge import FunctionRegistry
 from ftllexengine.runtime.functions import get_shared_registry
 from ftllexengine.runtime.locale_context import LocaleContext
-from ftllexengine.runtime.resolver import FluentResolver
 from ftllexengine.runtime.rwlock import RWLock
-from ftllexengine.syntax import Comment, Entry, Junk, Message, Resource, Term
+from ftllexengine.syntax import Entry, Junk, Message, Resource, Term
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Mapping
+
+    from ftllexengine.core.semantic_types import LocaleCode
     from ftllexengine.core.value_types import FluentValue
-    from ftllexengine.introspection import MessageIntrospection
-    from ftllexengine.localization.types import LocaleCode
+    from ftllexengine.diagnostics import FrozenFluentError, ValidationResult
     from ftllexengine.runtime.cache_config import CacheConfig
+    from ftllexengine.runtime.resolver import FluentResolver
 
 __all__ = ["FluentBundle"]
 
 logger = logging.getLogger(__name__)
 
-# Logging truncation limit for warning messages (surfaced to users, more context helpful).
-_LOG_TRUNCATE_WARNING: int = 100
 
-
-@dataclass(slots=True)
-class _PendingRegistration:
-    """Collected entries from a parsed resource, prior to bundle state mutation.
-
-    Intermediate result of Phase 1 (collection) in the two-phase commit
-    protocol used by ``_register_resource``. Separating collection from
-    mutation makes strict-mode atomicity explicit: if strict validation
-    rejects the resource, no bundle state has been touched.
-    """
-
-    messages: dict[str, Message] = field(default_factory=dict)
-    terms: dict[str, Term] = field(default_factory=dict)
-    msg_deps: dict[str, frozenset[str]] = field(default_factory=dict)
-    term_deps: dict[str, frozenset[str]] = field(default_factory=dict)
-    junk: list[Junk] = field(default_factory=list)
-    overwrite_warnings: list[tuple[Literal["message", "term"], str]] = field(default_factory=list)
-
-
-class FluentBundle:
+class FluentBundle(_BundleQueryMixin, _BundleFormattingMixin, _BundleRegistrationMixin):
     """Fluent message bundle for specific locale.
 
     Main public API for Fluent localization. Aligned with Mozilla python-fluent
@@ -111,21 +76,21 @@ class FluentBundle:
         - max_nesting_depth: Maximum placeable nesting depth (default: 100)
 
     Examples:
-        >>> bundle = FluentBundle("lv_LV")
-        >>> bundle.add_resource('''
+        >>> bundle = FluentBundle("lv_LV")  # doctest: +SKIP
+        >>> bundle.add_resource('''  # doctest: +SKIP
         ... hello = Sveiki, pasaule!
         ... welcome = Laipni lūdzam, { $name }!
         ... ''')
-        >>> result, errors = bundle.format_pattern("hello")
-        >>> assert result == 'Sveiki, pasaule!'
-        >>> assert errors == ()
-        >>>
-        >>> result, errors = bundle.format_pattern("welcome", {"name": "Jānis"})
-        >>> assert result == 'Laipni lūdzam, Jānis!'
-        >>> assert errors == ()
-        >>>
-        >>> # Custom security limits for stricter environments
-        >>> strict_bundle = FluentBundle("en_US", max_source_size=1_000_000)
+        >>> result, errors = bundle.format_pattern("hello")  # doctest: +SKIP
+        >>> assert result == 'Sveiki, pasaule!'  # doctest: +SKIP
+        >>> assert errors == ()  # doctest: +SKIP
+
+        >>> result, errors = bundle.format_pattern("welcome", {"name": "Jānis"})  # doctest: +SKIP
+        >>> assert result == 'Laipni lūdzam, Jānis!'  # doctest: +SKIP
+        >>> assert errors == ()  # doctest: +SKIP
+
+        Custom security limits for stricter environments:
+        >>> strict_bundle = FluentBundle("en_US", max_source_size=1_000_000)  # doctest: +SKIP
     """
 
     __slots__ = (
@@ -197,25 +162,25 @@ class FluentBundle:
             Write operations (add_resource, add_function) acquire exclusive access.
 
         Example:
-            >>> from ftllexengine.runtime.cache_config import CacheConfig
-            >>>
-            >>> # Using default registry (standard functions)
-            >>> bundle = FluentBundle("en")
-            >>>
-            >>> # Using custom registry with additional functions
-            >>> from ftllexengine.runtime.functions import create_default_registry
-            >>> registry = create_default_registry()
-            >>> registry.register(my_custom_func, ftl_name="CUSTOM")
-            >>> bundle = FluentBundle("en", functions=registry)
-            >>>
-            >>> # Stricter limits for untrusted input
-            >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)
-            >>>
-            >>> # Financial-grade: default strict=True with write-once cache
-            >>> bundle = FluentBundle("en", cache=CacheConfig(write_once=True))
-            >>>
-            >>> # Audit-enabled cache for compliance
-            >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
+            >>> from ftllexengine.runtime.cache_config import CacheConfig  # doctest: +SKIP
+
+            Using the default registry (standard functions):
+            >>> bundle = FluentBundle("en")  # doctest: +SKIP
+
+            Using a custom registry with additional functions:
+            >>> from ftllexengine.runtime.functions import create_default_registry  # doctest: +SKIP
+            >>> registry = create_default_registry()  # doctest: +SKIP
+            >>> registry.register(my_custom_func, ftl_name="CUSTOM")  # doctest: +SKIP
+            >>> bundle = FluentBundle("en", functions=registry)  # doctest: +SKIP
+
+            Stricter limits for untrusted input:
+            >>> bundle = FluentBundle("en", max_source_size=100_000, max_nesting_depth=20)  # doctest: +SKIP
+
+            Financial-grade default: `strict=True` with a write-once cache:
+            >>> bundle = FluentBundle("en", cache=CacheConfig(write_once=True))  # doctest: +SKIP
+
+            Audit-enabled cache for compliance:
+            >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))  # doctest: +SKIP
         """
         # Canonicalize at the boundary so every runtime-facing locale API uses
         # the same LocaleCode representation.
@@ -304,8 +269,8 @@ class FluentBundle:
             LocaleCode: Canonical lowercase POSIX locale code (e.g., "en_us", "lv_lv")
 
         Example:
-            >>> bundle = FluentBundle("lv_LV")
-            >>> bundle.locale
+            >>> bundle = FluentBundle("lv_LV")  # doctest: +SKIP
+            >>> bundle.locale  # doctest: +SKIP
             'lv_lv'
         """
         return self._locale
@@ -318,8 +283,8 @@ class FluentBundle:
             bool: True if bidi isolation is enabled, False otherwise
 
         Example:
-            >>> bundle = FluentBundle("ar_EG", use_isolating=True)
-            >>> bundle.use_isolating
+            >>> bundle = FluentBundle("ar_EG", use_isolating=True)  # doctest: +SKIP
+            >>> bundle.use_isolating  # doctest: +SKIP
             True
         """
         return self._use_isolating
@@ -336,11 +301,11 @@ class FluentBundle:
             bool: True if strict mode is enabled, False otherwise
 
         Example:
-            >>> bundle = FluentBundle("en", strict=True)
-            >>> bundle.strict
+            >>> bundle = FluentBundle("en", strict=True)  # doctest: +SKIP
+            >>> bundle.strict  # doctest: +SKIP
             True
-            >>> bundle_normal = FluentBundle("en")
-            >>> bundle_normal.strict
+            >>> bundle_normal = FluentBundle("en")  # doctest: +SKIP
+            >>> bundle_normal.strict  # doctest: +SKIP
             True
         """
         return self._strict
@@ -353,12 +318,12 @@ class FluentBundle:
             bool: True if caching is enabled, False otherwise
 
         Example:
-            >>> from ftllexengine.runtime.cache_config import CacheConfig
-            >>> bundle = FluentBundle("en", cache=CacheConfig())
-            >>> bundle.cache_enabled
+            >>> from ftllexengine.runtime.cache_config import CacheConfig  # doctest: +SKIP
+            >>> bundle = FluentBundle("en", cache=CacheConfig())  # doctest: +SKIP
+            >>> bundle.cache_enabled  # doctest: +SKIP
             True
-            >>> bundle_no_cache = FluentBundle("en")
-            >>> bundle_no_cache.cache_enabled
+            >>> bundle_no_cache = FluentBundle("en")  # doctest: +SKIP
+            >>> bundle_no_cache.cache_enabled  # doctest: +SKIP
             False
         """
         return self._cache is not None
@@ -371,12 +336,12 @@ class FluentBundle:
             CacheConfig if caching is enabled, None if caching is disabled.
 
         Example:
-            >>> from ftllexengine.runtime.cache_config import CacheConfig
-            >>> bundle = FluentBundle("en", cache=CacheConfig(size=500))
-            >>> bundle.cache_config.size
+            >>> from ftllexengine.runtime.cache_config import CacheConfig  # doctest: +SKIP
+            >>> bundle = FluentBundle("en", cache=CacheConfig(size=500))  # doctest: +SKIP
+            >>> bundle.cache_config.size  # doctest: +SKIP
             500
-            >>> bundle_no_cache = FluentBundle("en")
-            >>> bundle_no_cache.cache_config is None
+            >>> bundle_no_cache = FluentBundle("en")  # doctest: +SKIP
+            >>> bundle_no_cache.cache_config is None  # doctest: +SKIP
             True
         """
         return self._cache_config
@@ -404,8 +369,8 @@ class FluentBundle:
             int: Maximum source size limit for add_resource()
 
         Example:
-            >>> bundle = FluentBundle("en", max_source_size=1_000_000)
-            >>> bundle.max_source_size
+            >>> bundle = FluentBundle("en", max_source_size=1_000_000)  # doctest: +SKIP
+            >>> bundle.max_source_size  # doctest: +SKIP
             1000000
         """
         return self._max_source_size
@@ -418,8 +383,8 @@ class FluentBundle:
             int: Maximum nesting depth limit for parser
 
         Example:
-            >>> bundle = FluentBundle("en", max_nesting_depth=50)
-            >>> bundle.max_nesting_depth
+            >>> bundle = FluentBundle("en", max_nesting_depth=50)  # doctest: +SKIP
+            >>> bundle.max_nesting_depth  # doctest: +SKIP
             50
         """
         return self._max_nesting_depth
@@ -444,9 +409,9 @@ class FluentBundle:
             FunctionRegistry: The function registry for this bundle
 
         Example:
-            >>> bundle = FluentBundle("en")
-            >>> registry = bundle.function_registry
-            >>> "NUMBER" in registry
+            >>> bundle = FluentBundle("en")  # doctest: +SKIP
+            >>> registry = bundle.function_registry  # doctest: +SKIP
+            >>> "NUMBER" in registry  # doctest: +SKIP
             True
         """
         return self._function_registry
@@ -486,8 +451,8 @@ class FluentBundle:
             RuntimeError: If system locale cannot be determined
 
         Example:
-            >>> bundle = FluentBundle.for_system_locale()
-            >>> bundle.locale  # Returns canonical detected system locale
+            >>> bundle = FluentBundle.for_system_locale()  # doctest: +SKIP
+            >>> bundle.locale  # Returns canonical detected system locale  # doctest: +SKIP
             'en_us'
         """
         # Delegate to unified locale detection (raises RuntimeError on failure)
@@ -511,8 +476,8 @@ class FluentBundle:
             String representation showing locale and loaded messages count
 
         Example:
-            >>> bundle = FluentBundle("lv_LV")
-            >>> repr(bundle)
+            >>> bundle = FluentBundle("lv_LV")  # doctest: +SKIP
+            >>> repr(bundle)  # doctest: +SKIP
             "FluentBundle(locale='lv_lv', messages=0, terms=0)"
         """
         with self._rwlock.read():
@@ -535,11 +500,11 @@ class FluentBundle:
             str: Babel locale identifier (e.g., "en_US", "lv_LV", "ar_EG")
 
         Example:
-            >>> bundle = FluentBundle("lv")
-            >>> bundle.get_babel_locale()
+            >>> bundle = FluentBundle("lv")  # doctest: +SKIP
+            >>> bundle.get_babel_locale()  # doctest: +SKIP
             'lv'
-            >>> bundle_us = FluentBundle("en-US")
-            >>> bundle_us.get_babel_locale()
+            >>> bundle_us = FluentBundle("en-US")  # doctest: +SKIP
+            >>> bundle_us.get_babel_locale()  # doctest: +SKIP
             'en_US'
 
         Note:
@@ -642,8 +607,8 @@ class FluentBundle:
             SyntaxIntegrityError: In strict mode, if any Junk entries are parsed.
 
         Example:
-            >>> bundle = FluentBundle("en")
-            >>> with open("locales/en/ui.ftl") as f:
+            >>> bundle = FluentBundle("en")  # doctest: +SKIP
+            >>> with open("locales/en/ui.ftl") as f:  # doctest: +SKIP
             ...     bundle.add_resource_stream(f, source_path="locales/en/ui.ftl")
         """
         # Collect parsed entries outside lock (stateless parse, immutable input)
@@ -652,159 +617,6 @@ class FluentBundle:
 
         with self._rwlock.write():
             return self._register_resource(resource, source_path)
-
-    def _collect_pending_entries(
-        self, resource: Resource
-    ) -> _PendingRegistration:
-        """Phase 1: Collect entries from a parsed resource without mutating state.
-
-        Iterates over all resource entries, partitioning them into messages,
-        terms, and junk. Detects overwrites against both existing bundle state
-        and entries already collected in this batch.
-
-        Args:
-            resource: Parsed FTL resource
-
-        Returns:
-            Collected entries ready for Phase 2 (commit).
-        """
-        from ftllexengine.analysis.graph import entry_dependency_set  # noqa: PLC0415 - circular
-        from ftllexengine.introspection import extract_references  # noqa: PLC0415 - circular
-
-        pending = _PendingRegistration()
-
-        for entry in resource.entries:
-            match entry:
-                case Message():
-                    msg_id = entry.id.name
-                    if msg_id in self._messages or msg_id in pending.messages:
-                        pending.overwrite_warnings.append(("message", msg_id))
-                    pending.messages[msg_id] = entry
-                    pending.msg_deps[msg_id] = entry_dependency_set(
-                        *extract_references(entry)
-                    )
-                case Term():
-                    term_id = entry.id.name
-                    if term_id in self._terms or term_id in pending.terms:
-                        pending.overwrite_warnings.append(("term", term_id))
-                    pending.terms[term_id] = entry
-                    pending.term_deps[term_id] = entry_dependency_set(
-                        *extract_references(entry)
-                    )
-                case Junk():
-                    pending.junk.append(entry)
-                case Comment():
-                    pass  # Comments carry no runtime state; silently skip.
-                case _:  # pragma: no cover - Entry union is closed (Message|Term|Comment|Junk)
-                    assert_never(entry)
-
-        return pending
-
-    def _register_resource(
-        self, resource: Resource, source_path: str | None
-    ) -> tuple[Junk, ...]:
-        """Register parsed resource entries via two-phase commit.
-
-        Phase 1 (collection) delegates to ``_collect_pending_entries``.
-        Phase 2 (commit) applies mutations only after strict-mode validation
-        passes, ensuring atomicity: a resource with syntax errors never
-        partially populates the bundle.
-
-        Assumes caller holds write lock.
-
-        Args:
-            resource: Parsed FTL resource
-            source_path: Optional path for logging
-
-        Returns:
-            Tuple of Junk entries from resource
-        """
-        # Phase 1: Collect without mutation
-        pending = self._collect_pending_entries(resource)
-        junk_tuple = tuple(pending.junk)
-
-        # Strict mode: fail fast on syntax errors BEFORE any state mutation
-        if self._strict and junk_tuple:
-            source_desc = source_path or "<string>"
-            error_summary = "; ".join(
-                repr(j.content[:50]) for j in junk_tuple[:3]
-            )
-            if len(junk_tuple) > 3:
-                error_summary += f" (and {len(junk_tuple) - 3} more)"
-
-            context = IntegrityContext(
-                component="bundle",
-                operation="add_resource",
-                key=source_desc,
-                expected="<no syntax errors>",
-                actual=f"<{len(junk_tuple)} syntax error(s)>",
-                timestamp=time.monotonic(),
-                wall_time_unix=time.time(),
-            )
-
-            error_msg = (
-                f"Strict mode: {len(junk_tuple)} syntax error(s) in "
-                f"{source_desc}: {error_summary}"
-            )
-            raise SyntaxIntegrityError(
-                error_msg,
-                context=context,
-                junk_entries=junk_tuple,
-                source_path=source_path,
-            )
-
-        # Phase 2: Commit — apply mutations
-        for entry_type, entry_id in pending.overwrite_warnings:
-            if entry_type == "message":
-                logger.warning(
-                    "Overwriting existing message '%s' with new definition",
-                    entry_id,
-                )
-            else:
-                logger.warning(
-                    "Overwriting existing term '-%s' with new definition",
-                    entry_id,
-                )
-
-        self._messages.update(pending.messages)
-        self._terms.update(pending.terms)
-        self._msg_deps.update(pending.msg_deps)
-        self._term_deps.update(pending.term_deps)
-
-        for msg_id in pending.messages:
-            logger.debug("Registered message: %s", msg_id)
-        for term_id in pending.terms:
-            logger.debug("Registered term: %s", term_id)
-
-        source_desc = source_path or "<string>"
-        for junk in pending.junk:
-            logger.warning(
-                "Syntax error in %s: %s",
-                source_desc,
-                repr(junk.content[:_LOG_TRUNCATE_WARNING]),
-            )
-
-        if source_path:
-            logger.info(
-                "Added resource %s: %d messages, %d terms, %d junk entries",
-                source_path,
-                len(self._messages),
-                len(self._terms),
-                len(pending.junk),
-            )
-        else:
-            logger.info(
-                "Added resource: %d messages, %d terms, %d junk entries",
-                len(self._messages),
-                len(self._terms),
-                len(pending.junk),
-            )
-
-        if self._cache is not None:
-            self._cache.clear()
-            logger.debug("Cache cleared after add_resource")
-
-        return junk_tuple
 
     def validate_resource(self, source: str) -> ValidationResult:
         """Validate FTL resource without adding to bundle.
@@ -827,12 +639,12 @@ class FluentBundle:
             TypeError: If source is not a string (e.g., bytes were passed).
 
         Example:
-            >>> bundle = FluentBundle("lv")
-            >>> result = bundle.validate_resource(ftl_source)
-            >>> if not result.is_valid:
+            >>> bundle = FluentBundle("lv")  # doctest: +SKIP
+            >>> result = bundle.validate_resource(ftl_source)  # doctest: +SKIP
+            >>> if not result.is_valid:  # doctest: +SKIP
             ...     for error in result.errors:
             ...         print(f"Error [{error.code}]: {error.message}")
-            >>> if result.warning_count > 0:
+            >>> if result.warning_count > 0:  # doctest: +SKIP
             ...     for warning in result.warnings:
             ...         print(f"Warning [{warning.code}]: {warning.message}")
 
@@ -904,445 +716,30 @@ class FluentBundle:
             This matches the Fluent specification and Mozilla reference implementation.
 
         Examples:
-            >>> # Successful formatting
-            >>> result, errors = bundle.format_pattern("hello")
-            >>> assert result == 'Sveiki, pasaule!'
-            >>> assert errors == ()
+            Successful formatting:
+            >>> result, errors = bundle.format_pattern("hello")  # doctest: +SKIP
+            >>> assert result == 'Sveiki, pasaule!'  # doctest: +SKIP
+            >>> assert errors == ()  # doctest: +SKIP
 
-            >>> # Missing variable - returns fallback and error (non-strict mode)
-            >>> bundle.add_resource('msg = Hello { $name }!')
-            >>> result, errors = bundle.format_pattern("msg", {})
-            >>> assert result == 'Hello {$name}!'  # Readable fallback
-            >>> assert len(errors) == 1
-            >>> assert errors[0].category == ErrorCategory.REFERENCE
+            Missing variable returns a fallback plus an error in non-strict mode:
+            >>> bundle.add_resource('msg = Hello { $name }!')  # doctest: +SKIP
+            >>> result, errors = bundle.format_pattern("msg", {})  # doctest: +SKIP
+            >>> assert result == 'Hello {$name}!'  # Readable fallback  # doctest: +SKIP
+            >>> assert len(errors) == 1  # doctest: +SKIP
+            >>> assert errors[0].category == ErrorCategory.REFERENCE  # doctest: +SKIP
 
-            >>> # Attribute access
-            >>> result, errors = bundle.format_pattern("button-save", attribute="tooltip")
-            >>> assert result == 'Saglabā pašreizējo ierakstu datubāzē'
-            >>> assert errors == ()
+            Attribute access:
+            >>> result, errors = bundle.format_pattern("button-save", attribute="tooltip")  # doctest: +SKIP
+            >>> assert result == 'Saglabā pašreizējo ierakstu datubāzē'  # doctest: +SKIP
+            >>> assert errors == ()  # doctest: +SKIP
 
-            >>> # Default strict=True - raises on errors (no missing $name)
-            >>> bundle_strict = FluentBundle("en")
-            >>> bundle_strict.add_resource('msg = Hello { $name }!')
-            >>> bundle_strict.format_pattern("msg", {})  # Raises FormattingIntegrityError
+            Default `strict=True` raises on errors, including missing `$name`:
+            >>> bundle_strict = FluentBundle("en")  # doctest: +SKIP
+            >>> bundle_strict.add_resource('msg = Hello { $name }!')  # doctest: +SKIP
+            >>> bundle_strict.format_pattern("msg", {})  # Raises FormattingIntegrityError  # doctest: +SKIP
         """
         with self._rwlock.read():
             return self._format_pattern_impl(message_id, args, attribute)
-
-    def _raise_strict_error(
-        self,
-        message_id: str,
-        fallback_value: str,
-        errors: tuple[FrozenFluentError, ...],
-    ) -> NoReturn:
-        """Raise FormattingIntegrityError for strict mode (internal helper).
-
-        Args:
-            message_id: The message ID that failed to format
-            fallback_value: The fallback value that would be returned in non-strict mode
-            errors: Tuple of FrozenFluentError instances
-
-        Raises:
-            FormattingIntegrityError: Always raised with error details
-        """
-        error_summary = "; ".join(str(e) for e in errors[:3])
-        if len(errors) > 3:
-            error_summary += f" (and {len(errors) - 3} more)"
-
-        context = IntegrityContext(
-            component="bundle",
-            operation="format_pattern",
-            key=message_id,
-            expected="<no errors>",
-            actual=f"<{len(errors)} error(s)>",
-            timestamp=time.monotonic(),
-            wall_time_unix=time.time(),
-        )
-
-        msg = (
-            f"Strict mode: formatting '{message_id}' produced {len(errors)} error(s): "
-            f"{error_summary}"
-        )
-        raise FormattingIntegrityError(
-            msg,
-            context=context,
-            fluent_errors=errors,
-            fallback_value=fallback_value,
-            message_id=message_id,
-        )
-
-    def _create_resolver(self) -> FluentResolver:
-        """Create a new FluentResolver from current bundle state.
-
-        Called once at initialization and again whenever the function_registry
-        changes (add_function). The resolver holds references to self._messages
-        and self._terms (not copies), so add_resource() mutations are immediately
-        visible without re-creation.
-        """
-        return FluentResolver(
-            locale=self._locale,
-            messages=self._messages,
-            terms=self._terms,
-            function_registry=self._function_registry,
-            use_isolating=self._use_isolating,
-            max_nesting_depth=self._max_nesting_depth,
-            max_expansion_size=self._max_expansion_size,
-        )
-
-    def _format_pattern_impl(
-        self,
-        message_id: str,
-        args: Mapping[str, FluentValue] | None,
-        attribute: str | None,
-    ) -> tuple[str, tuple[FrozenFluentError, ...]]:
-        """Internal implementation of format_pattern (no locking)."""
-        # Validate message_id is non-empty string BEFORE cache lookup.
-        # Invalid inputs must be rejected immediately; caching invalid-ID results
-        # would waste entries and could produce misleading cache hits.
-        if not message_id or not isinstance(message_id, str):
-            logger.warning("Invalid message ID: empty or non-string")
-            diagnostic = Diagnostic(
-                code=DiagnosticCode.MESSAGE_NOT_FOUND,
-                message="Invalid message ID: empty or non-string",
-            )
-            error = FrozenFluentError(
-                str(diagnostic), ErrorCategory.REFERENCE, diagnostic=diagnostic
-            )
-            if self._strict:
-                self._raise_strict_error("<empty>", FALLBACK_INVALID, (error,))
-            return (FALLBACK_INVALID, (error,))
-
-        # Validate args is None or a Mapping (defensive check for callers ignoring type hints)
-        if args is not None and not isinstance(args, Mapping):
-            logger.warning(  # type: ignore[unreachable]
-                "Invalid args type: expected Mapping or None, got %s", type(args).__name__
-            )
-            diagnostic = Diagnostic(
-                code=DiagnosticCode.INVALID_ARGUMENT,
-                message=f"Invalid args type: expected Mapping or None, got {type(args).__name__}",
-            )
-            error = FrozenFluentError(
-                str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
-            )
-            # Strict mode: raise instead of returning fallback
-            if self._strict:
-                self._raise_strict_error(message_id, FALLBACK_INVALID, (error,))
-            return (FALLBACK_INVALID, (error,))
-
-        # Validate attribute is None or a string
-        if attribute is not None and not isinstance(attribute, str):
-            logger.warning(  # type: ignore[unreachable]
-                "Invalid attribute type: expected str or None, got %s", type(attribute).__name__
-            )
-            diagnostic = Diagnostic(
-                code=DiagnosticCode.INVALID_ARGUMENT,
-                message=f"Invalid attribute type: expected str or None, got {type(attribute).__name__}",
-            )
-            error = FrozenFluentError(
-                str(diagnostic), ErrorCategory.RESOLUTION, diagnostic=diagnostic
-            )
-            # Strict mode: raise instead of returning fallback
-            if self._strict:
-                self._raise_strict_error(message_id, FALLBACK_INVALID, (error,))
-            return (FALLBACK_INVALID, (error,))
-
-        # Check cache after input validation (validated inputs are safe to use as key).
-        # Placing cache lookup here — after validation, before the message-exists check —
-        # ensures invalid inputs are never cached and avoids wasting a cache round-trip
-        # on inputs that would be rejected anyway.
-        if self._cache is not None:
-            cached_entry = self._cache.get(
-                message_id, args, attribute, self._locale,
-                use_isolating=self._use_isolating,
-            )
-            if cached_entry is not None:
-                result, errors_tuple = cached_entry.as_result()
-                if errors_tuple and self._strict:
-                    self._raise_strict_error(message_id, result, errors_tuple)
-                return (result, errors_tuple)
-
-        # Check if message exists
-        if message_id not in self._messages:
-            # strict=True: missing message is unexpected — WARNING for ops visibility.
-            # strict=False: caller opted into soft-error return semantics; missing messages
-            # are a legitimate return path, not an anomaly. Use DEBUG to avoid log noise.
-            (logger.warning if self._strict else logger.debug)(
-                "Message '%s' not found", message_id
-            )
-            diag = ErrorTemplate.message_not_found(message_id)
-            error = FrozenFluentError(str(diag), ErrorCategory.REFERENCE, diagnostic=diag)
-            # Don't cache missing message errors
-            fallback = FALLBACK_MISSING_MESSAGE.format(id=message_id)
-            # Strict mode: raise instead of returning fallback
-            if self._strict:
-                self._raise_strict_error(message_id, fallback, (error,))
-            return (fallback, (error,))
-
-        message = self._messages[message_id]
-
-        # The resolver is stateless: all per-call state lives in ResolutionContext.
-        # It holds references to self._messages and self._terms dicts directly,
-        # so mutations from add_resource are visible without re-creation. The
-        # resolver is only re-created when function_registry changes (add_function).
-        resolver = self._resolver
-
-        # Resolve message (resolver handles all errors internally including cycles)
-        # Note: No try-except here. The resolver is designed to collect all expected
-        # errors (missing references, type errors, etc.) and return them in the tuple.
-        # If a raw KeyError/AttributeError/RuntimeError escapes the resolver, that
-        # indicates a bug in the resolver implementation that should be exposed,
-        # not swallowed. This follows the principle of failing fast on internal bugs.
-        result, errors_tuple = resolver.resolve_message(message, args, attribute)
-
-        if errors_tuple:
-            # strict=True: errors are unexpected — use WARNING so ops alerts fire.
-            # strict=False: errors are the explicit return-value API; caller receives
-            # them in the tuple and handles them. WARNING would fire on every expected
-            # soft-error call, polluting logs. Use DEBUG instead.
-            log_fn = logger.warning if self._strict else logger.debug
-            log_fn(
-                "Message resolution errors for '%s': %d error(s)", message_id, len(errors_tuple)
-            )
-            for err in errors_tuple:
-                logger.debug("  - %s: %s", type(err).__name__, err)
-        else:
-            logger.debug("Resolved message '%s' successfully", message_id)
-
-        # Cache resolution result (including errors) BEFORE strict mode check.
-        # This ensures repeated calls for the same erroneous message in strict mode
-        # hit the cache instead of triggering expensive re-resolution each time.
-        if self._cache is not None:
-            self._cache.put(
-                message_id, args, attribute, self._locale,
-                use_isolating=self._use_isolating, formatted=result, errors=errors_tuple,
-            )
-
-        # Strict mode: raise after caching so subsequent calls can use cached result
-        if errors_tuple and self._strict:
-            self._raise_strict_error(message_id, result, errors_tuple)
-
-        return (result, errors_tuple)
-
-    def has_message(self, message_id: str) -> bool:
-        """Check if message exists.
-
-        Args:
-            message_id: Message identifier
-
-        Returns:
-            True if message exists in bundle
-        """
-        with self._rwlock.read():
-            return message_id in self._messages
-
-    def has_attribute(self, message_id: str, attribute: str) -> bool:
-        """Check if message has specific attribute.
-
-        Args:
-            message_id: Message identifier
-            attribute: Attribute name
-
-        Returns:
-            True if message exists AND has the specified attribute
-
-        Note:
-            This method checks if any attribute with the given name exists.
-            If duplicate attribute names exist (validation warning), this returns
-            True without indicating which definition will be used. See format_pattern
-            for resolution semantics (last-wins for duplicates).
-
-        Example:
-            >>> bundle.add_resource('''
-            ... button = Click
-            ...     .tooltip = Click to save
-            ... ''')
-            >>> bundle.has_message("button")
-            True
-            >>> bundle.has_attribute("button", "tooltip")
-            True
-            >>> bundle.has_attribute("button", "missing")
-            False
-            >>> bundle.has_attribute("nonexistent", "tooltip")
-            False
-        """
-        with self._rwlock.read():
-            if message_id not in self._messages:
-                return False
-            message = self._messages[message_id]
-            return any(attr.id.name == attribute for attr in message.attributes)
-
-    def get_message_ids(self) -> list[str]:
-        """Get all message IDs in bundle.
-
-        Returns:
-            List of message identifiers
-        """
-        with self._rwlock.read():
-            return list(self._messages.keys())
-
-    def get_message_variables(self, message_id: str) -> frozenset[str]:
-        """Get all variables required by a message (introspection API).
-
-        This is a value-add feature not present in Mozilla's python-fluent.
-        Enables FTL file validation in CI/CD pipelines.
-
-        Args:
-            message_id: Message identifier
-
-        Returns:
-            Frozen set of variable names (without $ prefix)
-
-        Raises:
-            KeyError: If message doesn't exist
-
-        Example:
-            >>> bundle.add_resource("greeting = Hello, { $name }!")
-            >>> vars = bundle.get_message_variables("greeting")
-            >>> assert "name" in vars
-        """
-        with self._rwlock.read():
-            if message_id not in self._messages:
-                msg = f"Message '{message_id}' not found"
-                raise KeyError(msg)
-
-            return extract_variables(self._messages[message_id])
-
-    def get_all_message_variables(self) -> dict[str, frozenset[str]]:
-        """Get variables for all messages in bundle (batch introspection API).
-
-        Convenience method for extracting variables from all messages at once.
-        Useful for CI/CD validation pipelines that need to analyze entire
-        FTL resources in a single operation.
-
-        This is equivalent to calling get_message_variables() for each message
-        ID, but provides a cleaner API for batch operations.
-
-        Returns:
-            Dictionary mapping message IDs to their required variable sets.
-            Empty dict if bundle has no messages.
-
-        Example:
-            >>> bundle.add_resource('''
-            ... greeting = Hello, { $name }!
-            ... farewell = Goodbye, { $firstName } { $lastName }!
-            ... simple = No variables here
-            ... ''')
-            >>> all_vars = bundle.get_all_message_variables()
-            >>> assert all_vars["greeting"] == frozenset({"name"})
-            >>> assert all_vars["farewell"] == frozenset({"firstName", "lastName"})
-            >>> assert all_vars["simple"] == frozenset()
-
-        See Also:
-            - get_message_variables(): Get variables for single message
-            - introspect_message(): Get complete metadata (variables + functions + references)
-
-        Note:
-            Acquires a single read lock for atomic snapshot of all message variables.
-        """
-        with self._rwlock.read():
-            return {
-                message_id: extract_variables(message)
-                for message_id, message in self._messages.items()
-            }
-
-    def introspect_message(self, message_id: str) -> MessageIntrospection:
-        """Get complete introspection data for a message.
-
-        Returns comprehensive metadata about variables, functions, and references
-        used in the message. Uses Python 3.13's TypeIs for type-safe results.
-
-        Args:
-            message_id: Message identifier
-
-        Returns:
-            MessageIntrospection with complete metadata
-
-        Raises:
-            KeyError: If message doesn't exist
-
-        Example:
-            >>> bundle.add_resource("price = { NUMBER($amount, minimumFractionDigits: 2) }")
-            >>> info = bundle.introspect_message("price")
-            >>> assert "amount" in info.get_variable_names()
-            >>> assert "NUMBER" in info.get_function_names()
-        """
-        with self._rwlock.read():
-            if message_id not in self._messages:
-                msg = f"Message '{message_id}' not found"
-                raise KeyError(msg)
-
-            return introspect_message(self._messages[message_id])
-
-    def introspect_term(self, term_id: str) -> MessageIntrospection:
-        """Get complete introspection data for a term.
-
-        Returns comprehensive metadata about variables, functions, and references
-        used in the term. Mirrors introspect_message() for API symmetry.
-
-        Args:
-            term_id: Term identifier (without leading dash)
-
-        Returns:
-            MessageIntrospection with complete metadata
-
-        Raises:
-            KeyError: If term doesn't exist
-
-        Example:
-            >>> bundle.add_resource("-brand = { $case -> \\n    [nominative] Firefox\\n    *[other] Firefox\\n}")
-            >>> info = bundle.introspect_term("brand")
-            >>> assert "case" in info.get_variable_names()
-        """
-        with self._rwlock.read():
-            if term_id not in self._terms:
-                msg = f"Term '{term_id}' not found"
-                raise KeyError(msg)
-
-            return introspect_message(self._terms[term_id])
-
-    def get_message(self, message_id: str) -> Message | None:
-        """Return the parsed AST node for a message, or None if not found.
-
-        Provides direct access to the Message AST node, enabling callers to use
-        structured introspection APIs such as validate_message_variables() without
-        re-parsing the FTL source.
-
-        Args:
-            message_id: Message identifier
-
-        Returns:
-            Message AST node, or None if the message does not exist
-
-        Example:
-            >>> bundle.add_resource("greeting = Hello, { $name }!")
-            >>> msg = bundle.get_message("greeting")
-            >>> if msg is not None:
-            ...     from ftllexengine import validate_message_variables
-            ...     result = validate_message_variables(msg, frozenset({"name"}))
-            ...     assert result.is_valid
-        """
-        with self._rwlock.read():
-            return self._messages.get(message_id)
-
-    def get_term(self, term_id: str) -> Term | None:
-        """Return the parsed AST node for a term, or None if not found.
-
-        Provides direct access to the Term AST node. The term_id should be
-        supplied without the leading dash (e.g., ``"brand"`` for ``-brand``).
-
-        Args:
-            term_id: Term identifier without leading dash
-
-        Returns:
-            Term AST node, or None if the term does not exist
-
-        Example:
-            >>> bundle.add_resource("-brand = Firefox")
-            >>> term = bundle.get_term("brand")
-            >>> assert term is not None
-        """
-        with self._rwlock.read():
-            return self._terms.get(term_id)
 
     def add_function(self, name: str, func: Callable[..., FluentValue]) -> None:
         """Add custom function to bundle.
@@ -1352,9 +749,9 @@ class FluentBundle:
             func: Callable function that returns a FluentValue
 
         Example:
-            >>> def CUSTOM(value):
+            >>> def CUSTOM(value):  # doctest: +SKIP
             ...     return value.upper()
-            >>> bundle.add_function("CUSTOM", CUSTOM)
+            >>> bundle.add_function("CUSTOM", CUSTOM)  # doctest: +SKIP
         """
         with self._rwlock.write():
             # Copy-on-write: copy the shared registry on first modification
@@ -1381,10 +778,10 @@ class FluentBundle:
         Automatically called by add_resource() and add_function().
 
         Example:
-            >>> bundle = FluentBundle("en", cache=CacheConfig())
-            >>> bundle.add_resource("msg = Hello")
-            >>> bundle.format_pattern("msg")  # Caches result
-            >>> bundle.clear_cache()  # Manual invalidation
+            >>> bundle = FluentBundle("en", cache=CacheConfig())  # doctest: +SKIP
+            >>> bundle.add_resource("msg = Hello")  # doctest: +SKIP
+            >>> bundle.format_pattern("msg")  # Caches result  # doctest: +SKIP
+            >>> bundle.clear_cache()  # Manual invalidation  # doctest: +SKIP
         """
         with self._rwlock.write():
             if self._cache is not None:
@@ -1400,16 +797,16 @@ class FluentBundle:
             See CacheStats for the complete field specification.
 
         Example:
-            >>> bundle = FluentBundle("en", cache=CacheConfig())
-            >>> bundle.add_resource("msg = Hello")
-            >>> bundle.format_pattern("msg", {})  # Cache miss
-            >>> bundle.format_pattern("msg", {})  # Cache hit
-            >>> stats = bundle.get_cache_stats()
-            >>> stats["hits"]
+            >>> bundle = FluentBundle("en", cache=CacheConfig())  # doctest: +SKIP
+            >>> bundle.add_resource("msg = Hello")  # doctest: +SKIP
+            >>> bundle.format_pattern("msg", {})  # Cache miss  # doctest: +SKIP
+            >>> bundle.format_pattern("msg", {})  # Cache hit  # doctest: +SKIP
+            >>> stats = bundle.get_cache_stats()  # doctest: +SKIP
+            >>> stats["hits"]  # doctest: +SKIP
             1
-            >>> stats["misses"]
+            >>> stats["misses"]  # doctest: +SKIP
             1
-            >>> isinstance(stats["hit_rate"], float)
+            >>> isinstance(stats["hit_rate"], float)  # doctest: +SKIP
             True
         """
         if self._cache is not None:

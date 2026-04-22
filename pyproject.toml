@@ -7,15 +7,31 @@ managed = true
 package = true
 
 [tool.validate-version]
-# Check for `project_version: X.Y.Z` in the YAML frontmatter of these files
-frontmatter_globs = ["docs/DOC_*.md", "DOC_*.md"]
-frontmatter_key = "project_version"
-# Check for `**FTLLexEngine Version**: X.Y.Z` footer in these specific files
-footer_files = ["docs/QUICK_REFERENCE.md", "docs/TERMINOLOGY.md"]
+# Check for `version: X.Y.Z` in YAML frontmatter for non-README documentation.
+frontmatter_globs = [
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "PATENTS.md",
+    "docs/**/*.md",
+    "examples/**/*.md",
+    "fuzz_atheris/README.md",
+]
+frontmatter_key = "version"
 
 [tool.validate-docs]
 # Glob patterns for markdown files to scan
-scan_globs = ["README.md", "CHANGELOG.md", "docs/**/*.md"]
+scan_globs = ["README.md", "CHANGELOG.md", "docs/**/*.md", "examples/**/*.md", "fuzz_atheris/README.md"]
+# Markdown files whose Python fences are intended to be copy-paste runnable.
+python_exec_globs = [
+    "README.md",
+    "docs/CUSTOM_FUNCTIONS_GUIDE.md",
+    "docs/LOCALE_GUIDE.md",
+    "docs/MIGRATION.md",
+    "docs/PARSING_GUIDE.md",
+    "docs/QUICK_REFERENCE.md",
+    "docs/TYPE_HINTS_GUIDE.md",
+    "docs/VALIDATION_GUIDE.md",
+]
 # Substrings that trigger skipping a specific FTL code block
 skip_markers = [
     "# ←",
@@ -36,7 +52,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.162.0"
+version = "0.163.0"
 description = "Python runtime for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware formatting, and fail-fast boot validation with structured audit evidence."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -103,15 +119,18 @@ babel = [
 [dependency-groups]
 dev = [
     "Babel>=2.18.0,<3.0.0",  # Required for tests (locale formatting, parsing)
-    "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
-    "hypothesis>=6.151.9",
-    "mypy>=1.19.1",
-    "ruff>=0.15.7",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "hypothesis>=6.152.1",
+    "mypy>=1.20.2",
+    "ruff>=0.15.11",
     "pytest-benchmark>=5.2.3",
-    "hypofuzz>=25.11.1",
     "psutil>=7.2.2",
-    "types-psutil>=7.2.2.20260130",
+    "types-psutil>=7.2.2.20260408",
+]
+
+fuzz = [
+    "hypofuzz>=25.11.1",
 ]
 
 atheris = [
@@ -119,7 +138,7 @@ atheris = [
 ]
 
 release = [
-    "build>=1.4.0",
+    "build>=1.4.3",
     "twine>=6.2.0",
 ]
 
@@ -200,7 +219,7 @@ omit = [
 precision = 2
 show_missing = true
 skip_covered = false
-fail_under = 95.0
+fail_under = 100.0
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
@@ -313,7 +332,9 @@ ignore = [
 # Parser: Inherent complexity from EBNF grammar
 # C901: Each function implements one EBNF grammar rule; branching is structural, not accidental
 "src/ftllexengine/syntax/parser/core.py" = ["PLR0912", "C901"]
-"src/ftllexengine/syntax/parser/rules.py" = ["PLR0911", "PLR0912", "PLR0915", "C901"]
+"src/ftllexengine/syntax/parser/entries.py" = ["PLR0911", "C901"]
+"src/ftllexengine/syntax/parser/expressions.py" = ["PLR0911", "PLR0912", "C901"]
+"src/ftllexengine/syntax/parser/patterns.py" = ["PLR0911", "PLR0912", "PLR0915", "C901"]
 "src/ftllexengine/syntax/parser/primitives.py" = ["C901"]
 
 # Visitor: Commented example code + inherent complexity from AST node dispatch

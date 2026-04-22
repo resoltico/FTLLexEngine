@@ -76,13 +76,7 @@ unset _script_src
 PY_VERSION_NODOT="${PY_VERSION//./}"
 FAILED_ITEMS_FILE=$(mktemp)
 
-# Auto-configure PYTHONPATH to include 'src' if it exists
-# This solves 'Module not found' in examples/tests for 99% of projects
-if [[ -d "src" ]]; then
-    export PYTHONPATH="${PWD}/src:${PYTHONPATH:-}"
-else
-    export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
-fi
+unset PYTHONPATH
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -118,7 +112,7 @@ pre_flight_diagnostics() {
        echo "[ INFO ] Environment          : System/User ($VIRTUAL_ENV)"
     fi
     echo "[ INFO ] Python               : $(python --version)"
-    echo "[ INFO ] PYTHONPATH           : ${PYTHONPATH:-<empty>}"
+    echo "[ INFO ] Import Mode          : Installed package (PYTHONPATH unset)"
     
     # Tool Availability Check
     for tool in ruff mypy; do
@@ -159,6 +153,7 @@ declare -a TARGETS=()
 for dir in */; do
     dir=${dir%/}
     [[ "$dir" == .* ]] && continue # Skip hidden directories (.git, .venv, etc.)
+    [[ "$dir" == "tmp" ]] && continue # Scratch workspace: intentionally excluded from gates.
     
     # Only include if it contains at least one .py file (recursively)
     if find "$dir" -maxdepth 5 -name "*.py" -print -quit 2>/dev/null | grep -q ".py"; then
@@ -268,7 +263,6 @@ run_mypy() {
         log_info "  + Using ${config_source}: ${config}"
 
         # Flags: --no-color-output (agent), --no-error-summary (quiet)
-        # Note: We rely on PYTHONPATH being set correctly above
         local cmd=(mypy --config-file "$config" --python-version "$PY_VERSION" --no-color-output --no-error-summary)
         execute_tool "mypy" "$target" "${cmd[@]}" "$target"
     done

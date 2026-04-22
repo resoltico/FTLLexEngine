@@ -246,11 +246,10 @@ msg = {{ $count ->
 
 
 class TestLongIdentifierVariantKeys:
-    """Tests for variant keys with long identifiers (v0.89.0 fix).
+    """Tests for variant keys with long identifiers.
 
-    Prior to v0.89.0, MAX_LOOKAHEAD_CHARS (128) was smaller than
-    _MAX_IDENTIFIER_LENGTH (256), causing variant keys with 129-256 char
-    identifiers to be misparsed as literal text.
+    A previous parser lookahead mismatch caused 129-256 character identifiers
+    to be misparsed as literal text instead of variant keys.
     """
 
     def test_variant_key_with_max_length_identifier(self) -> None:

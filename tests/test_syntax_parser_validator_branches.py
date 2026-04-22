@@ -1,7 +1,7 @@
-"""Targeted branch coverage for rules.py and validator.py.
+"""Targeted branch coverage for parser grammar modules and validator.py.
 
 Addresses specific uncovered lines and branches:
-- rules.py line 885: parse_term_reference returning None in parse_argument_expression
+- parse_term_reference returning None in parse_argument_expression
 - NumberLiteral.__post_init__: invariant enforcement for raw/value consistency
 - validator.py branches 157->exit, 246->exit: Match case exits for Junk and TextElement
 
@@ -40,7 +40,7 @@ from ftllexengine.syntax.validator import SemanticValidator, validate
 
 
 class TestRulesLine885TermReferenceFailure:
-    """Test rules.py line 885: parse_term_reference returning None.
+    """Test parse_term_reference returning None inside parse_argument_expression.
 
     Line 885 is triggered when parse_term_reference fails after we've
     already verified the character after '-' is an identifier start.
@@ -48,13 +48,13 @@ class TestRulesLine885TermReferenceFailure:
     """
 
     def test_term_reference_with_invalid_attribute_name(self) -> None:
-        """Term reference with dot but invalid attribute triggers line 885.
+        """Term reference with dot but invalid attribute returns None.
 
         Input: -brand.123
         - '-' followed by 'b' (identifier start) -> tries parse_term_reference
         - parse_term_reference parses '-brand', sees '.', tries attribute
         - Attribute identifier fails (starts with digit) -> returns None
-        - Back in parse_argument_expression, line 885 returns None
+        - Back in parse_argument_expression, the defensive branch returns None
         """
         cursor = Cursor("-brand.123", 0)
         context = ParseContext()
@@ -64,7 +64,7 @@ class TestRulesLine885TermReferenceFailure:
         assert result is None
 
     def test_term_reference_with_dot_at_eof(self) -> None:
-        """Term reference with trailing dot at EOF triggers line 885.
+        """Term reference with trailing dot at EOF returns None.
 
         Input: -brand.
         - parse_term_reference tries to parse attribute after '.'
@@ -78,7 +78,7 @@ class TestRulesLine885TermReferenceFailure:
         assert result is None
 
     def test_term_reference_with_dot_followed_by_space(self) -> None:
-        """Term reference with dot followed by space triggers line 885.
+        """Term reference with dot followed by space returns None.
 
         Input: -brand. x
         - parse_term_reference sees '.', tries to parse attribute
@@ -92,7 +92,7 @@ class TestRulesLine885TermReferenceFailure:
         assert result is None
 
     def test_term_reference_with_dot_followed_by_special_char(self) -> None:
-        """Term reference with dot followed by special char triggers line 885."""
+        """Term reference with dot followed by special char returns None."""
         cursor = Cursor("-brand.@", 0)
         context = ParseContext()
         result = parse_argument_expression(cursor, context)
@@ -305,7 +305,7 @@ class TestValidatorBranch246TextElement:
 
 
 class TestValidatorCommentEntry:
-    """Comprehensive tests for Comment entry validation (line 156)."""
+    """Comprehensive tests for comment-entry validation."""
 
     def test_single_line_comment(self) -> None:
         """Single-line comment passes validation."""

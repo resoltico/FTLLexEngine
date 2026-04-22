@@ -29,6 +29,7 @@ from ftllexengine.diagnostics import (
     ErrorTemplate,
     FrozenFluentError,
 )
+from ftllexengine.diagnostics.depth import resolution_depth_error
 from ftllexengine.integrity import DataIntegrityError, IntegrityContext
 
 __all__ = ["GlobalDepthGuard", "ResolutionContext"]
@@ -149,7 +150,8 @@ class ResolutionContext:
     def __post_init__(self) -> None:
         """Initialize the expression depth guard with configured max depth."""
         self._expression_guard = DepthGuard(
-            max_depth=self.max_expression_depth
+            max_depth=self.max_expression_depth,
+            error_factory=resolution_depth_error,
         )
 
     def push(self, key: str) -> None:

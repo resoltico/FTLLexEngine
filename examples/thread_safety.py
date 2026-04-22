@@ -14,7 +14,7 @@ Thread Safety:
 Demonstrates:
 1. Single-threaded initialization pattern (recommended for static resources)
 2. Concurrent read operations (always safe)
-3. Thread-local bundles (alternative for per-thread customization)
+3. Per-worker bundles (alternative for per-thread customization)
 4. Dynamic resource loading (always safe without manual locks)
 
 WARNING: Examples use use_isolating=False for cleaner terminal output.
@@ -112,55 +112,47 @@ status = Status: { $status }
     print("\n[SUCCESS] All files processed")
 
 
-# Example 3: Thread-local bundles (alternative for per-thread customization)
-def example_3_thread_local_bundles() -> None:
-    """Example 3: Each thread gets its own bundle (for per-thread customization)."""
+# Example 3: Per-worker bundles (alternative for per-thread customization)
+def example_3_per_worker_bundles() -> None:
+    """Example 3: Each worker builds its own bundle when customization is isolated."""
     print("\n" + "=" * 60)
-    print("Example 3: Thread-local Bundles")
+    print("Example 3: Per-worker Bundles")
     print("=" * 60)
-    print("[NOTE] Useful when each thread needs different resources or functions\n")
+    print("[NOTE] Useful when each worker needs different resources or functions\n")
 
-    # Thread-local storage for bundles
-    thread_local = threading.local()
-
-    def get_or_create_bundle() -> FluentBundle:
-        """Get bundle for current thread (creates if needed)."""
-        if not hasattr(thread_local, "bundle"):
-            # Each thread creates its own bundle
-            bundle: FluentBundle = FluentBundle("en", use_isolating=False)
-            thread_local.bundle = bundle
-            thread_local.bundle.add_resource("""
+    def build_worker_bundle() -> FluentBundle:
+        """Create a bundle owned by the current worker."""
+        bundle = FluentBundle("en", use_isolating=False)
+        bundle.add_resource("""
 worker-msg = Worker thread { $tid } initialized
 task = Processing task { $task_id }
-            """)
-            print(f"  [Thread-{threading.current_thread().ident}] Created bundle")
+        """)
+        return bundle
 
-        # Type ignore: threading.local() has dynamic attributes
-        return thread_local.bundle  # type: ignore[no-any-return]
-
-    def worker_with_local_bundle(task_id: int) -> None:
-        """Worker that uses thread-local bundle."""
-        bundle = get_or_create_bundle()
+    def worker_with_own_bundle(task_id: int) -> None:
+        """Worker that uses its own dedicated bundle."""
+        bundle = build_worker_bundle()
 
         tid = threading.current_thread().ident
+        print(f"  [Thread-{tid}] Created bundle")
         result, _ = bundle.format_pattern("worker-msg", {"tid": tid})
         print(f"  {result}")
 
         task_result, _ = bundle.format_pattern("task", {"task_id": task_id})
         print(f"  {task_result}")
 
-    print("[EXECUTION] Creating thread-local bundles:")
+    print("[EXECUTION] Creating per-worker bundles:")
 
     threads = []
     for i in range(3):
-        t = threading.Thread(target=worker_with_local_bundle, args=(i,))
+        t = threading.Thread(target=worker_with_own_bundle, args=(i,))
         threads.append(t)
         t.start()
 
     for t in threads:
         t.join()
 
-    print("\n[SUCCESS] Thread-local bundles pattern complete")
+    print("\n[SUCCESS] Per-worker bundles pattern complete")
 
 
 # Example 4: Dynamic resource loading (always safe)
@@ -213,7 +205,7 @@ def example_4_dynamic_loading() -> None:
 if __name__ == "__main__":
     example_1_recommended_pattern()
     example_2_threadpool_pattern()
-    example_3_thread_local_bundles()
+    example_3_per_worker_bundles()
     example_4_dynamic_loading()
 
     print("\n" + "=" * 60)
@@ -222,5 +214,5 @@ if __name__ == "__main__":
     print("\nRECOMMENDATIONS:")
     print("  - Static resources: Use Example 1 (single-threaded init)")
     print("  - Dynamic resources: Use Example 4 (always safe)")
-    print("  - Per-thread customization: Use Example 3 (thread-local)")
+    print("  - Per-worker customization: Use Example 3 (per-worker bundles)")
     print("\n[NOTE] All FluentBundle instances are thread-safe.")

@@ -1,332 +1,45 @@
 ---
-afad: "3.3"
-version: "0.153.0"
-domain: validation
-updated: "2026-03-13"
+afad: "3.5"
+version: "0.163.0"
+domain: VALIDATION
+updated: "2026-04-22"
 route:
-  keywords: [validation, validate_resource, SemanticValidator, duplicate, cycle detection, FTL validation]
-  questions: ["how to validate FTL?", "what validation checks exist?", "where is duplicate detection?", "how to detect cycles?"]
+  keywords: [validation, validate_resource, ValidationResult, require_clean, boot validation, message schemas]
+  questions: ["how do I validate FTL before loading it?", "how do I fail fast at startup?", "how do I validate message variables?"]
 ---
 
 # Validation Guide
 
-**Purpose**: Understand FTLLexEngine's validation architecture and responsibility distribution.
-**Prerequisites**: Basic FTL syntax knowledge.
+**Purpose**: Validate FTL source, loaded resources, and message-variable contracts before serving traffic.
+**Prerequisites**: Basic familiarity with `FluentBundle` or `FluentLocalization`.
 
-## Overview
+## Resource Validation
 
-FTLLexEngine implements a **two-tier validation architecture**:
-
-1. **Resource-level validation** (`validate_resource()`): Checks spanning multiple entries
-2. **AST node-level validation** (`SemanticValidator`): Checks within individual AST nodes
-
-This separation follows single-responsibility principle: each validator handles checks appropriate to its scope.
-
----
-
-## Validation Responsibility Matrix
-
-Function names prefixed with `_` are internal implementation details. They are listed
-for traceability only; direct calls or imports of private functions are unsupported.
-
-| Check | Module | Function/Class | Scope |
-|:------|:-------|:---------------|:------|
-| Syntax errors (Junk) | `validation.resource` | `_extract_syntax_errors()` (internal) | Resource |
-| Duplicate message IDs | `validation.resource` | `_collect_entries()` (internal) | Resource |
-| Duplicate term IDs | `validation.resource` | `_collect_entries()` (internal) | Resource |
-| Duplicate attribute IDs | `validation.resource` | `_collect_entries()` (internal) | Entry |
-| Messages without value/attrs | `validation.resource` | `_collect_entries()` (internal) | Entry |
-| Shadow warnings | `validation.resource` | `_collect_entries()` (internal) | Resource |
-| Undefined message refs | `validation.resource` | `_check_undefined_references()` (internal) | Resource |
-| Undefined term refs | `validation.resource` | `_check_undefined_references()` (internal) | Resource |
-| Circular references | `validation.resource` | `_detect_circular_references()` (internal) | Resource |
-| Long reference chains | `validation.resource` | `_detect_long_chains()` (internal) | Resource |
-| Term missing value | `syntax.validator` | `SemanticValidator` | Node |
-| Select without default | `syntax.validator` | `SemanticValidator` | Node |
-| Select without variants | `syntax.validator` | `SemanticValidator` | Node |
-| Duplicate variant keys | `syntax.validator` | `SemanticValidator` | Node |
-| Duplicate named arguments | `syntax.validator` | `SemanticValidator` | Node |
-| Term positional args warning | `syntax.validator` | `SemanticValidator` | Node |
-| Placeable as selector (bypass guard) | `syntax.validator` | `SemanticValidator` | Node |
-
----
-
-## Quick Start
+Use `validate_resource()` to check FTL source before adding it to a bundle.
 
 ```python
-from ftllexengine.validation import validate_resource
+from ftllexengine import validate_resource
 
-source = """
-hello = Hello, { $name }!
--brand = FTLLexEngine
-welcome = Welcome to { -brand }
-"""
-
-# Validate
-result = validate_resource(source)
-
-if result.is_valid:
-    print("Validation passed")
-else:
-    for error in result.errors:
-        print(f"Error: {error.code} - {error.message}")
-    for warning in result.warnings:
-        print(f"Warning: {warning.code} - {warning.message}")
+result = validate_resource("welcome = Hello, { $name }!")
+assert result.is_valid is True
+assert result.error_count == 0
+assert result.warning_count == 0
 ```
 
----
+`ValidationResult` separates:
 
-## Resource-Level Validation
+- `errors`: structural or syntax validation failures.
+- `warnings`: semantic problems such as unresolved references.
+- `annotations`: parser-level annotations recovered from junk input.
 
-`validate_resource()` orchestrates six validation passes:
+## Loaded-Resource Validation
 
-### Pass 1: Syntax Error Extraction
+`FluentLocalization.require_clean()` converts load summary problems into an `IntegrityCheckFailedError`. This is the fail-fast path for production startup.
 
-Converts `Junk` entries (unparseable content) to structured errors.
+## Message Variable Contracts
 
-```python
-# FTL with syntax error
-source = "hello = Hello { missing-close"
-result = validate_resource(source)
-# Error: VALIDATION_PARSE_ERROR
-```
+Use `validate_message_variables()` when you already have an AST node, or `FluentLocalization.validate_message_schemas()` when you want to enforce contracts across a loaded localization set.
 
-### Pass 2: Entry Collection and Duplicates
+## Recommended Startup Pattern
 
-Checks for duplicate IDs within namespaces and duplicate attributes within entries.
-
-```python
-# Duplicate message ID
-source = """
-hello = First
-hello = Second
-"""
-# Warning: VALIDATION_DUPLICATE_ID - "Duplicate message ID 'hello'"
-```
-
-**Namespace Separation**: Per Fluent spec, messages and terms have separate namespaces:
-```python
-# NOT a duplicate - different namespaces
-source = """
-brand = Brand message
--brand = Brand term
-"""
-# No warning: 'brand' and '-brand' coexist
-```
-
-### Pass 3: Undefined Reference Detection
-
-Identifies references to non-existent messages or terms.
-
-```python
-source = """
-hello = { greeting }
--missing = { -nonexistent }
-"""
-# Warning: VALIDATION_UNDEFINED_REFERENCE - "Message 'hello' references undefined message 'greeting'"
-# Warning: VALIDATION_UNDEFINED_REFERENCE - "Term '-missing' references undefined term '-nonexistent'"
-```
-
-### Pass 4: Circular Reference Detection
-
-Detects cycles in the message/term dependency graph.
-
-```python
-source = """
-a = { b }
-b = { c }
-c = { a }
-"""
-# Warning: VALIDATION_CIRCULAR_REFERENCE - "Circular reference detected: a -> b -> c -> a"
-```
-
-**Cross-Type Cycles**: The validator builds a unified graph to detect cycles spanning both messages and terms:
-```python
-source = """
-msg = { -term }
--term = { msg }
-"""
-# Warning: Detects message -> term -> message cycle
-```
-
-**Cross-Resource Cycles**: When validating via `FluentBundle.validate_resource()`, the validator also detects cycles involving entries already loaded in the bundle:
-```python
-bundle = FluentBundle("en")
-bundle.add_resource("msg_a = { msg_b }")  # msg_a depends on msg_b
-
-# Now validate a resource that completes the cycle
-result = bundle.validate_resource("msg_b = { msg_a }")
-# Warning: Circular reference detected - msg_a and msg_b form a cycle
-```
-
-This cross-resource detection works because the bundle tracks dependencies for all loaded entries.
-
-### Pass 5: Long Chain Detection
-
-Warns about reference chains approaching `MAX_DEPTH` limit.
-
-```python
-# Chain of 90 messages (warning threshold at MAX_DEPTH - 10)
-# Warning: VALIDATION_LONG_CHAIN
-```
-
-### Pass 6: Semantic Validation
-
-Delegates to `SemanticValidator` for AST node-level checks.
-
----
-
-## AST Node-Level Validation (SemanticValidator)
-
-`SemanticValidator` checks semantic correctness within individual AST nodes.
-
-### Term Must Have Value
-
-```python
-source = "-empty"  # Term without value
-# Error: VALIDATION_TERM_NO_VALUE
-```
-
-### Select Expression Requirements
-
-```python
-# Missing default variant
-source = """
-count = { $n ->
-    [one] One
-    [other] Other
-}
-"""
-# Error: VALIDATION_SELECT_NO_DEFAULT - must have exactly one *[default]
-
-# Missing variants
-source = "count = { $n -> }"
-# Error: VALIDATION_SELECT_NO_VARIANTS
-
-# Duplicate variant keys
-source = """
-count = { $n ->
-    [one] First one
-    [one] Second one
-   *[other] Other
-}
-"""
-# Error: VALIDATION_VARIANT_DUPLICATE
-```
-
-### Duplicate Named Arguments
-
-```python
-source = 'msg = { NUMBER($n, style: "decimal", style: "percent") }'
-# Error: VALIDATION_NAMED_ARG_DUPLICATE
-```
-
-### Term Positional Arguments Warning
-
-Per Fluent specification, terms only accept named arguments. Positional arguments are silently ignored at runtime. The validator warns about this to catch likely user errors:
-
-```python
-source = """
--brand = Acme Corp
-msg = { -brand($value) }
-"""
-# Warning: VALIDATION_TERM_POSITIONAL_ARGS - "Term '-brand' called with positional arguments; positional arguments are ignored for term references"
-```
-
----
-
-## Architecture Rationale
-
-**Why Two Tiers?**
-
-| Concern | Level | Example |
-|:--------|:------|:--------|
-| Cross-entry relationships | Resource | Circular references between messages |
-| Entry-spanning checks | Resource | Duplicate attribute IDs across attributes |
-| Node-internal rules | AST Node | Select expression must have default |
-| Call argument rules | AST Node | Named argument uniqueness |
-
-Attempting to consolidate all checks into one validator would create a "god class" with mixed concerns. The current design:
-
-1. `validate_resource()` owns the resource-level view
-2. `SemanticValidator` owns the node-level view
-3. Each is testable independently
-4. Each has clear responsibility boundaries
-
----
-
-## Integration with FluentBundle
-
-`FluentBundle.add_resource()` automatically validates during FTL source loading:
-
-```python
-from ftllexengine import FluentBundle
-
-bundle = FluentBundle("en_US")
-junk_entries = bundle.add_resource("hello = Hello")
-
-if junk_entries:
-    for junk in junk_entries:
-        print(f"Parse error: {junk}")
-```
-
-For standalone validation without a bundle (CI/CD pipelines, linters):
-
-```python
-from ftllexengine.validation import validate_resource
-
-result = validate_resource(ftl_content)
-```
-
----
-
-## Validation Result Structure
-
-```python
-@dataclass(frozen=True, slots=True)
-class ValidationResult:
-    errors: tuple[ValidationError, ...]      # Blocking issues
-    warnings: tuple[ValidationWarning, ...]  # Non-blocking; do not affect is_valid
-    annotations: tuple[Annotation, ...]      # Parser annotations; affect is_valid
-
-    # Validity check
-    @property
-    def is_valid(self) -> bool: ...          # True if no errors AND no annotations
-
-    # Counts
-    @property
-    def error_count(self) -> int: ...        # len(errors)
-    @property
-    def annotation_count(self) -> int: ...   # len(annotations)
-    @property
-    def warning_count(self) -> int: ...      # len(warnings)
-
-    # Factories
-    @staticmethod
-    def valid() -> ValidationResult: ...     # Empty result (all tuples empty)
-    @staticmethod
-    def invalid(
-        errors: tuple[ValidationError, ...] = (),
-        warnings: tuple[ValidationWarning, ...] = (),
-        annotations: tuple[Annotation, ...] = (),
-    ) -> ValidationResult: ...
-    @staticmethod
-    def from_annotations(
-        annotations: tuple[Annotation, ...]
-    ) -> ValidationResult: ...              # Convenience: parser annotations only
-```
-
-**Error vs Warning**:
-- **Errors**: Prevent correct resolution (syntax errors, missing term values)
-- **Warnings**: May indicate issues but don't prevent resolution (duplicates, undefined refs)
-
----
-
-## Summary
-
-| Validator | Location | Checks |
-|:----------|:---------|:-------|
-| `validate_resource()` | `validation/resource.py` | Duplicates, cycles, undefined refs, chains |
-| `SemanticValidator` | `syntax/validator.py` | Term values, select rules, argument uniqueness |
-
-**Key Insight**: If you're looking for a specific check, consult the responsibility matrix. Checks spanning multiple entries are in `validate_resource()`; checks within a single AST node are in `SemanticValidator`.
+For audited startup, prefer `LocalizationBootConfig.boot()` or `boot_simple()` over assembling the boot sequence by hand. That path loads resources, checks load cleanliness, enforces required message presence, and validates declared message schemas in one place. `LocalizationBootConfig` instances are one-shot coordinators, so create a fresh instance for each boot attempt.

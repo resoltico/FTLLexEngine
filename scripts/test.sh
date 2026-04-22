@@ -57,7 +57,7 @@ else
 fi
 
 # [SECTION: SETUP]
-DEFAULT_COV_LIMIT=95
+DEFAULT_COV_LIMIT=100
 QUICK_MODE=false
 CI_MODE=false
 CLEAN_CACHE=true
@@ -261,12 +261,7 @@ if ! [[ "$FAILURE_TAIL_LINES" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
-# Auto-configure PYTHONPATH to include 'src' if it exists (Parity with lint.sh)
-if [[ -d "src" ]]; then
-    export PYTHONPATH="${PWD}/src:${PYTHONPATH:-}"
-else
-    export PYTHONPATH="${PWD}:${PYTHONPATH:-}"
-fi
+unset PYTHONPATH
 
 # [SECTION: DIAGNOSTICS]
 pre_flight_diagnostics() {
@@ -280,7 +275,7 @@ pre_flight_diagnostics() {
        echo "[ INFO ] Environment          : System/User ($VIRTUAL_ENV)"
     fi
     echo "[ INFO ] Python               : $(python --version)"
-    echo "[ INFO ] PYTHONPATH           : ${PYTHONPATH:-<empty>}"
+    echo "[ INFO ] Import Mode          : Installed package (PYTHONPATH unset)"
     
     if ! command -v pytest >/dev/null 2>&1; then
         echo "[ FAIL ] Tooling             : Pytest missing (uv sync required)"

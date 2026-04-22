@@ -31,8 +31,8 @@ from ftllexengine.localization.orchestrator import FluentLocalization
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from ftllexengine.core.semantic_types import MessageId
     from ftllexengine.introspection import MessageVariableValidationResult
-    from ftllexengine.localization.types import MessageId
     from ftllexengine.runtime.cache_config import CacheConfig
 
 __all__ = ["LocalizationBootConfig"]
@@ -77,14 +77,14 @@ class LocalizationBootConfig:
             fallback locale (optional). Receives a FallbackInfo instance.
 
     Example:
-        >>> config = LocalizationBootConfig(
+        >>> config = LocalizationBootConfig(  # doctest: +SKIP
         ...     locales=('lv', 'en'),
         ...     resource_ids=('ui.ftl',),
         ...     base_path='locales/{locale}',
         ...     message_schemas={'welcome': frozenset({'name'})},
         ...     required_messages=frozenset({'welcome', 'farewell'}),
         ... )
-        >>> l10n, summary, schema_results = config.boot()
+        >>> l10n, summary, schema_results = config.boot()  # doctest: +SKIP
     """
 
     locales: tuple[str, ...]

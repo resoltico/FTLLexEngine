@@ -25,10 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from ftllexengine.syntax.ast import (  # pylint: disable=C0413
+from ftllexengine.syntax.ast import (
     Attribute,
     Comment,
     FunctionReference,
@@ -44,7 +41,7 @@ from ftllexengine.syntax.ast import (  # pylint: disable=C0413
     TextElement,
     VariableReference,
 )
-from ftllexengine.syntax.parser import FluentParserV1  # pylint: disable=C0413
+from ftllexengine.syntax.parser import FluentParserV1
 
 if TYPE_CHECKING:
     from ftllexengine.syntax.ast import Resource

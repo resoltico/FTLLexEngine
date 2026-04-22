@@ -1,679 +1,339 @@
 ---
-afad: "3.3"
-version: "0.162.0"
+afad: "3.5"
+version: "0.163.0"
 domain: TYPES
-updated: "2026-03-23"
+updated: "2026-04-22"
 route:
-  keywords: [Resource, Message, Term, Pattern, Attribute, Placeable, AST, dataclass, FluentValue, FTLLiteral, TerritoryInfo, CurrencyInfo, ISO 3166, ISO 4217, require_currency_code, require_territory_code]
-  questions: ["what AST nodes exist?", "how is FTL represented?", "what is the Resource structure?", "what types can FluentValue hold?", "how to get territory info?", "how to get currency info?", "how do I validate an ISO currency code?", "how do I validate an ISO territory code?"]
+  keywords: [FluentNumber, FluentValue, ParseResult, LocaleCode, CurrencyCode, TerritoryInfo, MessageIntrospection]
+  questions: ["what public types does FTLLexEngine expose?", "what value types can formatting accept?", "which semantic aliases and lookup-result types exist?", "what introspection result types exist?"]
 ---
 
-# AST Types Reference
+# Types Reference
 
 ---
 
-## `Resource`
+## `FluentNumber`
+
+Immutable wrapper that keeps a numeric value, its rendered string, and visible precision together.
 
 ### Signature
 ```python
 @dataclass(frozen=True, slots=True)
-class Resource:
-    entries: tuple[Entry, ...]
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `entries` | `tuple[Entry, ...]` | Y | All top-level entries. |
-
-### Constraints
-- Return: Immutable root AST node.
-- State: Frozen dataclass.
-
----
-
-## `Message`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Message:
-    id: Identifier
-    value: Pattern | None
-    attributes: tuple[Attribute, ...]
-    comment: Comment | None = None
-    span: Span | None = None
-
-    @staticmethod
-    def guard(entry: object) -> TypeIs[Message]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Message identifier. |
-| `value` | `Pattern \| None` | Y | Message value pattern. |
-| `attributes` | `tuple[Attribute, ...]` | Y | Message attributes. |
-| `comment` | `Comment \| None` | N | Associated comment. |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable message node.
-- State: Frozen dataclass.
-- Validation: `__post_init__` validates that value or attributes is non-empty. Raises `ValueError` if both value is None and attributes is empty.
-
----
-
-## `Term`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Term:
-    id: Identifier
-    value: Pattern
-    attributes: tuple[Attribute, ...]
-    comment: Comment | None = None
-    span: Span | None = None
-
-    @staticmethod
-    def guard(entry: object) -> TypeIs[Term]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Term identifier (without - prefix). |
-| `value` | `Pattern` | Y | Term value pattern (required). |
-| `attributes` | `tuple[Attribute, ...]` | Y | Term attributes. |
-| `comment` | `Comment \| None` | N | Associated comment. |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable term node.
-- State: Frozen dataclass.
-- Validation: `__post_init__` validates that value is not None. Raises `ValueError` if value is None.
-
----
-
-## `Attribute`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Attribute:
-    id: Identifier
-    value: Pattern
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Attribute name. |
-| `value` | `Pattern` | Y | Attribute value pattern. |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable attribute node.
-- State: Frozen dataclass.
-
----
-
-## `Comment`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Comment:
-    content: str
-    type: CommentType
-    span: Span | None = None
-
-    @staticmethod
-    def guard(entry: object) -> TypeIs[Comment]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `content` | `str` | Y | Comment text. |
-| `type` | `CommentType` | Y | COMMENT, GROUP, or RESOURCE. |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable comment node.
-- State: Frozen dataclass.
-
----
-
-## `Junk`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Junk:
-    content: str
-    annotations: tuple[Annotation, ...] = ()
-    span: Span | None = None
-
-    @staticmethod
-    def guard(entry: object) -> TypeIs[Junk]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `content` | `str` | Y | Unparseable source text. |
-| `annotations` | `tuple[Annotation, ...]` | N | Parse error annotations. |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable junk node.
-- State: Frozen dataclass.
-
----
-
-## `Pattern`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Pattern:
-    elements: tuple[PatternElement, ...]
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `elements` | `tuple[PatternElement, ...]` | Y | Text and placeable elements. |
-| `span` | `Span \| None` | N | Source location span. |
-
-### Constraints
-- Return: Immutable pattern node.
-- State: Frozen dataclass.
-
----
-
-## `TextElement`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class TextElement:
-    value: str
-    span: Span | None = None
-
-    @staticmethod
-    def guard(elem: object) -> TypeIs[TextElement]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `str` | Y | Plain text content. |
-| `span` | `Span \| None` | N | Source location span. |
-
-### Constraints
-- Return: Immutable text element.
-- State: Frozen dataclass.
-
----
-
-## `Placeable`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Placeable:
-    expression: Expression
-    span: Span | None = None
-
-    @staticmethod
-    def guard(elem: object) -> TypeIs[Placeable]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `expression` | `Expression` | Y | Contained expression. |
-| `span` | `Span \| None` | N | Source location span. |
-
-### Constraints
-- Return: Immutable placeable node.
-- State: Frozen dataclass.
-
----
-
-## `SelectExpression`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class SelectExpression:
-    selector: SelectorExpression
-    variants: tuple[Variant, ...]
-    span: Span | None = None
-
-    @staticmethod
-    def guard(expr: object) -> TypeIs[SelectExpression]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `selector` | `SelectorExpression` | Y | Value to select on (InlineExpression minus Placeable). |
-| `variants` | `tuple[Variant, ...]` | Y | Selection variants. |
-| `span` | `Span \| None` | N | Source position (start/end). |
-
-### Constraints
-- Return: Immutable select expression.
-- State: Frozen dataclass.
-- Validation: `__post_init__` validates that variants is non-empty and exactly one default variant exists. Raises `ValueError` on constraint violation.
-- Selector: `selector` is typed `SelectorExpression`, a restricted subset of `InlineExpression` that excludes `Placeable`. The parser enforces this; programmatic construction via `object.__setattr__` bypass is rejected at validation time.
-
----
-
-## `Variant`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Variant:
-    key: VariantKey
-    value: Pattern
-    default: bool = False
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `key` | `VariantKey` | Y | Variant key (Identifier or NumberLiteral). |
-| `value` | `Pattern` | Y | Variant pattern. |
-| `default` | `bool` | N | True for default variant (*). |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable variant node.
-- State: Frozen dataclass.
-
----
-
-## `StringLiteral`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class StringLiteral:
-    value: str
-    span: Span | None = None
-
-    @staticmethod
-    def guard(key: object) -> TypeIs[StringLiteral]: ...
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `str` | Y | String content (without quotes). |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable string literal.
-- State: Frozen dataclass.
-- Guard: `StringLiteral.guard(obj)` returns `TypeIs[StringLiteral]` for type narrowing.
-
----
-
-## `NumberLiteral`
-
-### Signature
-```python
-from decimal import Decimal
-
-@dataclass(frozen=True, slots=True)
-class NumberLiteral:
+class FluentNumber:
     value: int | Decimal
-    raw: str
-    span: Span | None = None
-
-    @staticmethod
-    def guard(key: object) -> TypeIs[NumberLiteral]: ...
+    formatted: str
+    precision: int | None = None
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `int \| Decimal` | Y | Parsed numeric value (int for integers, Decimal for decimals). |
-| `raw` | `str` | Y | Original source representation for serialization. |
-| `span` | `Span \| None` | N | Source position. |
-
 ### Constraints
-- Return: Immutable number literal.
-- State: Frozen dataclass.
-- Precision: Integer literals use `int` for memory efficiency. Decimal literals use `Decimal` for financial-grade precision, eliminating float rounding errors (0.1 + 0.2 = 0.3, not 0.30000000000000004).
-- Invariant: AST transformers creating new nodes must ensure raw represents value. Parser guarantees consistency at construction.
+- Import: `from ftllexengine import FluentNumber`
+- Purpose: lets formatted numbers still participate in plural resolution and exact numeric comparisons
+- Invariants: `value` must be `int | Decimal`, never `bool`; `precision` is `None` or `>= 0`
+- Helpers: `decimal_value` returns exact `Decimal`; `str(value)` returns `formatted`
+- Thread: safe
 
 ---
 
-## `FTLLiteral`
+## `FluentValue`
 
-Type alias for the closed set of values valid as named-argument values in Fluent call expressions.
+Recursive type alias for values accepted by runtime formatting and custom functions.
 
 ### Signature
 ```python
-type FTLLiteral = StringLiteral | NumberLiteral
+type FluentValue = (
+    str
+    | int
+    | Decimal
+    | datetime
+    | date
+    | FluentNumber
+    | None
+    | Sequence["FluentValue"]
+    | Mapping[str, "FluentValue"]
+)
 ```
 
-### Parameters
-| Type | Description |
-|:-----|:------------|
-| `StringLiteral` | Quoted string value. |
-| `NumberLiteral` | Numeric literal (int or Decimal). |
-
 ### Constraints
-- FTL EBNF: `named-argument ::= identifier ":" (StringLiteral \| NumberLiteral)`.
-- `NamedArgument.value` is typed `FTLLiteral`; only these two variants are spec-compliant.
-- Import: `from ftllexengine.syntax.ast import FTLLiteral` or `from ftllexengine.syntax import FTLLiteral`.
+- Import: `from ftllexengine import FluentValue`
+- Includes: scalar values, `FluentNumber`, nested sequences, and string-keyed mappings
+- Excludes: `float` by design; `bool` is not intended even though it is an `int` subtype
+- Purpose: canonical runtime boundary type for formatting and custom functions
 
 ---
 
-## `VariableReference`
+## `ParseResult`
+
+Generic return type for locale-aware parse helpers.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
-class VariableReference:
-    id: Identifier
-    span: Span | None = None
-
-    @staticmethod
-    def guard(expr: object) -> TypeIs[VariableReference]: ...
+type ParseResult[T] = tuple[T | None, tuple[FrozenFluentError, ...]]
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Variable identifier (without $). |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
 ### Constraints
-- Return: Immutable variable reference.
-- State: Frozen dataclass.
-- Span: Populated by parser for source-tracked ASTs.
+- Import: `from ftllexengine import ParseResult`
+- Success contract: parsed value in slot 0 and empty error tuple in slot 1
+- Failure contract: `None` in slot 0 and one or more `FrozenFluentError` instances in slot 1
+- Used by: `parse_decimal()`, `parse_date()`, `parse_datetime()`, `parse_currency()`, `parse_fluent_number()`
 
 ---
 
-## `MessageReference`
+## `LocaleCode`
+
+Semantic alias for locale identifiers in localization APIs.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
-class MessageReference:
-    id: Identifier
-    attribute: Identifier | None = None
-    span: Span | None = None
-
-    @staticmethod
-    def guard(expr: object) -> TypeIs[MessageReference]: ...
+type LocaleCode = str
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Message identifier. |
-| `attribute` | `Identifier \| None` | N | Attribute name if present. |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
 ### Constraints
-- Return: Immutable message reference.
-- State: Frozen dataclass.
-- Span: Populated by parser for source-tracked ASTs.
+- Import: `from ftllexengine import LocaleCode`
+- Semantics: BCP-47 or POSIX-style locale code such as `"en"`, `"lv"`, `"de-DE"`, or `"en_US"`
 
 ---
 
-## `TermReference`
+## `MessageId`
+
+Semantic alias for Fluent message identifiers.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
-class TermReference:
-    id: Identifier
-    attribute: Identifier | None = None
-    arguments: CallArguments | None = None
-    span: Span | None = None
-
-    @staticmethod
-    def guard(expr: object) -> TypeIs[TermReference]: ...
+type MessageId = str
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Term identifier (without -). |
-| `attribute` | `Identifier \| None` | N | Attribute name if present. |
-| `arguments` | `CallArguments \| None` | N | Parameterized term args. |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
 ### Constraints
-- Return: Immutable term reference.
-- State: Frozen dataclass.
-- Span: Populated by parser for source-tracked ASTs.
+- Import: `from ftllexengine import MessageId`
+- Semantics: message key like `"welcome"` or `"error-network"`
 
 ---
 
-## `FunctionReference`
+## `ResourceId`
+
+Semantic alias for resource identifiers used by localization loaders.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
-class FunctionReference:
-    id: Identifier
-    arguments: CallArguments
-    span: Span | None = None
-
-    @staticmethod
-    def guard(expr: object) -> TypeIs[FunctionReference]: ...
+type ResourceId = str
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `Identifier` | Y | Function name (e.g., NUMBER). |
-| `arguments` | `CallArguments` | Y | Function arguments. |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
 ### Constraints
-- Return: Immutable function reference.
-- State: Frozen dataclass.
-- Span: Populated by parser for source-tracked ASTs.
+- Import: `from ftllexengine import ResourceId`
+- Semantics: logical resource name such as `"main.ftl"` or `"errors.ftl"`
 
 ---
 
-## `CallArguments`
+## `FTLSource`
+
+Semantic alias for raw Fluent source text.
+
+### Signature
+```python
+type FTLSource = str
+```
+
+### Constraints
+- Import: `from ftllexengine import FTLSource`
+- Semantics: normalized or unnormalized FTL text before parsing
+
+---
+
+## `CurrencyCode`
+
+Nominal wrapper for ISO 4217 currency codes.
+
+### Signature
+```python
+CurrencyCode = NewType("CurrencyCode", str)
+```
+
+### Constraints
+- Import: `from ftllexengine import CurrencyCode`
+- Purpose: distinguish validated currency codes from arbitrary strings
+- Validation path: use `is_valid_currency_code()` or `require_currency_code()` before constructing or narrowing
+
+---
+
+## `TerritoryCode`
+
+Nominal wrapper for ISO 3166-1 alpha-2 territory codes.
+
+### Signature
+```python
+TerritoryCode = NewType("TerritoryCode", str)
+```
+
+### Constraints
+- Import: `from ftllexengine import TerritoryCode`
+- Purpose: distinguish validated territory codes from arbitrary strings
+- Validation path: use `is_valid_territory_code()` or `require_territory_code()` before constructing or narrowing
+
+---
+
+## `CurrencyInfo`
+
+Immutable ISO 4217 lookup result.
 
 ### Signature
 ```python
 @dataclass(frozen=True, slots=True)
-class CallArguments:
-    positional: tuple[InlineExpression, ...]
-    named: tuple[NamedArgument, ...]
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `positional` | `tuple[InlineExpression, ...]` | Y | Positional arguments. |
-| `named` | `tuple[NamedArgument, ...]` | Y | Named arguments. |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable call arguments.
-- State: Frozen dataclass.
-- Validation: `serialize(validate=True)` rejects duplicate named argument names.
-
----
-
-## `NamedArgument`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class NamedArgument:
-    name: Identifier
-    value: FTLLiteral
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `name` | `Identifier` | Y | Argument name. |
-| `value` | `FTLLiteral` | Y | Literal argument value (StringLiteral or NumberLiteral). |
-| `span` | `Span \| None` | N | Source position. |
-
-### Constraints
-- Return: Immutable named argument.
-- State: Frozen dataclass.
-- FTL EBNF: `NamedArgument ::= Identifier blank? ":" blank? (StringLiteral | NumberLiteral)`.
-- Type enforced: `value` is `FTLLiteral = StringLiteral | NumberLiteral`; passing any other `InlineExpression` subtype is a static type error.
-- Defense: Serializer validates value type at runtime as defense-in-depth against `object.__setattr__` bypass.
-
----
-
-## `Identifier`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class Identifier:
+class CurrencyInfo:
+    code: CurrencyCode
     name: str
-    span: Span | None = None
-
-    @staticmethod
-    def guard(key: object) -> TypeIs[Identifier]: ...
+    symbol: str
+    decimal_digits: int
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `name` | `str` | Y | Identifier string. |
-| `span` | `Span \| None` | N | Source position. |
-
 ### Constraints
-- Return: Immutable identifier.
-- State: Frozen dataclass.
+- Import: `from ftllexengine.introspection.iso import CurrencyInfo`
+- Produced by: `get_currency()` and `list_currencies()`
+- Locale note: `name` and `symbol` depend on the lookup locale; `decimal_digits` follows the embedded ISO 4217 table
+- Thread: safe
 
 ---
 
-## `Span`
+## `TerritoryInfo`
+
+Immutable ISO 3166-1 lookup result.
 
 ### Signature
 ```python
 @dataclass(frozen=True, slots=True)
-class Span:
-    start: int
-    end: int
+class TerritoryInfo:
+    alpha2: TerritoryCode
+    name: str
+    currencies: tuple[CurrencyCode, ...]
+    official_languages: tuple[str, ...]
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `start` | `int` | Y | Start character offset (inclusive). |
-| `end` | `int` | Y | End character offset (exclusive). |
-
 ### Constraints
-- Return: Immutable span.
-- Raises: `ValueError` if start < 0 or end < start.
-- State: Frozen dataclass.
-- Note: Positions are character offsets (code points), not bytes.
+- Import: `from ftllexengine.introspection.iso import TerritoryInfo`
+- Produced by: `get_territory()` and `list_territories()`
+- Locale note: `name` depends on the lookup locale; currencies and languages come from CLDR data
+- Thread: safe
 
 ---
 
-## `Annotation`
+## `CommentType`
+
+Enum of Fluent comment kinds.
+
+### Signature
+```python
+class CommentType(StrEnum):
+    COMMENT = "comment"
+    GROUP = "group"
+    RESOURCE = "resource"
+```
+
+### Constraints
+- Import: `from ftllexengine.enums import CommentType`
+- Used by: `syntax.ast.Comment.type`
+- Type: `StrEnum`
+
+---
+
+## `ReferenceKind`
+
+Enum describing whether a reference points at a message or a term.
+
+### Signature
+```python
+class ReferenceKind(StrEnum):
+    MESSAGE = "message"
+    TERM = "term"
+```
+
+### Constraints
+- Import: `from ftllexengine.enums import ReferenceKind`
+- Used by: `ReferenceInfo.kind`
+- Type: `StrEnum`
+
+---
+
+## `VariableContext`
+
+Enum describing where a variable appears inside a message.
+
+### Signature
+```python
+class VariableContext(StrEnum):
+    PATTERN = "pattern"
+    SELECTOR = "selector"
+    VARIANT = "variant"
+    FUNCTION_ARG = "function_arg"
+```
+
+### Constraints
+- Import: `from ftllexengine.enums import VariableContext`
+- Used by: `VariableInfo.context`
+- Type: `StrEnum`
+
+---
+
+## `VariableInfo`
+
+Immutable metadata about a variable occurrence discovered during introspection.
 
 ### Signature
 ```python
 @dataclass(frozen=True, slots=True)
-class Annotation:
-    code: str
-    message: str
-    arguments: tuple[tuple[str, str], ...] | None = None
+class VariableInfo:
+    name: str
+    context: VariableContext
     span: Span | None = None
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `code` | `str` | Y | Error code. |
-| `message` | `str` | Y | Error message. |
-| `arguments` | `tuple[tuple[str, str], ...] \| None` | N | Additional context as key-value pairs. |
-| `span` | `Span \| None` | N | Error location. |
-
 ### Constraints
-- Return: Immutable annotation.
-- State: Frozen dataclass.
+- Import: `from ftllexengine.introspection.message import VariableInfo`
+- Produced by: `introspect_message()`
 
 ---
 
-## `ASTVisitor`
+## `FunctionCallInfo`
+
+Immutable metadata about a function call discovered during introspection.
 
 ### Signature
 ```python
-class ASTVisitor[T = ASTNode]:
-    def __init__(self, *, max_depth: int | None = None) -> None: ...
-    def visit(self, node: ASTNode) -> T: ...
-    def generic_visit(self, node: ASTNode) -> T: ...
+@dataclass(frozen=True, slots=True)
+class FunctionCallInfo:
+    name: str
+    positional_arg_vars: tuple[str, ...]
+    named_args: frozenset[str]
+    span: Span | None = None
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `max_depth` | `int \| None` | N | Maximum traversal depth (default: 100). |
-
 ### Constraints
-- Return: Visited/transformed node.
-- State: Maintains dispatch cache and depth guard.
-- Thread: Not thread-safe (instance state).
-- Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `FrozenFluentError` (category=RESOLUTION) when traversal exceeds max_depth.
-- Depth: Guard in `visit()` protects all traversals (bypass-proof).
+- Import: `from ftllexengine.introspection.message import FunctionCallInfo`
+- Produced by: `introspect_message()`
+- `positional_arg_vars` contains only variable names, not literal argument values
 
 ---
 
-## `ASTTransformer`
+## `ReferenceInfo`
+
+Immutable metadata about a message or term dependency discovered during introspection.
 
 ### Signature
 ```python
-class ASTTransformer(ASTVisitor[ASTNode | None | list[ASTNode]]):
-    def __init__(self, *, max_depth: int | None = None) -> None: ...
-    def transform(self, node: ASTNode) -> ASTNode | None | list[ASTNode]: ...
-    def generic_visit(self, node: ASTNode) -> ASTNode | None | list[ASTNode]: ...
+@dataclass(frozen=True, slots=True)
+class ReferenceInfo:
+    id: str
+    kind: ReferenceKind
+    attribute: str | None
+    span: Span | None = None
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `max_depth` | `int \| None` | N | Maximum traversal depth (default: 100). |
-
 ### Constraints
-- Return: Modified node, None (removes from optional fields or collections), or list (expands in collections).
-- State: Maintains dispatch cache and depth guard.
-- Thread: Not thread-safe (instance state).
-- Subclass: MUST call `super().__init__()` to initialize depth guard.
-- Raises: `FrozenFluentError` (category=RESOLUTION) when traversal exceeds max_depth. `TypeError` if visit method returns None for required scalar field, list for any scalar field, or a node whose type does not match the field's expected types.
-- Depth: Guard inherited from ASTVisitor.visit() (bypass-proof).
-- Immutable: Uses `dataclasses.replace()` for node modifications.
-- Type Validation: `_transform_list` validates that each transformed node matches the field's expected types. For example, `Pattern.elements` accepts only `TextElement | Placeable`; producing a `Message` raises `TypeError` identifying the field and unexpected type.
-- Required Fields: `Message.id`, `Term.id`, `Term.value`, `Placeable.expression`, `Variant.key`, `Variant.value`, etc. require single ASTNode return. Returning None or list raises TypeError.
-- Optional Fields: `Message.comment`, `Message.value`, `Term.comment`, `MessageReference.attribute`, `TermReference.attribute`, `TermReference.arguments` accept None returns for node removal. Returning list still raises TypeError.
+- Import: `from ftllexengine.introspection.message import ReferenceInfo`
+- Produced by: `introspect_message()` and reference extraction helpers
 
 ---
 
 ## `MessageIntrospection`
+
+Complete immutable summary of a message or term's variables, function calls, and references.
 
 ### Signature
 ```python
@@ -684,106 +344,19 @@ class MessageIntrospection:
     functions: frozenset[FunctionCallInfo]
     references: frozenset[ReferenceInfo]
     has_selectors: bool
-
-    def get_variable_names(self) -> frozenset[str]: ...
-    def requires_variable(self, name: str) -> bool: ...
-    def get_function_names(self) -> frozenset[str]: ...
 ```
 
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message_id` | `str` | Y | Message identifier. |
-| `variables` | `frozenset[VariableInfo]` | Y | Variable references. |
-| `functions` | `frozenset[FunctionCallInfo]` | Y | Function calls. |
-| `references` | `frozenset[ReferenceInfo]` | Y | Message/term references. |
-| `has_selectors` | `bool` | Y | Uses select expressions. |
-
 ### Constraints
-- Return: Immutable introspection result.
-- State: Frozen dataclass.
-- Import: `from ftllexengine.introspection import MessageIntrospection`
-
----
-
-## `introspect_message`
-
-Function that extracts complete metadata from a Message or Term AST node.
-
-### Signature
-```python
-def introspect_message(
-    message: Message | Term,
-    *,
-    use_cache: bool = True,
-) -> MessageIntrospection:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `Message \| Term` | Y | AST node to introspect. |
-| `use_cache` | `bool` | N | Use WeakKeyDictionary cache (default: True). |
-
-### Constraints
-- Return: MessageIntrospection with variables, functions, references.
-- Raises: `TypeError` if message is not Message or Term.
-- State: Caches result in WeakKeyDictionary when use_cache=True.
-- Thread: Safe (worst case: redundant computation on cache miss).
-- Cache: WeakKeyDictionary auto-cleans when AST nodes garbage collected.
-- Import: `from ftllexengine.introspection import introspect_message`
-
----
-
-## `clear_introspection_cache`
-
-Function that clears the introspection WeakKeyDictionary cache.
-
-### Signature
-```python
-def clear_introspection_cache() -> None:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-
-### Constraints
-- Return: None.
-- Raises: Never.
-- State: Clears module-level introspection cache.
-- Thread: Safe.
-- Usage: Testing, memory pressure. Normal usage relies on WeakKeyDictionary auto-cleanup.
-- Import: `from ftllexengine.introspection import clear_introspection_cache`
-
----
-
-## `extract_variables`
-
-Function that extracts variable names from a Message or Term (simplified API).
-
-### Signature
-```python
-def extract_variables(message: Message | Term) -> frozenset[str]:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `Message \| Term` | Y | AST node to analyze. |
-
-### Constraints
-- Return: Frozen set of variable names (without $ prefix).
-- Raises: Never.
-- State: Delegates to introspect_message (uses cache).
-- Thread: Safe.
-- Import: `from ftllexengine.introspection import extract_variables`
+- Import: `from ftllexengine.introspection.message import MessageIntrospection`
+- Produced by: `introspect_message()`
+- Helpers: `get_variable_names()`, `requires_variable()`, `get_function_names()`
+- Cached: module-level weak-reference cache memoizes results per `Message` or `Term`
 
 ---
 
 ## `MessageVariableValidationResult`
 
-Immutable result of comparing declared FTL message variables against an expected schema.
+Structured diff between the variables a message declares and the variables you expect it to declare.
 
 ### Signature
 ```python
@@ -797,787 +370,6 @@ class MessageVariableValidationResult:
 ```
 
 ### Constraints
-- `is_valid`: `True` only when `declared_variables == expected` exactly (no missing, no extra).
-- `missing_variables`: variables present in expected but absent from the FTL message.
-- `extra_variables`: variables declared in FTL but absent from expected.
-- Immutable. Hashable.
-- Import: `from ftllexengine.introspection import MessageVariableValidationResult`
-- Also available: `from ftllexengine import MessageVariableValidationResult`
-
----
-
-## `validate_message_variables`
-
-Function that validates an FTL message or term declares exactly the expected variables.
-
-### Signature
-```python
-def validate_message_variables(
-    message: Message | Term,
-    expected_variables: frozenset[str] | set[str],
-) -> MessageVariableValidationResult:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `message` | `Message \| Term` | Y | AST node to inspect. |
-| `expected_variables` | `frozenset[str] \| set[str]` | Y | Variable names (without $ prefix) the message should declare. |
-
-### Constraints
-- Return: `MessageVariableValidationResult`; `is_valid=True` iff declared == expected.
-- Raises: Never. No Babel dependency.
-- State: Delegates to `extract_variables()` (uses introspection cache).
-- Thread: Safe.
-- Import: `from ftllexengine.introspection import validate_message_variables`
-- Also available: `from ftllexengine import validate_message_variables`
-- Version: Added in v0.148.0.
-
----
-
-## `extract_references`
-
-Function that extracts message and term references from a Message or Term.
-
-### Signature
-```python
-def extract_references(entry: Message | Term) -> tuple[frozenset[str], frozenset[str]]:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `entry` | `Message \| Term` | Y | AST node to analyze. |
-
-### Constraints
-- Return: `(message_refs, term_refs)` — two frozen sets. `message_refs` may be attribute-qualified (e.g., `"msg.tooltip"`). `term_refs` are bare IDs (e.g., `"brand"`).
-- Raises: Never.
-- State: No cache. Traverses the AST on every call.
-- Thread: Safe (no shared mutable state).
-- Import: `from ftllexengine.introspection import extract_references`
-
-```python
-resource = parse_ftl("msg = { welcome } uses { -brand }")
-msg_refs, term_refs = extract_references(resource.entries[0])
-# msg_refs == frozenset({"welcome"})
-# term_refs == frozenset({"brand"})
-```
-
----
-
-## `extract_references_by_attribute`
-
-Function that extracts references per source attribute for attribute-granular analysis.
-
-### Signature
-```python
-def extract_references_by_attribute(
-    entry: Message | Term,
-) -> dict[str | None, tuple[frozenset[str], frozenset[str]]]:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `entry` | `Message \| Term` | Y | AST node to analyze. |
-
-### Constraints
-- Return: `{key: (message_refs, term_refs)}`. Key is `None` for the value pattern, or the attribute name string (e.g., `"tooltip"`).
-- Raises: Never.
-- State: No cache. Traverses the AST on every call.
-- Thread: Safe.
-- Use case: Attribute-granular dependency cycle detection. Finer-grained than `extract_references`.
-- Import: `from ftllexengine.introspection import extract_references_by_attribute`
-
-```python
-resource = parse_ftl("btn = Click\n    .label = { -brand } button")
-refs = extract_references_by_attribute(resource.entries[0])
-# refs[None] == (frozenset(), frozenset())          # value pattern
-# refs["label"] == (frozenset(), frozenset({"brand"}))  # attribute
-```
-
----
-
-## Type Aliases
-
-### Signature
-```python
-type Entry = Message | Term | Comment | Junk
-type PatternElement = TextElement | Placeable
-type Expression = SelectExpression | InlineExpression
-type InlineExpression = (
-    StringLiteral | NumberLiteral | VariableReference |
-    MessageReference | TermReference | FunctionReference | Placeable
-)
-type SelectorExpression = (
-    StringLiteral | NumberLiteral | VariableReference |
-    MessageReference | TermReference | FunctionReference
-)
-type FTLLiteral = StringLiteral | NumberLiteral
-type VariantKey = Identifier | NumberLiteral
-type ASTNode = (
-    Resource | Message | Term | Attribute | Comment | Junk |
-    Pattern | TextElement | Placeable | SelectExpression | Variant |
-    StringLiteral | NumberLiteral | VariableReference | MessageReference |
-    TermReference | FunctionReference | CallArguments | NamedArgument |
-    Identifier | Annotation | Span
-)
-```
-
-### Constraints
-- PEP 695 type aliases. Cannot use with isinstance().
-- Use pattern matching or `.guard()` methods for runtime checks.
-- `SelectorExpression`: Subset of `InlineExpression` excluding `Placeable`; used as `SelectExpression.selector` type.
-- `FTLLiteral`: Subset of `InlineExpression` restricted to literal values; used as `NamedArgument.value` type.
-- `ASTNode`: Union of all 21 AST node types (includes `Span` and `Annotation` utility nodes).
-
----
-
-## `FluentValue`
-
-Type alias for values passable to Fluent functions and format_pattern().
-
-### Signature
-```python
-type FluentValue = (
-    str | int | Decimal | datetime | date | FluentNumber | None |
-    Sequence["FluentValue"] | Mapping[str, "FluentValue"]
-)
-```
-
-### Parameters
-| Type | Description |
-|:-----|:------------|
-| `str` | String arguments. |
-| `int` | Integer arguments (includes `bool` via subtype; use `int(flag)` explicitly). |
-| `Decimal` | Precise decimal arguments (currency, any fractional value). |
-| `datetime` | Date-time arguments. |
-| `date` | Date-only arguments. |
-| `FluentNumber` | Formatted number from NUMBER() function. |
-| `None` | Absent/null arguments. |
-| `Sequence["FluentValue"]` | Lists, tuples of FluentValue (recursive). |
-| `Mapping[str, "FluentValue"]` | Dicts with string keys (recursive). |
-
-### Constraints
-- PEP 695 recursive type alias. Export: `from ftllexengine import FluentValue`.
-- Used for type-hinting resolver arguments: `args: dict[str, FluentValue]`.
-- `bool` is absent from the explicit union. `bool` is an `int` subtype so type checkers accept it; the explicit omission signals that `bool` has no numeric localization semantics. `NUMBER()` and `CURRENCY()` raise `TypeError` for `bool` at runtime. Convert explicitly: `int(flag)` or `str(flag)`.
-- `float` is absent. IEEE 754 cannot represent most decimal fractions exactly. Use `Decimal(str(float_val))` at system boundaries.
-- Collections: Arbitrarily nested structures supported (e.g., `{"items": [1, 2, {"nested": "value"}]}`).
-- Cache: Collections handled correctly by `_make_hashable()` for cache key generation.
-- Location: `runtime/value_types.py`, exported from package root.
-
----
-
-## `FluentNumber`
-
-Frozen dataclass wrapping a formatted number to preserve numeric identity, formatted display, and precision simultaneously.
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class FluentNumber:
-    value: int | Decimal
-    formatted: str
-    precision: int | None = None
-
-    def __str__(self) -> str: ...
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `value` | `int \| Decimal` | Y | Original numeric value for plural matching |
-| `formatted` | `str` | Y | Locale-formatted string for display output |
-| `precision` | `int \| None` | N | Visible fraction digit count (CLDR v operand); None if unspecified |
-
-### Constraints
-- Return: Immutable number wrapper.
-- State: Frozen dataclass.
-- Purpose: NUMBER() produces FluentNumber so the resolver can use `formatted` for output while using `value` and `precision` for CLDR plural category matching.
-- `__str__`: Returns `formatted` (the display string).
-- `precision`: Reflects ACTUAL visible fraction digits from the formatted string, not the minimum_fraction_digits parameter.
-- Import: `from ftllexengine.runtime import FluentNumber`
-- Also available: `from ftllexengine import FluentNumber`
-
----
-
-## `VariableInfo`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class VariableInfo:
-    name: str
-    context: VariableContext
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `name` | `str` | Y | Variable name (without $ prefix). |
-| `context` | `VariableContext` | Y | Context where variable appears. |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
-### Constraints
-- Return: Immutable variable metadata.
-- State: Frozen dataclass.
-- Span: Populated from VariableReference.span for parser-produced ASTs.
-- Import: `from ftllexengine.introspection import VariableInfo`
-
----
-
-## `FunctionCallInfo`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class FunctionCallInfo:
-    name: str
-    positional_arg_vars: tuple[str, ...]
-    named_args: frozenset[str]
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `name` | `str` | Y | Function name (e.g., 'NUMBER'). |
-| `positional_arg_vars` | `tuple[str, ...]` | Y | Variable names used as positional arguments (excludes literals). |
-| `named_args` | `frozenset[str]` | Y | Named argument keys. |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
-### Constraints
-- Return: Immutable function call metadata.
-- State: Frozen dataclass.
-- Span: Populated from FunctionReference.span for parser-produced ASTs.
-- positional_arg_vars: Contains only VariableReference names; literals and other expressions not included.
-- Import: `from ftllexengine.introspection import FunctionCallInfo`
-
----
-
-## `ReferenceInfo`
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class ReferenceInfo:
-    id: str
-    kind: ReferenceKind
-    attribute: str | None
-    span: Span | None = None
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `id` | `str` | Y | Referenced message or term ID. |
-| `kind` | `ReferenceKind` | Y | Reference type (MESSAGE or TERM). |
-| `attribute` | `str \| None` | N | Attribute name if present. |
-| `span` | `Span \| None` | N | Source position for IDE integration. |
-
-### Constraints
-- Return: Immutable reference metadata.
-- State: Frozen dataclass.
-- Span: Populated from MessageReference.span or TermReference.span for parser-produced ASTs.
-- Import: `from ftllexengine.introspection import ReferenceInfo`
-
----
-
-## `CommentType`
-
-### Signature
-```python
-class CommentType(StrEnum):
-    COMMENT = "comment"
-    GROUP = "group"
-    RESOURCE = "resource"
-```
-
-### Parameters
-| Value | Description |
-|:------|:------------|
-| `COMMENT` | Standalone comment: `# text` |
-| `GROUP` | Group comment: `## text` |
-| `RESOURCE` | Resource comment: `### text` |
-
-### Constraints
-- StrEnum: Members ARE strings. `str(CommentType.COMMENT) == "comment"`
-- Import: `from ftllexengine.enums import CommentType`
-
----
-
-## `VariableContext`
-
-### Signature
-```python
-class VariableContext(StrEnum):
-    PATTERN = "pattern"
-    SELECTOR = "selector"
-    VARIANT = "variant"
-    FUNCTION_ARG = "function_arg"
-```
-
-### Parameters
-| Value | Description |
-|:------|:------------|
-| `PATTERN` | Variable in message pattern. |
-| `SELECTOR` | Variable in select expression selector. |
-| `VARIANT` | Variable in select variant. |
-| `FUNCTION_ARG` | Variable in function argument. |
-
-### Constraints
-- StrEnum: Members ARE strings. `str(VariableContext.PATTERN) == "pattern"`
-- Import: `from ftllexengine.enums import VariableContext`
-
----
-
-## `ReferenceKind`
-
-### Signature
-```python
-class ReferenceKind(StrEnum):
-    MESSAGE = "message"
-    TERM = "term"
-```
-
-### Parameters
-| Value | Description |
-|:------|:------------|
-| `MESSAGE` | Reference to a message: `{ message-id }` |
-| `TERM` | Reference to a term: `{ -term-id }` |
-
-### Constraints
-- StrEnum: Members ARE strings. `str(ReferenceKind.MESSAGE) == "message"`
-- Import: `from ftllexengine.enums import ReferenceKind`
-
----
-
-## ISO Introspection Types
-
-The introspection module provides type-safe access to ISO 3166 (territories) and ISO 4217 (currencies) data via Babel CLDR. Requires Babel installation: `pip install ftllexengine[babel]`.
-
----
-
-## `BabelImportError`
-
-Exception raised when a Babel-dependent feature is called without Babel installed.
-
-### Signature
-```python
-class BabelImportError(ImportError):
-    feature: str
-
-    def __init__(self, feature: str) -> None: ...
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `feature` | `str` | Y | Name of the feature/function requiring Babel |
-
-### Constraints
-- Purpose: Fail-fast error with installation instructions when Babel is absent.
-- Message: `"{feature} requires Babel for CLDR locale data. Install with: pip install ftllexengine[babel]"`
-- Raised by: `get_territory`, `get_currency`, `list_territories`, `list_currencies`, `get_territory_currencies`, `is_valid_territory_code`, `is_valid_currency_code`, `get_cldr_version`, `get_babel_locale`, `clear_locale_cache`, and all `ftllexengine.parsing` parse functions.
-- Import: `from ftllexengine.introspection import BabelImportError`
-
----
-
-## `get_cldr_version`
-
-Function that returns the Unicode CLDR version used by Babel.
-
-### Signature
-```python
-def get_cldr_version() -> str:
-```
-
-### Constraints
-- Return: CLDR version string (e.g., `"47"`).
-- Raises: `BabelImportError` if Babel not installed.
-- State: No mutable state.
-- Thread: Safe.
-- Purpose: Debugging locale-specific formatting differences; verifying deployment environments.
-- Import: `from ftllexengine.introspection import get_cldr_version`
-- Also available: `from ftllexengine import get_cldr_version`
-
----
-
-## `get_currency_decimal_digits`
-
-Convenience function returning the ISO 4217 standard decimal precision for a currency code without a locale parameter.
-
-### Signature
-```python
-def get_currency_decimal_digits(code: str) -> int | None:
-```
-
-### Parameters
-
-| Name | Type | Description |
-|:-----|:-----|:------------|
-| `code` | `str` | ISO 4217 currency code (e.g., `"USD"`, `"KWD"`). Case-insensitive. |
-
-### Constraints
-- Return: ISO 4217 decimal digit count (`0` for JPY/XAU/XAG, `2` for USD/EUR, `3` for KWD, `4` for CLF), or `None` for unknown or invalid codes.
-- Raises: Nothing. Babel is not required.
-- State: Pure; consults static tables in `ftllexengine.constants` only.
-- Thread: Safe.
-- Babel: Not required. Available in parser-only installs (`pip install ftllexengine`).
-- Casefold: `len(code) != 3` returns `None` before `.upper()`; single-char expansions (e.g., `'ß'`) are rejected.
-- Import: `from ftllexengine.introspection import get_currency_decimal_digits`
-- Also available: `from ftllexengine import get_currency_decimal_digits`
-
----
-
-## `TerritoryCode`
-
-Type alias for ISO 3166-1 alpha-2 territory codes.
-
-### Signature
-```python
-type TerritoryCode = str
-```
-
-### Constraints
-- Purpose: Type annotation for territory codes (e.g., "US", "LV", "DE").
-- Validation: Use `is_valid_territory_code()` to verify.
-- Import: `from ftllexengine.introspection import TerritoryCode`
-
----
-
-## `CurrencyCode`
-
-Type alias for ISO 4217 currency codes.
-
-### Signature
-```python
-type CurrencyCode = str
-```
-
-### Constraints
-- Purpose: Type annotation for currency codes (e.g., "USD", "EUR", "GBP").
-- Validation: Use `is_valid_currency_code()` to verify.
-- Import: `from ftllexengine.introspection import CurrencyCode`
-
----
-
-## `TerritoryInfo`
-
-ISO 3166-1 territory data with localized name and official language codes.
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class TerritoryInfo:
-    alpha2: TerritoryCode
-    name: str
-    currencies: tuple[CurrencyCode, ...]
-    official_languages: tuple[str, ...]
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `alpha2` | `TerritoryCode` | Y | ISO 3166-1 alpha-2 code |
-| `name` | `str` | Y | Localized display name |
-| `currencies` | `tuple[CurrencyCode, ...]` | Y | Currency codes in priority order (may be empty) |
-| `official_languages` | `tuple[str, ...]` | Y | BCP-47 official language codes (may be empty) |
-
-### Constraints
-- Return: Immutable territory data.
-- State: Frozen dataclass.
-- Thread: Safe.
-- Hashable: Yes.
-- Multi-Currency: Territories may have multiple legal tender currencies (e.g., Panama: PAB, USD).
-- Multi-Language: Territories may have multiple official languages (e.g., Belgium: fr, nl, de).
-- Import: `from ftllexengine.introspection import TerritoryInfo`
-
----
-
-## `CurrencyInfo`
-
-ISO 4217 currency data with localized presentation.
-
-### Signature
-```python
-@dataclass(frozen=True, slots=True)
-class CurrencyInfo:
-    code: CurrencyCode
-    name: str
-    symbol: str
-    decimal_digits: int
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `code` | `CurrencyCode` | Y | ISO 4217 currency code |
-| `name` | `str` | Y | Localized display name |
-| `symbol` | `str` | Y | Locale-specific symbol |
-| `decimal_digits` | `int` | Y | Standard decimal places (0, 2, 3, or 4) |
-
-### Constraints
-- Return: Immutable currency data.
-- State: Frozen dataclass.
-- Thread: Safe.
-- Hashable: Yes.
-- Import: `from ftllexengine.introspection import CurrencyInfo`
-
----
-
-## `get_territory`
-
-Look up ISO 3166-1 territory by alpha-2 code.
-
-### Signature
-```python
-def get_territory(
-    code: str,
-    locale: str = "en",
-) -> TerritoryInfo | None:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `code` | `str` | Y | ISO 3166-1 alpha-2 code (case-insensitive) |
-| `locale` | `str` | N | Locale for name localization (default: "en") |
-
-### Constraints
-- Return: TerritoryInfo if found, None if unknown.
-- Raises: `BabelImportError` if Babel not installed.
-- State: Bounded cache per normalized (code, locale) pair.
-- Thread: Safe.
-- Normalization: Code uppercased, locale normalized (BCP-47/POSIX/lowercase accepted).
-- Import: `from ftllexengine.introspection import get_territory`
-
----
-
-## `get_currency`
-
-Look up ISO 4217 currency by code.
-
-### Signature
-```python
-def get_currency(
-    code: str,
-    locale: str = "en",
-) -> CurrencyInfo | None:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `code` | `str` | Y | ISO 4217 currency code (case-insensitive) |
-| `locale` | `str` | N | Locale for name/symbol localization (default: "en") |
-
-### Constraints
-- Return: CurrencyInfo if found, None if unknown.
-- Raises: `BabelImportError` if Babel not installed.
-- State: Bounded cache per normalized (code, locale) pair.
-- Thread: Safe.
-- Normalization: Code uppercased, locale normalized (BCP-47/POSIX/lowercase accepted).
-- Import: `from ftllexengine.introspection import get_currency`
-
----
-
-## `list_territories`
-
-List all known ISO 3166-1 territories.
-
-### Signature
-```python
-def list_territories(
-    locale: str = "en",
-) -> frozenset[TerritoryInfo]:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `locale` | `str` | N | Locale for name localization (default: "en") |
-
-### Constraints
-- Return: Frozen set of all TerritoryInfo objects.
-- Raises: `BabelImportError` if Babel not installed.
-- State: Bounded cache per normalized locale.
-- Thread: Safe.
-- Normalization: Locale normalized (BCP-47/POSIX/lowercase accepted).
-- Import: `from ftllexengine.introspection import list_territories`
-
----
-
-## `list_currencies`
-
-List all known ISO 4217 currencies.
-
-### Signature
-```python
-def list_currencies(
-    locale: str = "en",
-) -> frozenset[CurrencyInfo]:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `locale` | `str` | N | Locale for name/symbol localization (default: "en") |
-
-### Constraints
-- Return: Frozen set of all CurrencyInfo objects.
-- Raises: `BabelImportError` if Babel not installed.
-- State: Bounded cache per normalized locale.
-- Thread: Safe.
-- Normalization: Locale normalized (BCP-47/POSIX/lowercase accepted).
-- Consistency: Same currency count across all locales (uses English fallback for localized names).
-- Import: `from ftllexengine.introspection import list_currencies`
-
----
-
-## `get_territory_currencies`
-
-Get all currencies for a territory in priority order.
-
-### Signature
-```python
-def get_territory_currencies(territory: str) -> tuple[CurrencyCode, ...]:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `territory` | `str` | Y | ISO 3166-1 alpha-2 code (case-insensitive) |
-
-### Constraints
-- Return: Tuple of ISO 4217 currency codes (empty if unknown territory).
-- Raises: `BabelImportError` if Babel not installed.
-- State: Bounded cache per normalized territory code.
-- Thread: Safe.
-- Normalization: Territory code uppercased internally.
-- Multi-Currency: Returns all legal tender currencies, primary first (e.g., Panama: ("PAB", "USD")).
-- Import: `from ftllexengine.introspection import get_territory_currencies`
-
----
-
-## `is_valid_territory_code`
-
-Check if string is a valid ISO 3166-1 alpha-2 code.
-
-### Signature
-```python
-def is_valid_territory_code(value: str) -> TypeIs[TerritoryCode]:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `value` | `str` | Y | String to validate |
-
-### Constraints
-- Return: True if known ISO 3166-1 alpha-2 code.
-- Raises: `BabelImportError` if Babel not installed.
-- State: Uses cached territory lookups.
-- Thread: Safe.
-- TypeIs: Narrows type in type checkers.
-- Import: `from ftllexengine.introspection import is_valid_territory_code`
-
----
-
-## `is_valid_currency_code`
-
-Check if string is a valid ISO 4217 currency code.
-
-### Signature
-```python
-def is_valid_currency_code(value: str) -> TypeIs[CurrencyCode]:
-```
-
-### Parameters
-| Name | Type | Req | Semantics |
-|:-----|:-----|:----|:----------|
-| `value` | `str` | Y | String to validate |
-
-### Constraints
-- Return: True if known ISO 4217 currency code.
-- Raises: `BabelImportError` if Babel not installed.
-- State: Uses cached currency lookups.
-- Thread: Safe.
-- TypeIs: Narrows type in type checkers.
-- Import: `from ftllexengine.introspection import is_valid_currency_code`
-
----
-
-## `require_currency_code`
-
-Validate, strip, and normalise a boundary value to a canonical `CurrencyCode`. Eliminates per-caller trim / blank / case normalisation chains for ISO 4217 codes.
-
-### Signature
-```python
-def require_currency_code(value: object, field_name: str) -> CurrencyCode:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `object` | Y | Raw boundary value. Non-str always raises TypeError. |
-| `field_name` | `str` | Y | Human-readable field label used in error messages. |
-
-### Constraints
-- Return: `CurrencyCode` — stripped, uppercased, valid ISO 4217 code.
-- Raises: `TypeError` if `value` is not `str`.
-- Raises: `ValueError` if the stripped/uppercased value is not a recognised ISO 4217 code.
-- Raises: `BabelImportError` if Babel not installed (delegated from `is_valid_currency_code`).
-- State: Pure function with cache delegation.
-- Thread: Safe.
-- Import: `from ftllexengine import require_currency_code` or `from ftllexengine.introspection import require_currency_code`.
-
----
-
-## `require_territory_code`
-
-Validate, strip, and normalise a boundary value to a canonical `TerritoryCode`. Eliminates per-caller trim / blank / case normalisation chains for ISO 3166-1 alpha-2 codes.
-
-### Signature
-```python
-def require_territory_code(value: object, field_name: str) -> TerritoryCode:
-```
-
-### Parameters
-| Parameter | Type | Req | Description |
-|:----------|:-----|:----|:------------|
-| `value` | `object` | Y | Raw boundary value. Non-str always raises TypeError. |
-| `field_name` | `str` | Y | Human-readable field label used in error messages. |
-
-### Constraints
-- Return: `TerritoryCode` — stripped, uppercased, valid ISO 3166-1 alpha-2 code.
-- Raises: `TypeError` if `value` is not `str`.
-- Raises: `ValueError` if the stripped/uppercased value is not a recognised ISO 3166-1 territory code.
-- Raises: `BabelImportError` if Babel not installed (delegated from `is_valid_territory_code`).
-- Note: Casefold-expansion guard prevents `"ß"` (len=1) from matching `"SS"` — raw length is checked before `.upper()`.
-- State: Pure function with cache delegation.
-- Thread: Safe.
-- Import: `from ftllexengine import require_territory_code` or `from ftllexengine.introspection import require_territory_code`.
-
----
-
-## `clear_iso_cache`
-
-Clear all ISO introspection caches.
-
-### Signature
-```python
-def clear_iso_cache() -> None:
-```
-
-### Constraints
-- Return: None.
-- Raises: Never.
-- State: Clears all bounded ISO introspection caches.
-- Thread: Safe.
-- Usage: Testing, memory pressure, locale configuration changes.
-- Import: `from ftllexengine.introspection import clear_iso_cache`
-
----
+- Import: `from ftllexengine import MessageVariableValidationResult`
+- Produced by: `validate_message_variables()`
+- Valid when: both `missing_variables` and `extra_variables` are empty

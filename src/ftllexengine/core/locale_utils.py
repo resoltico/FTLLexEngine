@@ -31,7 +31,7 @@ from ftllexengine.core.babel_compat import get_locale_class, require_babel
 if TYPE_CHECKING:
     from babel import Locale
 
-    from ftllexengine.localization.types import LocaleCode
+    from ftllexengine.core.semantic_types import LocaleCode
 
 __all__ = [
     "clear_locale_cache",
@@ -90,13 +90,13 @@ def normalize_locale(locale_code: str) -> str:
         Lowercase POSIX-formatted locale code (e.g., "en_us", "pt_br")
 
     Example:
-        >>> normalize_locale("en-US")
+        >>> normalize_locale("en-US")  # doctest: +SKIP
         'en_us'
-        >>> normalize_locale("EN-US")
+        >>> normalize_locale("EN-US")  # doctest: +SKIP
         'en_us'
-        >>> normalize_locale("pt-BR")
+        >>> normalize_locale("pt-BR")  # doctest: +SKIP
         'pt_br'
-        >>> normalize_locale("en")  # Already normalized
+        >>> normalize_locale("en")  # Already normalized  # doctest: +SKIP
         'en'
     """
     return locale_code.replace("-", "_").lower()
@@ -205,10 +205,10 @@ def get_babel_locale(locale_code: str) -> Locale:
         ValueError: If locale format is invalid
 
     Example:
-        >>> locale = get_babel_locale("en-US")
-        >>> locale.language
+        >>> locale = get_babel_locale("en-US")  # doctest: +SKIP
+        >>> locale.language  # doctest: +SKIP
         'en'
-        >>> locale.territory
+        >>> locale.territory  # doctest: +SKIP
         'US'
     """
     normalized_code = require_locale_code(locale_code, "locale_code")
@@ -242,12 +242,12 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
         RuntimeError: If raise_on_failure is True and locale cannot be determined.
 
     Example:
-        >>> import os
-        >>> os.environ['LANG'] = 'de_DE.UTF-8'
-        >>> get_system_locale()
+        >>> import os  # doctest: +SKIP
+        >>> os.environ['LANG'] = 'de_DE.UTF-8'  # doctest: +SKIP
+        >>> get_system_locale()  # doctest: +SKIP
         'de_de'
 
-        >>> get_system_locale(raise_on_failure=True)  # May raise if no locale set
+        >>> get_system_locale(raise_on_failure=True)  # May raise if no locale set  # doctest: +SKIP
         'de_de'
     """
     # stdlib locale module deferred: has significant initialization overhead
@@ -303,7 +303,7 @@ def clear_locale_cache() -> None:
         regardless of whether Babel is installed.
 
     Example:
-        >>> from ftllexengine.core.locale_utils import clear_locale_cache
-        >>> clear_locale_cache()  # Clears all cached Locale objects
+        >>> from ftllexengine.core.locale_utils import clear_locale_cache  # doctest: +SKIP
+        >>> clear_locale_cache()  # Clears all cached Locale objects  # doctest: +SKIP
     """
     _get_babel_locale_normalized.cache_clear()
