@@ -161,6 +161,15 @@ gh pr checks <N>
 Rules:
 
 - `gh pr diff <N> --name-only` must still match the intended release file set.
+- If `gh pr diff <N> --name-only` fails with HTTP 406 because the PR diff is too large, fall back
+  to GitHub's paginated file list API and the local branch comparison:
+
+```bash
+REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+gh api "repos/$REPO/pulls/<N>/files" --paginate --jq '.[].filename'
+git diff --name-only origin/main...HEAD
+```
+
 - If you push another commit, reopen both the staging checkpoint and this PR diff checkpoint.
 - Do not continue until the required PR checks are green.
 
