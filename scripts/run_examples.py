@@ -3,7 +3,9 @@
 
 This keeps example verification as a first-class repository workflow instead of
 an ad-hoc manual step. The runner intentionally clears ``PYTHONPATH`` so
-examples execute against the installed package contract, not a local path hack.
+examples execute against the installed package contract, validates a registered
+stdout contract for every shipped example, and rejects unregistered example
+scripts from silently bypassing semantic verification.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +28,59 @@ class ExampleFailure:
 
     path: Path
     returncode: int
-    stderr: str
+    details: str
+
+
+ExampleContract = Callable[[str], str | None]
+
+
+def _require_output_markers(*markers: str) -> ExampleContract:
+    """Build a validator that requires specific substrings in example stdout."""
+
+    def _validator(stdout: str) -> str | None:
+        missing = [marker for marker in markers if marker not in stdout]
+        if not missing:
+            return None
+        return f"missing expected output marker(s): {', '.join(missing)}"
+
+    return _validator
+
+
+EXAMPLE_CONTRACTS: dict[str, ExampleContract] = {
+    "benchmark_loaders.py": _require_output_markers("[OK] Benchmarks complete!"),
+    "bidirectional_formatting.py": _require_output_markers("All examples completed!"),
+    "custom_functions.py": _require_output_markers(
+        "[SUCCESS] All custom function examples completed!"
+    ),
+    "ftl_linter.py": _require_output_markers(
+        "[PASS] Clean FTL stays clean",
+        "[PASS] Duplicate message IDs detected",
+        "[PASS] Unknown functions detected",
+        "[PASS] Undefined message references detected",
+        "[PASS] Attribute-only messages flagged",
+        "[PASS] Undefined term references detected",
+        "[SUCCESS] Linter examples complete!",
+    ),
+    "ftl_transform.py": _require_output_markers("[SUCCESS] Transformer examples complete!"),
+    "function_introspection.py": _require_output_markers(
+        "[SUCCESS] All introspection examples completed!"
+    ),
+    "locale_fallback.py": _require_output_markers("[SUCCESS] All examples complete!"),
+    "parser_only.py": _require_output_markers(
+        "[PASS] Warning-only validation semantics verified",
+        "[PASS] Invalid syntax semantics verified",
+        "All examples completed successfully!",
+    ),
+    "property_based_testing.py": _require_output_markers(
+        "ALL PROPERTY-BASED TESTS COMPLETED"
+    ),
+    "quickstart.py": _require_output_markers(
+        "[SUCCESS] All examples completed successfully!"
+    ),
+    "thread_safety.py": _require_output_markers(
+        "[SUCCESS] All thread safety examples complete!"
+    ),
+}
 
 
 def _clean_env() -> dict[str, str]:
@@ -55,11 +110,23 @@ def _run_example(path: Path) -> ExampleFailure | None:
         timeout=60,
         check=False,
     )
-    if result.returncode == 0:
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip()
+        return ExampleFailure(path=path, returncode=result.returncode, details=stderr)
+
+    validator = EXAMPLE_CONTRACTS.get(path.name)
+    if validator is None:
+        return ExampleFailure(
+            path=path,
+            returncode=1,
+            details=f"no output contract registered for {path.name}",
+        )
+
+    contract_error = validator(result.stdout)
+    if contract_error is None:
         return None
 
-    stderr = result.stderr.strip() or result.stdout.strip()
-    return ExampleFailure(path=path, returncode=result.returncode, stderr=stderr)
+    return ExampleFailure(path=path, returncode=1, details=contract_error)
 
 
 def main() -> int:
@@ -99,7 +166,7 @@ def main() -> int:
         print("\n[FAIL] Example execution failures:")
         for failure in failures:
             rel_path = failure.path.relative_to(REPO_ROOT)
-            print(f"  {rel_path} (exit {failure.returncode}): {failure.stderr}")
+            print(f"  {rel_path} (exit {failure.returncode}): {failure.details}")
         return 1
 
     print(f"[PASS] Executed {len(examples)} example script(s).")

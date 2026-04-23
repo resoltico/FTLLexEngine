@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: FUZZING
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [atheris, libfuzzer, fuzz_atheris.sh, replay, minimize, corpus]
   questions: ["how do I run an Atheris target?", "how do I replay a finding?", "how does the Atheris environment get created?"]
@@ -18,7 +18,7 @@ route:
 ```bash
 ./scripts/fuzz_atheris.sh --help
 ./scripts/fuzz_atheris.sh numbers --time 60
-./scripts/fuzz_atheris.sh --list
+./scripts/fuzz_atheris.sh --list   # stored crashes/findings, not target names
 ./scripts/fuzz_atheris.sh --replay runtime path/to/finding
 ```
 
@@ -29,6 +29,7 @@ The script manages `.venv-atheris` itself and keeps it separate from the normal 
 ## Useful Operations
 
 - `--list` to inspect captured findings.
+- Target names live in [../fuzz_atheris/README.md](../fuzz_atheris/README.md).
 - `--replay` to replay stored findings without starting a fresh fuzz run.
 - `--minimize TARGET FILE` to shrink a failing input for one target.
 - `--corpus` to run the corpus health check.

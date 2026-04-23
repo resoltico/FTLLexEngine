@@ -1,10 +1,11 @@
-"""Parser-Only Example - FTL Parsing Without Babel.
+"""Parser-Only Example - FTL Parsing In A Parser-Only Install.
 
-PARSER-ONLY: This example works WITHOUT Babel. Install with:
-    pip install ftllexengine  (no [babel] extra needed)
+PARSER-ONLY INSTALL: This example is designed for:
+    pip install ftllexengine
 
 Demonstrates everything you can do with FTLLexEngine's parser-only mode:
 
+0. Access zero-dependency runtime/localization helper facades
 1. Parse FTL source to AST
 2. Inspect message structure
 3. Extract variables and function references
@@ -22,6 +23,28 @@ Python 3.13+.
 """
 
 from __future__ import annotations
+
+
+def example_0_zero_dependency_facades() -> None:
+    """Show helper facades that stay importable in parser-only installs."""
+    from decimal import Decimal
+
+    from ftllexengine import CacheConfig, FluentNumber, LoadSummary, PathResourceLoader
+
+    print("=" * 60)
+    print("Example 0: Zero-Dependency Helper Facades")
+    print("=" * 60)
+
+    cache = CacheConfig(size=10)
+    manual = FluentNumber(value=Decimal("12.50"), formatted="12.50", precision=2)
+    loader = PathResourceLoader("locales/{locale}")
+    summary = LoadSummary(results=())
+
+    print(f"CacheConfig.size: {cache.size}")
+    print(f"FluentNumber: {manual!s}")
+    print(f"PathResourceLoader template: {loader.base_path}")
+    print(f"Empty LoadSummary all_clean: {summary.all_clean}")
+    print()
 
 
 def example_1_basic_parsing() -> None:
@@ -97,10 +120,7 @@ order-summary = { $customer } ordered { CURRENCY($total, currency: "USD") }
 
 def example_3_validation() -> None:
     """Validate FTL source for errors and warnings."""
-    # mypy: Re-export from ftllexengine.validation not recognized via top-level __init__.py.
-    # Runtime import works correctly; explicit `as validate_resource` re-export pattern applied
-    # but mypy still misses it. Use direct submodule import for type safety.
-    from ftllexengine.validation import validate_resource
+    from ftllexengine import validate_resource
 
     print("=" * 60)
     print("Example 3: Validation")
@@ -114,19 +134,36 @@ welcome = Welcome to { -brand }
 """
 
     result = validate_resource(valid_ftl)
+    assert result.is_valid
+    assert result.error_count == 0
+    assert result.warning_count == 0
     print(f"Valid FTL: is_valid={result.is_valid}, errors={result.error_count}")
 
-    # Invalid FTL with issues
-    invalid_ftl = """
+    # Warning-only FTL: semantic issues do not change is_valid
+    warning_ftl = """
 greeting = Hello, { $name }!
 greeting = Duplicate ID!
 missing-ref = Uses { -undefined-term }
 """
 
-    result = validate_resource(invalid_ftl)
-    print(f"Invalid FTL: is_valid={result.is_valid}, warnings={result.warning_count}")
+    result = validate_resource(warning_ftl)
+    assert result.is_valid
+    assert result.warning_count == 2
+    print(f"Warning-only FTL: is_valid={result.is_valid}, warnings={result.warning_count}")
     for warning in result.warnings:
         print(f"  - {warning.code.name}: {warning.message}")
+    print("[PASS] Warning-only validation semantics verified")
+
+    # Invalid syntax FTL: parser annotations make the result invalid
+    invalid_syntax_ftl = """
+greeting = Hello, { $name !
+"""
+
+    result = validate_resource(invalid_syntax_ftl)
+    assert not result.is_valid
+    assert result.error_count > 0 or result.annotation_count > 0
+    print(f"Invalid syntax FTL: is_valid={result.is_valid}, errors={result.error_count}")
+    print("[PASS] Invalid syntax semantics verified")
 
     print()
 
@@ -262,9 +299,10 @@ def main() -> None:
     """Run all parser-only examples."""
     print()
     print("FTLLexEngine Parser-Only Examples")
-    print("No Babel required - pure Python parsing!")
+    print("Parser-only install surface - pure Python parsing!")
     print()
 
+    example_0_zero_dependency_facades()
     example_1_basic_parsing()
     example_2_variable_extraction()
     example_3_validation()

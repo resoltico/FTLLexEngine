@@ -34,28 +34,22 @@ from ftllexengine.localization import (
 from ftllexengine.runtime.cache_config import CacheConfig
 from ftllexengine.syntax.ast import Junk, Span
 
+_KNOWN_LOCALE_CODES = (
+    "en",
+    "de",
+    "fr",
+    "lv",
+    "en_US",
+    "de_DE",
+    "fr_FR",
+    "lv_LV",
+)
+
 
 @st.composite
 def locale_codes(draw: st.DrawFn) -> str:
-    """Generate valid locale codes."""
-    language = draw(
-        st.text(
-            min_size=2,
-            max_size=2,
-            alphabet=st.characters(min_codepoint=97, max_codepoint=122),
-        )
-    )
-    region = draw(
-        st.one_of(
-            st.none(),
-            st.text(
-                min_size=2,
-                max_size=2,
-                alphabet=st.characters(min_codepoint=65, max_codepoint=90),
-            ),
-        )
-    )
-    return f"{language}-{region}" if region else language
+    """Generate locale codes that are both well-formed and Babel-known."""
+    return draw(st.sampled_from(_KNOWN_LOCALE_CODES))
 
 
 @st.composite

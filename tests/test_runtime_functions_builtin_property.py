@@ -1,11 +1,13 @@
 """Property-based tests for NUMBER, DATETIME, and CURRENCY built-in functions.
 
-Unknown but structurally valid locales fall back to en_US formatting.
+Public built-in functions reject unknown locales instead of silently
+falling back to a different locale.
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
@@ -22,13 +24,10 @@ from ftllexengine.runtime.functions import (
 class TestNumberFormatBehavior:
     """Tests for number_format formatting behavior."""
 
-    def test_number_format_with_invalid_locale_uses_fallback(self) -> None:
-        """Verify number_format with invalid locale uses en_US fallback."""
-        # Invalid locale should still format successfully using en_US fallback
-        result = number_format(Decimal("1234.5"), "invalid-locale")
-        # Should contain the number (formatted with en_US rules)
-        assert "1" in str(result)
-        assert "234" in str(result)
+    def test_number_format_with_invalid_locale_raises_value_error(self) -> None:
+        """Unknown locales are rejected instead of silently using en_US rules."""
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            number_format(Decimal("1234.5"), "invalid-locale")
 
     @given(
         st.decimals(
@@ -45,17 +44,15 @@ class TestNumberFormatBehavior:
         result = number_format(value, "en-US")
         assert isinstance(result, FluentNumber)
 
-    def test_number_format_invalid_locale_with_pattern(self) -> None:
-        """Verify invalid locale with pattern still formats successfully."""
-        result = number_format(
-            Decimal(42),
-            "xx-INVALID",
-            pattern="#,##0.00",
-            minimum_fraction_digits=2,
-        )
-        # Should return FluentNumber using en_US fallback
-        assert isinstance(result, FluentNumber)
-        assert "42" in str(result)
+    def test_number_format_invalid_locale_with_pattern_raises_value_error(self) -> None:
+        """Custom patterns do not bypass strict locale validation."""
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            number_format(
+                Decimal(42),
+                "xx-INVALID",
+                pattern="#,##0.00",
+                minimum_fraction_digits=2,
+            )
 
     def test_number_format_success_case_basic(self) -> None:
         """Verify number_format works correctly in success case."""
@@ -74,21 +71,17 @@ class TestNumberFormatBehavior:
 class TestDatetimeFormatBehavior:
     """Tests for datetime_format formatting behavior."""
 
-    def test_datetime_format_with_invalid_locale_datetime_input(self) -> None:
-        """Verify datetime_format with invalid locale formats datetime."""
+    def test_datetime_format_with_invalid_locale_datetime_input_raises(self) -> None:
+        """Unknown locales are rejected for datetime inputs."""
         dt = datetime(2025, 10, 27, 14, 30, tzinfo=UTC)
-        # Invalid locale should still format successfully using en_US fallback
-        result = datetime_format(dt, "invalid-locale")
-        # Should contain formatted date (using en_US rules)
-        assert isinstance(result, str)
-        assert len(str(result)) > 0
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            datetime_format(dt, "invalid-locale")
 
-    def test_datetime_format_with_invalid_locale_string_input(self) -> None:
-        """Verify datetime_format with invalid locale handles string input."""
+    def test_datetime_format_with_invalid_locale_string_input_raises(self) -> None:
+        """Unknown locales are rejected for ISO-string inputs too."""
         dt_string = "2025-10-27T14:30:00+00:00"
-        # Invalid locale should still format successfully using en_US fallback
-        result = datetime_format(dt_string, "bad-locale")
-        assert isinstance(result, str)
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            datetime_format(dt_string, "bad-locale")
 
     @given(st.datetimes(timezones=st.just(UTC)))
     def test_datetime_format_always_returns_string(self, dt: datetime) -> None:
@@ -97,13 +90,11 @@ class TestDatetimeFormatBehavior:
         result = datetime_format(dt, "en-US")
         assert isinstance(result, str)
 
-    def test_datetime_format_invalid_locale_with_pattern(self) -> None:
-        """Verify invalid locale with pattern still formats successfully."""
+    def test_datetime_format_invalid_locale_with_pattern_raises(self) -> None:
+        """Custom datetime patterns do not bypass strict locale validation."""
         dt = datetime(2025, 10, 27, tzinfo=UTC)
-        result = datetime_format(dt, "invalid", pattern="yyyy-MM-dd")
-        # Should return formatted string using en_US fallback
-        assert isinstance(result, str)
-        assert len(str(result)) > 0
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            datetime_format(dt, "invalid", pattern="yyyy-MM-dd")
 
     def test_datetime_format_success_case_basic(self) -> None:
         """Verify datetime_format works correctly in success case."""
@@ -124,13 +115,10 @@ class TestDatetimeFormatBehavior:
 class TestCurrencyFormatBehavior:
     """Tests for currency_format formatting behavior."""
 
-    def test_currency_format_with_invalid_locale(self) -> None:
-        """Verify currency_format with invalid locale uses fallback."""
-        # Invalid locale should still format successfully using en_US fallback
-        result = currency_format(Decimal("123.45"), "invalid-locale", currency="EUR")
-        # Should contain currency info (formatted with en_US rules)
-        assert isinstance(result, FluentNumber)
-        assert "123" in str(result) or "EUR" in str(result)
+    def test_currency_format_with_invalid_locale_raises_value_error(self) -> None:
+        """Unknown locales are rejected for currency formatting."""
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            currency_format(Decimal("123.45"), "invalid-locale", currency="EUR")
 
     @given(
         st.decimals(
@@ -149,17 +137,15 @@ class TestCurrencyFormatBehavior:
         result = currency_format(value, "en-US", currency=currency)
         assert isinstance(result, FluentNumber)
 
-    def test_currency_format_invalid_locale_with_display_style(self) -> None:
-        """Verify invalid locale with display style still formats successfully."""
-        result = currency_format(
-            Decimal(100),
-            "xx-INVALID",
-            currency="EUR",
-            currency_display="name",
-        )
-        # Should return FluentNumber using en_US fallback
-        assert isinstance(result, FluentNumber)
-        assert "100" in str(result) or "EUR" in str(result) or "euro" in str(result).lower()
+    def test_currency_format_invalid_locale_with_display_style_raises(self) -> None:
+        """Display mode options do not bypass strict locale validation."""
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            currency_format(
+                Decimal(100),
+                "xx-INVALID",
+                currency="EUR",
+                currency_display="name",
+            )
 
     def test_currency_format_success_case_basic(self) -> None:
         """Verify currency_format works correctly in success case."""

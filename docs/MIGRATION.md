@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: MIGRATION
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [migration, fluent.runtime, FluentBundle, FluentLocalization, strict mode]
   questions: ["how do I migrate from fluent.runtime?", "what changes when I switch to FTLLexEngine?"]
@@ -11,7 +11,7 @@ route:
 # Migration From `fluent.runtime`
 
 **Purpose**: Highlight the main API and behavior differences when moving to FTLLexEngine.
-**Prerequisites**: Familiarity with `fluent.runtime`.
+**Prerequisites**: Familiarity with `fluent.runtime` and the FTLLexEngine full runtime install (`ftllexengine[babel]`).
 
 ## High-Level Differences
 

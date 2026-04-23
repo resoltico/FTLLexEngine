@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: VALIDATION
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [validation, validate_resource, ValidationResult, require_clean, boot validation, message schemas]
   questions: ["how do I validate FTL before loading it?", "how do I fail fast at startup?", "how do I validate message variables?"]
@@ -11,7 +11,7 @@ route:
 # Validation Guide
 
 **Purpose**: Validate FTL source, loaded resources, and message-variable contracts before serving traffic.
-**Prerequisites**: Basic familiarity with `FluentBundle` or `FluentLocalization`.
+**Prerequisites**: `validate_resource()` works in parser-only installs; the loaded-resource and boot-validation sections assume the full runtime install.
 
 ## Resource Validation
 
@@ -34,7 +34,7 @@ assert result.warning_count == 0
 
 ## Loaded-Resource Validation
 
-`FluentLocalization.require_clean()` converts load summary problems into an `IntegrityCheckFailedError`. This is the fail-fast path for production startup.
+`FluentLocalization.require_clean()` converts load summary problems into an `IntegrityCheckFailedError`. This is the fail-fast path for production startup and therefore requires the full runtime install.
 
 ## Message Variable Contracts
 

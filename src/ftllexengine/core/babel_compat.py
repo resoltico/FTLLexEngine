@@ -62,6 +62,16 @@ __all__ = [
 _babel_available: bool | None = None
 
 
+def _is_missing_top_level_babel(exc: ImportError) -> bool:
+    """Return True only for a genuinely missing top-level Babel package."""
+    if isinstance(exc, ModuleNotFoundError):
+        missing_name = exc.name
+        if isinstance(missing_name, str):
+            return missing_name == "babel"
+
+    return str(exc) == "No module named 'babel'"
+
+
 def _check_babel_available() -> bool:
     """Check if Babel is installed (computed once, cached via sentinel)."""
     global _babel_available  # noqa: PLW0603 - module-level sentinel, single write per process
@@ -70,7 +80,9 @@ def _check_babel_available() -> bool:
             import babel  # noqa: F401, PLC0415 - sentinel check; import is the check itself
 
             _babel_available = True
-        except ImportError:
+        except ImportError as exc:
+            if not _is_missing_top_level_babel(exc):
+                raise
             _babel_available = False
     return _babel_available
 

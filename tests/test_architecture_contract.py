@@ -37,17 +37,31 @@ LIVE_NETWORK_TEST_PATTERNS = (
 
 VERSION_PROVENANCE_PATTERN = re.compile(r"\b(?:Added|Pre|Post|Prior to)\s+v\d+\.\d+\.\d+\b|v\d+\.\d+\.\d+\+")
 
-CODE_MODULE_LINE_BUDGETS = {
+FILE_LINE_BUDGETS = {
     "src/ftllexengine/runtime/bundle.py": 900,
     "src/ftllexengine/runtime/cache.py": 700,
     "src/ftllexengine/runtime/locale_context.py": 500,
     "src/ftllexengine/runtime/locale_formatting.py": 400,
     "src/ftllexengine/runtime/resolver.py": 600,
-    "src/ftllexengine/introspection/iso.py": 700,
+    "src/ftllexengine/introspection/iso.py": 200,
     "src/ftllexengine/localization/orchestrator.py": 400,
     "src/ftllexengine/parsing/currency.py": 650,
     "src/ftllexengine/parsing/dates.py": 350,
     "src/ftllexengine/syntax/serializer.py": 700,
+    "src/ftllexengine/diagnostics/templates.py": 800,
+    "src/ftllexengine/syntax/visitor.py": 750,
+    "src/ftllexengine/syntax/cursor.py": 700,
+    "tests/test_runtime_bundle_property_core.py": 800,
+    "tests/test_runtime_bundle_property_references.py": 900,
+    "tests/test_runtime_bundle_property_advanced.py": 1000,
+    "tests/test_runtime_bundle_property_state.py": 750,
+    "tests/test_syntax_serializer.py": 3100,
+    "tests/test_syntax_parser_property.py": 2850,
+    "tests/strategies/ftl.py": 2700,
+    "fuzz_atheris/fuzz_localization.py": 2300,
+    "fuzz_atheris/fuzz_runtime.py": 1500,
+    "scripts/fuzz_hypofuzz.sh": 1300,
+    "scripts/fuzz_atheris.sh": 1100,
 }
 
 
@@ -242,10 +256,10 @@ def test_public_examples_avoid_thread_local_storage_patterns() -> None:
     assert offenders == []
 
 
-def test_core_runtime_modules_stay_under_line_budgets() -> None:
-    """Large internal modules should remain split by responsibility."""
+def test_large_repo_files_stay_under_line_budgets() -> None:
+    """Large source, test, fuzz, and script files should remain split by responsibility."""
     offenders: list[str] = []
-    for relative_path, max_lines in CODE_MODULE_LINE_BUDGETS.items():
+    for relative_path, max_lines in FILE_LINE_BUDGETS.items():
         path = REPO_ROOT / relative_path
         line_count = len(path.read_text(encoding="utf-8").splitlines())
         if line_count > max_lines:

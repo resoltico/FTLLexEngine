@@ -16,11 +16,14 @@ Python 3.13+.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from hypothesis import event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.diagnostics.validation import (
+    ParserAnnotation,
     ValidationError,
     ValidationResult,
     ValidationWarning,
@@ -384,6 +387,30 @@ class TestValidationResultFactoryProperties:
         result = ValidationResult.from_annotations(())
         assert result.is_valid
         assert result.error_count == 0
+
+    def test_parser_annotation_protocol_accepts_structural_annotations(self) -> None:
+        """ValidationResult should accept any structural ParserAnnotation implementation."""
+
+        @dataclass(frozen=True, slots=True)
+        class CustomParserAnnotation:
+            code: str
+            message: str
+            arguments: tuple[tuple[str, str], ...] | None
+            span: object | None
+
+        annotation = CustomParserAnnotation(
+            code="custom-annotation",
+            message="Custom parser annotation",
+            arguments=(("kind", "custom"),),
+            span=None,
+        )
+
+        typed_annotation: ParserAnnotation = annotation
+        result = ValidationResult.invalid(annotations=(typed_annotation,))
+
+        assert result.annotations == (annotation,)
+        assert result.annotation_count == 1
+        assert not result.is_valid
 
 
 # ============================================================================

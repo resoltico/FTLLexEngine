@@ -5,7 +5,7 @@ Separates multi-locale orchestration (FluentLocalization) from single-locale
 formatting (FluentBundle).
 
 Key architectural decisions:
-- Eager resource and bundle initialization: FTL resources AND bundles loaded at init
+- Eager resource loading with demand-driven bundle materialization
 - Protocol-based ResourceLoader (dependency inversion)
 - Immutable locale chain (established at construction)
 - Python 3.13 features: pattern matching, TypeIs, frozen dataclasses
@@ -23,10 +23,10 @@ Initialization Behavior:
         if summary.errors > 0:
             raise RuntimeError(f"Failed to load {summary.errors} resources")
 
-    Bundles are created eagerly for locales that have resources loaded during
-    initialization. Fallback locale bundles (for locales not in the resource
-    loading loop) are created lazily on first access. This hybrid approach
-    balances comprehensive error collection with memory efficiency.
+    Bundles are created as soon as a locale successfully loads a resource.
+    Locales without any loaded resources stay unmaterialized until first
+    access. This preserves eager load diagnostics without allocating empty
+    bundles for every fallback locale up front.
 
 Python 3.13+.
 """
@@ -40,6 +40,7 @@ from ftllexengine.localization.orchestrator_formatting import _LocalizationForma
 from ftllexengine.localization.orchestrator_loading import _LocalizationLoadingMixin
 from ftllexengine.localization.orchestrator_queries import _LocalizationQueryMixin
 from ftllexengine.runtime.cache import CacheStats
+from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.rwlock import RWLock
 
 if TYPE_CHECKING:
@@ -153,6 +154,8 @@ class FluentLocalization(
         Raises:
             ValueError: If locales is empty
             ValueError: If resource_ids provided but no resource_loader
+            ValueError: If any locale is structurally invalid or not recognized
+                by Babel/CLDR
         """
         locale_list = list(locales)
         if not locale_list:
@@ -163,10 +166,13 @@ class FluentLocalization(
             msg = "resource_loader required when resource_ids provided"
             raise ValueError(msg)
 
-        # Canonicalize all locales eagerly (fail-fast pattern). dict.fromkeys()
-        # removes duplicates while maintaining insertion order.
+        # Canonicalize locale boundaries first, then validate against Babel/CLDR
+        # so localization never silently formats with a fallback locale.
         validated_locales = [require_locale_code(locale, "locale") for locale in locale_list]
-        self._locales = tuple(dict.fromkeys(validated_locales))
+        strict_locales = [
+            LocaleContext.create_or_raise(locale).locale_code for locale in validated_locales
+        ]
+        self._locales = tuple(dict.fromkeys(strict_locales))
 
         # Precompute primary locale once: _locales is guaranteed non-empty (checked above)
         # and is immutable (tuple), so this value never changes after construction.
@@ -179,9 +185,9 @@ class FluentLocalization(
         self._on_fallback = on_fallback
         self._strict = strict
 
-        # Bundle storage: only contains initialized bundles (no None markers)
-        # Bundles are created lazily on first access via _get_or_create_bundle
-        # But resources are loaded eagerly at init time for fail-fast behavior
+        # Bundle storage: only contains initialized bundles (no None markers).
+        # A bundle materializes when a resource loads successfully for a locale
+        # or when later read paths need it.
         self._bundles: dict[LocaleCode, FluentBundle] = {}
 
         # Track all load results for diagnostics
@@ -195,13 +201,12 @@ class FluentLocalization(
         # calls (readers) while serializing add_resource/add_function (writers).
         self._lock = RWLock()
 
-        # Resource loading is EAGER by design:
-        # - Fail-fast: Critical errors (parse, permission) raised at construction
-        # - Predictable: All resource parse errors discovered immediately
-        # - Trade-off: Slower initialization, but no runtime surprises
-        # - Tracking: All load attempts recorded in _load_results for diagnostics
-        # Note: Bundles are created eagerly for locales loaded here. Fallback locale
-        #       bundles (not in this loop) are created lazily via _get_or_create_bundle.
+        # Resource loading is eager by design:
+        # - Fail-fast: critical load/parse issues surface during construction
+        # - Predictable: all requested resource loads are attempted immediately
+        # - Demand-driven bundles: locales only get a bundle after a successful
+        #   load or on the first later access path that needs one
+        # - Tracking: all load attempts are recorded in _load_results
         if resource_loader and resource_ids:
             for locale in self._locales:
                 for resource_id in self._resource_ids:

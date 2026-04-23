@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: ARCHITECTURE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [thread safety, concurrency, FluentBundle, FluentLocalization, AsyncFluentBundle, shared bundle]
   questions: ["is FluentBundle thread-safe?", "can I share a localization object across threads?", "what does AsyncFluentBundle do?"]
@@ -11,7 +11,7 @@ route:
 # Thread Safety
 
 **Purpose**: Describe the concurrency guarantees of the public runtime classes.
-**Prerequisites**: None.
+**Prerequisites**: Full runtime install (`ftllexengine[babel]`).
 
 ## Overview
 

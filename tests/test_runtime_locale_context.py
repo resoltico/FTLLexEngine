@@ -391,8 +391,9 @@ class TestLocaleContextBabelImportErrors:
                     level: int = 0,
                 ) -> object:
                     if name == "babel":
-                        msg = "Mocked: Babel not installed"
-                        raise ImportError(msg)
+                        err = ModuleNotFoundError("No module named 'babel'")
+                        err.name = "babel"
+                        raise err
                     return original_import(
                         name,
                         globals_dict,
@@ -454,8 +455,9 @@ class TestLocaleContextBabelImportErrors:
                     level: int = 0,
                 ) -> object:
                     if name == "babel":
-                        msg = "Mocked: Babel not installed"
-                        raise ImportError(msg)
+                        err = ModuleNotFoundError("No module named 'babel'")
+                        err.name = "babel"
+                        raise err
                     return original_import(
                         name,
                         globals_dict,

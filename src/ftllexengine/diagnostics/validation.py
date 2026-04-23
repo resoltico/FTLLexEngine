@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from .formatter import DiagnosticFormatter
 
 __all__ = [
+    "ParserAnnotation",
     "ValidationError",
     "ValidationResult",
     "ValidationWarning",
@@ -274,7 +275,7 @@ class ValidationResult:
         """Get number of parser-level annotations (parse errors).
 
         Returns:
-            Count of Annotation instances in ``annotations``
+            Count of parser annotations in ``annotations``
         """
         return len(self.annotations)
 

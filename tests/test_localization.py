@@ -66,6 +66,11 @@ class TestFluentLocalizationBasics:
         with pytest.raises(ValueError, match=r"Invalid locale: 'invalid locale with spaces'"):
             FluentLocalization(["en", "invalid locale with spaces"])
 
+    def test_unknown_locale_rejected_at_init(self) -> None:
+        """Unknown but well-formed locales are rejected before localization starts."""
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            FluentLocalization(["en", "xx-UNKNOWN"])
+
     def test_locales_property_immutable(self) -> None:
         """Locales property returns immutable tuple."""
         l10n = FluentLocalization(["en", "fr"])

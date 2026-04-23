@@ -116,6 +116,8 @@ class BabelImportError(ImportError):
 ### Constraints
 - Import: `from ftllexengine.introspection import BabelImportError`
 - Purpose: consistent optional-dependency failure for CLDR-backed features
+- Trigger: only for genuinely missing Babel in parser-only installs
+- Broken-install path: internal Babel import failures bubble their original `ImportError`
 - Message: instructs callers to install `ftllexengine[babel]`
 
 ---

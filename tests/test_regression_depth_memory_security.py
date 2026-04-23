@@ -147,20 +147,28 @@ class TestSecLocaleUnbounded001:
             FluentBundle(malicious_locale)
 
     def test_bundle_accepts_extended_locale_codes(self) -> None:
-        """FluentBundle accepts locale codes up to 1000 characters."""
-        # Test boundary cases including extended BCP 47 codes
-        valid_locales = [
+        """FluentBundle accepts only locales that are both valid and known."""
+        known_locales = [
             "en",
             "en-US",
             "zh-Hans-CN",
-            "a" * 35,  # Standard BCP 47 limit
-            "a" * 100,  # Extended locale with private-use subtags
-            "a" * 999,  # Just under DoS limit
         ]
 
-        for locale in valid_locales:
+        for locale in known_locales:
             bundle = FluentBundle(locale)
             assert bundle.locale == normalize_locale(locale)
+
+    def test_bundle_rejects_unknown_extended_locale_codes(self) -> None:
+        """FluentBundle rejects long-but-unknown locale codes after length validation."""
+        unknown_locales = [
+            "a" * 35,
+            "a" * 100,
+            "a" * 999,
+        ]
+
+        for locale in unknown_locales:
+            with pytest.raises(ValueError, match="Unknown locale identifier"):
+                FluentBundle(locale)
 
     def test_bundle_error_message_shows_actual_length(self) -> None:
         """Error message for oversized locale shows actual length."""

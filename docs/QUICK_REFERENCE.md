@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: REFERENCE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [quick reference, cheat sheet, fluentbundle, fluentlocalization, parsing, validation, boot]
   questions: ["show me the common commands", "what is the smallest working example?", "how do I boot localization safely?"]
@@ -13,10 +13,10 @@ route:
 ## Install
 
 ```bash
+# Full runtime (locale formatting, localization, parsing)
 uv add ftllexengine[babel]
-```
 
-```bash
+# Parser-only (syntax, AST, validation, introspection)
 uv add ftllexengine
 ```
 
@@ -37,7 +37,7 @@ assert result == "Hello, Alice!"
 ```python
 from ftllexengine import FluentLocalization
 
-l10n = FluentLocalization(["lv_LV", "en_US"], strict=False)
+l10n = FluentLocalization(["lv_LV", "en_US"])
 l10n.add_resource("en_US", "checkout = Checkout")
 l10n.add_resource("lv_LV", "checkout = Apmaksa")
 result, errors = l10n.format_value("checkout")
@@ -117,4 +117,5 @@ from ftllexengine import clear_module_caches
 
 clear_module_caches()
 clear_module_caches(frozenset({"parsing.dates", "locale"}))
+# Unknown selector names raise ValueError instead of being ignored.
 ```

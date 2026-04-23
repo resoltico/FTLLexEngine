@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: CONTRIBUTING
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [contributing, development, uv, lint, test, fuzz, benchmark, release, virtualenv]
   questions: ["how do I set up development?", "how do I run lint and tests?", "how do I work on fuzzing?", "how do I prepare a release?"]
@@ -56,7 +56,8 @@ Useful variants:
 - `./scripts/benchmark.sh`
 - `./scripts/fuzz_hypofuzz.sh`
 - `./scripts/fuzz_hypofuzz.sh --deep --time 300`
-- `./scripts/fuzz_atheris.sh --list`
+- `./scripts/fuzz_atheris.sh numbers --time 60`
+- `./scripts/fuzz_atheris.sh --list` to inspect stored crashes and finding artifacts
 
 ## Documentation Work
 
@@ -77,7 +78,7 @@ Expectations:
 
 ## Type Checking Examples
 
-The `examples/` directory has its own `mypy.ini` and local stubs.
+The `examples/` directory has its own `mypy.ini` and does not rely on local stub overlays.
 
 ```bash
 uv run mypy --config-file examples/mypy.ini examples

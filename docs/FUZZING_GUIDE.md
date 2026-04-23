@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: FUZZING
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [fuzzing, HypoFuzz, Atheris, Hypothesis, fuzz_hypofuzz.sh, fuzz_atheris.sh]
   questions: ["which fuzzer should I use?", "how do I start fuzzing?", "how do I reproduce a fuzz failure?"]
@@ -25,13 +25,14 @@ Use:
 ```bash
 ./scripts/fuzz_hypofuzz.sh
 ./scripts/fuzz_hypofuzz.sh --deep --time 300
-./scripts/fuzz_atheris.sh --list
+./scripts/fuzz_atheris.sh numbers --time 60
 ```
 
 ## Choosing A Surface
 
 - Prefer HypoFuzz when you are exploring Python-level invariants and stateful/property-based tests.
 - Prefer Atheris when you need native-style mutation, corpus management, or target-specific replay/minimization.
+- `./scripts/fuzz_atheris.sh --list` inspects stored crashes and finding artifacts; it does not enumerate target names.
 
 ## Related Guides
 

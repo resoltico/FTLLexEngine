@@ -2,9 +2,9 @@
 afad: "3.5"
 version: "0.163.0"
 domain: DIAGNOSTICS
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
-  keywords: [ValidationResult, ValidationError, ValidationWarning, DiagnosticCode, DiagnosticFormatter, OutputFormat, SourceSpan]
+  keywords: [ParserAnnotation, ValidationResult, ValidationError, ValidationWarning, DiagnosticCode, DiagnosticFormatter, OutputFormat, SourceSpan]
   questions: ["what validation result types exist?", "how do I format diagnostics output?", "where are diagnostic codes and source spans documented?"]
 ---
 
@@ -78,6 +78,26 @@ class ValidationWarning:
 
 ---
 
+## `ParserAnnotation`
+
+Structural protocol for parser annotations stored inside `ValidationResult.annotations`.
+
+### Signature
+```python
+class ParserAnnotation(Protocol):
+    code: str
+    message: str
+    arguments: tuple[tuple[str, str], ...] | None
+    span: object | None
+```
+
+### Constraints
+- Import: `from ftllexengine.diagnostics import ParserAnnotation`
+- Purpose: allows `ValidationResult` to store parser-produced annotations by structural contract, not one concrete implementation class
+- Typical producer: `ftllexengine.syntax.ast.Annotation`
+
+---
+
 ## `ValidationResult`
 
 Unified immutable validation result.
@@ -88,7 +108,7 @@ Unified immutable validation result.
 class ValidationResult:
     errors: tuple[ValidationError, ...]
     warnings: tuple[ValidationWarning, ...]
-    annotations: tuple[Annotation, ...]
+    annotations: tuple[ParserAnnotation, ...]
 ```
 
 ### Constraints
@@ -96,6 +116,7 @@ class ValidationResult:
 - Produced by: `validate_resource()`
 - Properties: `is_valid`, `error_count`, `warning_count`, `annotation_count`
 - Factories: `valid()`, `invalid()`, `from_annotations()`
+- Annotation contract: stores any object satisfying `ParserAnnotation`; parser AST `Annotation` nodes are the common implementation
 - Formatting helper: `.format()` delegates to `DiagnosticFormatter`
 
 ---

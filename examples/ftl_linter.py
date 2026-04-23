@@ -1,12 +1,12 @@
 """FTL Linter Example - Demonstrating AST Parser Tooling API.
 
-PARSER-ONLY: This example works WITHOUT Babel. Install with:
-    pip install ftllexengine  (no [babel] extra needed)
+PARSER-ONLY INSTALL: This example is designed for:
+    pip install ftllexengine
 
 This example shows how to use FTLLexEngine's AST parser API to build
 a simple FTL linter that detects common issues:
 
-- Messages without values
+- Messages whose value is empty or attribute-only
 - Duplicate message IDs
 - Unknown function calls
 - Undefined message/term references
@@ -26,13 +26,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeIs
 
 from ftllexengine import parse_ftl
 from ftllexengine.syntax.ast import (
+    Attribute,
     FunctionReference,
     Message,
     MessageReference,
+    Pattern,
     Resource,
+    Term,
     TermReference,
     VariableReference,
 )
@@ -57,7 +61,13 @@ class FTLLinterVisitor(ASTVisitor):
         super().__init__()
         self.issues: list[LintIssue] = []
         self.message_ids: set[str] = set()
-        self.current_message_id: str | None = None
+        self.term_ids: set[str] = set()
+        self.current_location: str | None = None
+
+    @staticmethod
+    def _has_explicit_pattern_value(node_value: Pattern | None) -> TypeIs[Pattern]:
+        """Return True when a parsed Pattern contains actual value elements."""
+        return isinstance(node_value, Pattern) and bool(node_value.elements)
 
     def visit_Resource(self, node: Resource) -> None:  # pylint: disable=invalid-name
         """Visit resource and check for duplicate message IDs.
@@ -78,6 +88,8 @@ class FTLLinterVisitor(ASTVisitor):
                             )
                         )
                     self.message_ids.add(id_node.name)
+                case Term(id=id_node):
+                    self.term_ids.add(id_node.name)
 
         # Second pass: visit each message
         for entry in node.entries:
@@ -88,10 +100,12 @@ class FTLLinterVisitor(ASTVisitor):
 
         Visitor pattern: visit_* methods follow stdlib ast.NodeVisitor convention.
         """
-        self.current_message_id = node.id.name
+        previous_location = self.current_location
+        self.current_location = node.id.name
+        pattern = node.value
 
         # Check if message has a value
-        if not node.value:
+        if not self._has_explicit_pattern_value(pattern):
             self.issues.append(
                 LintIssue(
                     severity="warning",
@@ -102,14 +116,40 @@ class FTLLinterVisitor(ASTVisitor):
             )
 
         # Visit pattern to check references and functions
-        if node.value:
-            self.visit(node.value)
+        if self._has_explicit_pattern_value(pattern):
+            self.visit(pattern)
 
         # Visit attributes
         for attr in node.attributes:
             self.visit(attr)
 
-        self.current_message_id = None
+        self.current_location = previous_location
+
+    def visit_Term(self, node: Term) -> None:  # pylint: disable=invalid-name
+        """Visit term and check references in its value and attributes."""
+        previous_location = self.current_location
+        self.current_location = f"-{node.id.name}"
+        pattern = node.value
+
+        if self._has_explicit_pattern_value(pattern):
+            self.visit(pattern)
+
+        for attr in node.attributes:
+            self.visit(attr)
+
+        self.current_location = previous_location
+
+    def visit_Attribute(self, node: Attribute) -> None:  # pylint: disable=invalid-name
+        """Track attribute-specific locations for nested lint issues."""
+        previous_location = self.current_location
+        base_location = previous_location or "unknown"
+        self.current_location = f"{base_location}.{node.id.name}"
+        pattern = node.value
+
+        if self._has_explicit_pattern_value(pattern):
+            self.visit(pattern)
+
+        self.current_location = previous_location
 
     def visit_VariableReference(self, node: VariableReference) -> None:  # pylint: disable=invalid-name
         """Visit variable reference (no validation needed - runtime provided).
@@ -138,7 +178,7 @@ class FTLLinterVisitor(ASTVisitor):
                     severity="warning",
                     rule="unknown-function",
                     message=f"Unknown function: {node.id.name}",
-                    location=self.current_message_id or "unknown",
+                    location=self.current_location or "unknown",
                 )
             )
 
@@ -155,19 +195,50 @@ class FTLLinterVisitor(ASTVisitor):
                     severity="error",
                     rule="undefined-reference",
                     message=f"Reference to undefined message: {node.id.name}",
-                    location=self.current_message_id or "unknown",
+                    location=self.current_location or "unknown",
                 )
             )
 
         self.generic_visit(node)
 
     def visit_TermReference(self, node: TermReference) -> None:  # pylint: disable=invalid-name
-        """Check term references (not implemented in this example).
+        """Check term references.
 
         Visitor pattern: visit_* methods follow stdlib ast.NodeVisitor convention.
         """
-        # In a real linter, you'd track terms too
+        if node.id.name not in self.term_ids:
+            self.issues.append(
+                LintIssue(
+                    severity="error",
+                    rule="undefined-term",
+                    message=f"Reference to undefined term: -{node.id.name}",
+                    location=self.current_location or "unknown",
+                )
+            )
         self.generic_visit(node)
+
+
+def _issue_rules(issues: list[LintIssue]) -> set[str]:
+    """Return the unique rule identifiers present in a lint result."""
+    return {issue.rule for issue in issues}
+
+
+def _require_issue_rules(
+    *,
+    label: str,
+    issues: list[LintIssue],
+    expected_rules: set[str],
+) -> None:
+    """Assert that the lint result includes exactly the expected rule IDs."""
+    actual_rules = _issue_rules(issues)
+    if actual_rules != expected_rules:
+        msg = (
+            f"{label} expected lint rules {sorted(expected_rules)!r}, "
+            f"got {sorted(actual_rules)!r}"
+        )
+        raise AssertionError(msg)
+
+    print(f"[PASS] {label}")
 
 
 def lint_ftl_file(source: str) -> list[LintIssue]:  # pylint: disable=redefined-outer-name
@@ -227,6 +298,11 @@ goodbye = Goodbye!
 
     issues = lint_ftl_file(clean_ftl)
     print_lint_results(issues)
+    _require_issue_rules(
+        label="Clean FTL stays clean",
+        issues=issues,
+        expected_rules=set(),
+    )
 
     # Example 2: Duplicate message IDs
     print("\n" + "=" * 60)
@@ -240,6 +316,11 @@ welcome = Hello!
 
     issues = lint_ftl_file(duplicate_ids_ftl)
     print_lint_results(issues)
+    _require_issue_rules(
+        label="Duplicate message IDs detected",
+        issues=issues,
+        expected_rules={"duplicate-id"},
+    )
 
     # Example 3: Unknown function
     print("\n" + "=" * 60)
@@ -252,6 +333,11 @@ price = { PERCENTAGE($amount) }
 
     issues = lint_ftl_file(unknown_function_ftl)
     print_lint_results(issues)
+    _require_issue_rules(
+        label="Unknown functions detected",
+        issues=issues,
+        expected_rules={"unknown-function"},
+    )
 
     # Example 4: Undefined message reference
     print("\n" + "=" * 60)
@@ -264,6 +350,11 @@ about = About { brand-name }
 
     issues = lint_ftl_file(undefined_ref_ftl)
     print_lint_results(issues)
+    _require_issue_rules(
+        label="Undefined message references detected",
+        issues=issues,
+        expected_rules={"undefined-reference"},
+    )
 
     # Example 5: Message without value
     print("\n" + "=" * 60)
@@ -278,10 +369,32 @@ button-save =
 
     issues = lint_ftl_file(no_value_ftl)
     print_lint_results(issues)
+    _require_issue_rules(
+        label="Attribute-only messages flagged",
+        issues=issues,
+        expected_rules={"no-value"},
+    )
 
-    # Example 6: Lint a real file
+    # Example 6: Undefined term reference
     print("\n" + "=" * 60)
-    print("Example 6: Lint Real File (if exists)")
+    print("Example 6: Undefined Term Reference")
+    print("=" * 60)
+
+    undefined_term_ftl = """
+price = Total: { -missing-currency }
+"""
+
+    issues = lint_ftl_file(undefined_term_ftl)
+    print_lint_results(issues)
+    _require_issue_rules(
+        label="Undefined term references detected",
+        issues=issues,
+        expected_rules={"undefined-term"},
+    )
+
+    # Example 7: Lint a real file
+    print("\n" + "=" * 60)
+    print("Example 7: Lint Real File (if exists)")
     print("=" * 60)
 
     ftl_file = Path("locales/en/messages.ftl")

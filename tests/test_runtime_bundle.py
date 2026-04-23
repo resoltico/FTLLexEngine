@@ -1772,12 +1772,10 @@ class TestBundleGetBabelLocale:
         result = FluentBundle("en-GB").get_babel_locale()
         assert "en" in result
 
-    def test_invalid_locale_uses_fallback(self) -> None:
-        """get_babel_locale uses fallback for invalid locale."""
-        bundle = FluentBundle("xx-INVALID")
-        result = bundle.get_babel_locale()
-        assert isinstance(result, str)
-        assert "en" in result.lower()
+    def test_invalid_locale_is_rejected_at_construction(self) -> None:
+        """Unknown locales are rejected before a bundle can be created."""
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            FluentBundle("xx-INVALID")
 
 
 # =============================================================================
@@ -2212,11 +2210,18 @@ class TestLocaleValidationAsciiOnly:
             ),
         )
     )
-    def test_ascii_alphanumeric_accepted(self, locale: str) -> None:
-        """PROPERTY: ASCII alphanumeric strings starting with a letter are valid locales."""
+    def test_ascii_alphanumeric_input_is_canonicalized_or_rejected(self, locale: str) -> None:
+        """PROPERTY: ASCII locale-like input either canonicalizes or fails explicitly."""
         event(f"locale_len={len(locale)}")
-        bundle = FluentBundle(locale)
-        assert bundle.locale == normalize_locale(locale)
+        try:
+            bundle = FluentBundle(locale)
+        except ValueError:
+            with pytest.raises(ValueError, match=r"Unknown locale identifier|Invalid locale format"):
+                FluentBundle(locale)
+            event("outcome=rejected")
+        else:
+            assert bundle.locale == normalize_locale(locale)
+            event("outcome=accepted")
 
 
 class TestBundleOverwriteWarning:

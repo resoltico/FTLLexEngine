@@ -2,7 +2,7 @@
 afad: "3.5"
 version: "0.163.0"
 domain: RELEASE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [release, gh, github release, pypi, tag, assets, publish, verify, worktree, main]
   questions: ["how do I cut a release?", "how do I publish GitHub assets?", "how do I verify a release handoff?", "how do I rerun publish for an existing tag?"]
@@ -72,9 +72,12 @@ PRIMARY_CHECKOUT="$(git rev-parse --show-toplevel)"
 git fetch origin --prune
 git fetch origin --tags
 RELEASE_WORKTREE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git worktree add -b release/X.Y.Z "$RELEASE_WORKTREE" origin/main
+git worktree add --detach "$RELEASE_WORKTREE" origin/main
 cd "$RELEASE_WORKTREE"
 ```
+
+This flow intentionally keeps the worktree detached during pre-flight. Create
+`release/X.Y.Z` only after Step 2 passes.
 
 If the unpublished release payload exists only in the dirty primary checkout, move it explicitly
 before running release gates in the clean worktree. Preferred: create a local bootstrap branch that
@@ -88,7 +91,7 @@ git switch -c codex/release-bootstrap-X.Y.Z
 git add -A
 git commit -m "release: bootstrap X.Y.Z payload"
 RELEASE_WORKTREE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git worktree add -b release/X.Y.Z "$RELEASE_WORKTREE" codex/release-bootstrap-X.Y.Z
+git worktree add --detach "$RELEASE_WORKTREE" codex/release-bootstrap-X.Y.Z
 cd "$RELEASE_WORKTREE"
 ```
 
@@ -121,7 +124,7 @@ Do not cut the release branch or tag anything while any gate is red.
 Create the release branch and treat staging as a scope-verification checkpoint:
 
 ```bash
-git checkout -b release/X.Y.Z
+git switch -c release/X.Y.Z
 git add <release files>
 git status --short
 git diff --cached --name-status

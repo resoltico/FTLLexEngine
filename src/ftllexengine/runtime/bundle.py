@@ -154,7 +154,8 @@ class FluentBundle(_BundleQueryMixin, _BundleFormattingMixin, _BundleRegistratio
                    corruption handling: raises CacheCorruptionError instead of silent eviction.
 
         Raises:
-            ValueError: If locale code is empty or has invalid format
+            ValueError: If locale code is empty, structurally invalid, or not
+                recognized by Babel/CLDR
 
         Thread Safety:
             FluentBundle is always thread-safe using a readers-writer lock (RWLock).
@@ -182,9 +183,11 @@ class FluentBundle(_BundleQueryMixin, _BundleFormattingMixin, _BundleRegistratio
             Audit-enabled cache for compliance:
             >>> bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))  # doctest: +SKIP
         """
-        # Canonicalize at the boundary so every runtime-facing locale API uses
-        # the same LocaleCode representation.
-        self._locale: LocaleCode = require_locale_code(locale, "locale")
+        # Validate against Babel/CLDR at the public boundary so the bundle never
+        # advertises one locale while formatting with a different fallback locale.
+        canonical_locale = require_locale_code(locale, "locale")
+        locale_context = LocaleContext.create_or_raise(canonical_locale)
+        self._locale = locale_context.locale_code
         self._use_isolating = use_isolating
         self._strict = strict
         self._messages: dict[str, Message] = {}
@@ -516,7 +519,7 @@ class FluentBundle(_BundleQueryMixin, _BundleFormattingMixin, _BundleRegistratio
             - bundle.locale: The canonical LocaleCode stored by FluentBundle
             - LocaleContext.babel_locale: The underlying Babel Locale object
         """
-        ctx = LocaleContext.create(self._locale)
+        ctx = LocaleContext.create_or_raise(self._locale)
         return str(ctx.babel_locale)
 
     def add_resource(

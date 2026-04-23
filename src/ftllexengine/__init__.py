@@ -16,15 +16,18 @@ Public API:
     FluentValue - Type alias for values accepted by formatting functions
     make_fluent_number - Construct FluentNumber from int/Decimal with inferred precision
     fluent_function - Decorator for custom functions (locale injection support)
+    CacheConfig - Immutable runtime cache configuration (no external dependencies)
     clear_module_caches - Clear all module-level caches (memory management)
 
-Localization Boot (requires Babel):
-    LocalizationBootConfig - One-shot boot orchestrator for strict-mode assembly
+Localization Loading (no Babel dependency):
     LoadSummary - Aggregate of all resource load results from initialization
     ResourceLoadResult - Immutable result of a single resource load attempt
     FallbackInfo - Immutable record of a locale fallback event
     ResourceLoader - Protocol for loading FTL resources (structural typing)
     PathResourceLoader - Disk-based loader with path-traversal prevention
+
+Localization Boot (requires Babel):
+    LocalizationBootConfig - One-shot boot orchestrator for strict-mode assembly
     LocalizationCacheStats - Cache statistics for all locales in a FluentLocalization
 
 Locale Utilities (no Babel dependency):
@@ -36,13 +39,16 @@ Locale Utilities (no Babel dependency):
     normalize_locale - Convert BCP-47 to canonical lowercase POSIX form
     get_system_locale - Detect locale from OS environment variables
 
-Domain Validators (no Babel dependency):
-    require_currency_code - Validate and normalize an ISO 4217 currency code (requires Babel)
+Boundary Validators:
     require_date - Validate that a boundary value is a date (not datetime)
     require_datetime - Validate that a boundary value is a datetime
     require_fluent_number - Validate that a boundary value is a FluentNumber
-    require_locale_code - Validate and canonicalize a locale code at a system boundary
-    require_territory_code - Validate and normalize an ISO 3166-1 alpha-2 territory code
+    require_locale_code - Validate and canonicalize a locale code at a
+                          system boundary
+    require_currency_code - Validate and normalize an ISO 4217 currency code
+                            (Babel-backed)
+    require_territory_code - Validate and normalize an ISO 3166-1 alpha-2
+                             territory code (Babel-backed)
 
 Parsing Return Type (no Babel dependency):
     ParseResult[T] - Return type alias for parse_* functions:
@@ -52,7 +58,7 @@ Introspection (no Babel dependency):
     MessageVariableValidationResult - Structured result of variable schema validation
     validate_message_variables - Compare FTL message variables against expected schema
 
-ISO Standards (Babel required at call time; importable without Babel):
+ISO Standards (full-runtime CLDR data required at call time; importable in parser-only installs):
     CurrencyCode - ISO 4217 currency code NewType (e.g., CurrencyCode("USD"))
     TerritoryCode - ISO 3166-1 alpha-2 territory code NewType (e.g., TerritoryCode("US"))
     is_valid_currency_code - TypeIs guard: True if str is a valid ISO 4217 code (requires Babel)
@@ -87,15 +93,15 @@ Submodules:
     ftllexengine.introspection - Message introspection and variable extraction
     ftllexengine.parsing - Bidirectional parsing (requires Babel)
     ftllexengine.diagnostics - Error types and validation results
-    ftllexengine.localization - Resource loaders and type aliases (requires Babel)
-    ftllexengine.runtime - Bundle and resolver (requires Babel)
+    ftllexengine.localization - Resource loaders always available; FluentLocalization requires Babel
+    ftllexengine.runtime - Helper types always available; bundle classes require Babel
     ftllexengine.integrity - Data integrity exceptions (fail-fast validation)
 
 Installation:
-    # Parser-only (no external dependencies):
+    # Parser-only install:
     pip install ftllexengine
 
-    # Full runtime with locale formatting (requires Babel):
+    # Full runtime install:
     pip install ftllexengine[babel]
 """
 
@@ -103,8 +109,18 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _get_version
+from typing import TYPE_CHECKING
 
+from ._optional_exports import (
+    ROOT_BABEL_OPTIONAL_ATTRS as _BABEL_OPTIONAL_ATTRS,
+)
+from ._optional_exports import (
+    load_root_babel_optional_exports,
+    raise_missing_babel_symbol,
+)
 from .analysis import detect_cycles
+from .cache_management import clear_module_caches
+from .core.babel_compat import get_cldr_version, is_babel_available
 from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
 from .core.semantic_types import FTLSource, LocaleCode, MessageId, ResourceId
 
@@ -147,209 +163,43 @@ from .introspection.iso import (
     require_territory_code,
 )
 from .introspection.message import MessageVariableValidationResult, validate_message_variables
+from .localization.loading import (
+    FallbackInfo,
+    LoadSummary,
+    PathResourceLoader,
+    ResourceLoader,
+    ResourceLoadResult,
+)
+from .runtime.cache_config import CacheConfig
+from .runtime.function_bridge import FluentNumber, fluent_function
+from .runtime.value_types import FluentValue, make_fluent_number
 from .syntax import parse as parse_ftl
 from .syntax import parse_stream as parse_stream_ftl
 from .syntax import serialize as serialize_ftl
 from .validation import validate_resource
 
-# Babel-optional components: imported eagerly so all static analysis tools (mypy, IDEs,
-# ruff) resolve the names from the import statement rather than from __getattr__ dispatch.
-# On parser-only installations (no Babel) the ImportError is caught silently; __getattr__
-# then provides a clear installation hint when the caller actually accesses the name.
-try:
-    from .core.babel_compat import (
-        get_cldr_version as get_cldr_version,
-    )
-    from .localization import (
-        FallbackInfo as FallbackInfo,
-    )
-    from .localization import (
-        FluentLocalization as FluentLocalization,
-    )
-    from .localization import (
-        LoadSummary as LoadSummary,
-    )
-    from .localization import (
-        LocalizationBootConfig as LocalizationBootConfig,
-    )
-    from .localization import (
-        LocalizationCacheStats as LocalizationCacheStats,
-    )
-    from .localization import (
-        PathResourceLoader as PathResourceLoader,
-    )
-    from .localization import (
-        ResourceLoader as ResourceLoader,
-    )
-    from .localization import (
-        ResourceLoadResult as ResourceLoadResult,
-    )
-    from .runtime import (
-        AsyncFluentBundle as AsyncFluentBundle,
-    )
-    from .runtime import (
-        FluentBundle as FluentBundle,
-    )
-    from .runtime import (
-        FluentNumber as FluentNumber,
-    )
-    from .runtime import (
-        fluent_function as fluent_function,
-    )
-    from .runtime import (
-        make_fluent_number as make_fluent_number,
-    )
-    from .runtime.cache_config import (
-        CacheConfig as CacheConfig,
-    )
-    from .runtime.value_types import (
-        FluentValue as FluentValue,
-    )
-except ImportError:
-    pass  # Parser-only install; __getattr__ provides the installation hint on access
+if TYPE_CHECKING:
+    from .localization import FluentLocalization, LocalizationBootConfig, LocalizationCacheStats
+    from .runtime import AsyncFluentBundle, FluentBundle
 
-_BABEL_OPTIONAL_ATTRS: frozenset[str] = frozenset({
-    "AsyncFluentBundle",
-    "CacheConfig",
-    "FallbackInfo",
-    "FluentBundle",
-    "FluentNumber",
-    "FluentLocalization",
-    "FluentValue",
-    "LoadSummary",
-    "LocalizationBootConfig",
-    "LocalizationCacheStats",
-    "PathResourceLoader",
-    "ResourceLoadResult",
-    "ResourceLoader",
-    "fluent_function",
-    "make_fluent_number",
-    "get_cldr_version",
-})
+_BABEL_AVAILABLE = is_babel_available()
+
+if _BABEL_AVAILABLE:
+    globals().update(load_root_babel_optional_exports())
 
 
 def __getattr__(name: str) -> object:
-    """Provide a helpful ImportError for Babel-optional symbols when Babel is absent.
-
-    Only called when Babel is NOT installed: the try/except block above did not bind
-    these names into the module dict. When Babel IS installed, the names are already
-    in globals() and Python resolves them without invoking this function.
-    """
-    if name in _BABEL_OPTIONAL_ATTRS:
-        msg = (
-            f"{name} requires the full runtime install (Babel + CLDR locale data). "
-            "Install with: pip install ftllexengine[babel]\n\n"
-            "For parser-only usage (no Babel required), use:\n"
+    """Provide a helpful missing-symbol error for Babel-backed facade symbols."""
+    return raise_missing_babel_symbol(
+        module_name=__name__,
+        name=name,
+        optional_attrs=_BABEL_OPTIONAL_ATTRS,
+        parser_only_hint=(
+            "For parser-only installs, use:\n"
             "  from ftllexengine.syntax import parse, serialize\n"
             "  from ftllexengine.syntax.ast import Message, Term, Pattern, ..."
-        )
-        raise ImportError(msg)
-    msg = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(msg)
-
-
-def clear_module_caches(
-    components: frozenset[str] | None = None,
-) -> None:
-    """Clear module-level caches in the library.
-
-    Provides unified cache management for long-running applications. With
-    ``components=None`` (the default), clears all caches:
-
-    - ``'parsing.currency'``: CLDR currency data caches
-    - ``'parsing.dates'``: CLDR date/datetime pattern caches
-    - ``'locale'``: Babel locale object cache (locale_utils)
-    - ``'runtime.locale_context'``: LocaleContext instance cache
-    - ``'introspection.message'``: Message introspection result cache
-    - ``'introspection.iso'``: ISO territory/currency introspection cache
-
-    Pass a ``frozenset`` of component names to clear only specific caches.
-    This is useful when certain caches (e.g., Babel locale data) are expensive
-    to repopulate and should not be cleared during routine periodic trimming.
-
-    Args:
-        components: Set of component names to clear. When ``None``, clears all
-            caches. Known component names: ``'parsing.currency'``,
-            ``'parsing.dates'``, ``'locale'``, ``'runtime.locale_context'``,
-            ``'introspection.message'``, ``'introspection.iso'``.
-            Unknown component names are silently ignored.
-
-    Useful for:
-        - Memory reclamation in long-running server applications
-        - Testing scenarios requiring fresh cache state
-        - After Babel/CLDR data updates
-
-    Thread-safe. Each underlying cache uses its own locking mechanism.
-
-    Note:
-        This function does NOT require Babel. It clears caches regardless
-        of whether Babel-dependent modules have been imported. Caches that
-        haven't been populated yet are simply no-ops.
-
-        FluentBundle instances maintain their own IntegrityCache which is NOT
-        cleared by this function. To clear a bundle's format cache, call
-        ``bundle.clear_cache()``.
-
-    Example:
-        >>> import ftllexengine  # doctest: +SKIP
-        >>> ftllexengine.clear_module_caches()  # Clear all caches  # doctest: +SKIP
-        >>> ftllexengine.clear_module_caches(  # Clear only ISO + message caches  # doctest: +SKIP
-        ...     components=frozenset({'introspection.iso', 'introspection.message'})
-        ... )
-    """
-    # Import and clear each cache module.
-    # Order: parsing caches first (depend on locale cache), then locale, then introspection.
-    # Parsing and runtime caches are conditionally cleared: they are Babel-dependent and
-    # may not have been imported in parser-only installations. Skipping an unimported module
-    # is semantically correct — an unimported module has no populated cache to clear.
-
-    # When components is None (clear all), use an empty sentinel so that every
-    # `_want()` call short-circuits via clear_all without inspecting the set.
-    clear_all = components is None
-    _comps: frozenset[str] = frozenset() if components is None else components
-
-    def _want(name: str) -> bool:
-        return clear_all or name in _comps
-
-    # 1. Parsing caches (Babel-dependent: only present in full-runtime installations)
-    if _want("parsing.currency"):
-        try:
-            from .parsing.currency import clear_currency_caches
-            clear_currency_caches()
-        except ImportError:  # pragma: no cover
-            pass  # Parser-only installation; parsing.currency never imported
-
-    if _want("parsing.dates"):
-        try:
-            from .parsing.dates import clear_date_caches
-            clear_date_caches()
-        except ImportError:  # pragma: no cover
-            pass  # Parser-only installation; parsing.dates never imported
-
-    # 2. Locale caches (always present: core.locale_utils has no Babel dep at module level)
-    if _want("locale"):
-        from .core.locale_utils import clear_locale_cache
-
-        clear_locale_cache()
-
-    # 3. Runtime locale context (Babel-dependent)
-    if _want("runtime.locale_context"):
-        try:
-            from .runtime.locale_context import LocaleContext
-            LocaleContext.clear_cache()
-        except ImportError:  # pragma: no cover
-            pass  # Parser-only installation; runtime.locale_context never imported
-
-    # 4. Introspection caches (message introspection + ISO standards data)
-    if _want("introspection.message"):
-        from .introspection import clear_introspection_cache
-
-        clear_introspection_cache()
-
-    if _want("introspection.iso"):
-        from .introspection import clear_iso_cache
-
-        clear_iso_cache()
+        ),
+    )
 
 
 # Version information - Auto-populated from package metadata
@@ -370,8 +220,9 @@ __recommended_encoding__ = "UTF-8"  # Per spec: "The recommended encoding for Fl
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__ = [
-    # Bundle and Localization (Babel-optional; absent in parser-only installs)
+    # Babel-backed facades
     "AsyncFluentBundle",
+    # Runtime helpers and localization loading (parser-only safe)
     "CacheConfig",
     "FallbackInfo",
     "FluentBundle",
@@ -421,7 +272,7 @@ __all__ = [
     # Introspection (no Babel dependency)
     "MessageVariableValidationResult",
     "validate_message_variables",
-    # ISO standards (importable without Babel; most raise BabelImportError when called)
+    # ISO standards (importable in parser-only installs; most validate via Babel at call time)
     "CurrencyCode",
     "TerritoryCode",
     "get_cldr_version",
@@ -445,3 +296,6 @@ __all__ = [
     "__spec_url__",
     "__version__",
 ]
+
+if not _BABEL_AVAILABLE:
+    __all__ = [name for name in __all__ if name not in _BABEL_OPTIONAL_ATTRS]
