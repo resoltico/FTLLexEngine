@@ -1,6 +1,6 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: RELEASE
 updated: "2026-04-23"
 route:
@@ -11,7 +11,7 @@ route:
 # Release Protocol
 
 **Purpose**: Publish a tagged FTLLexEngine release through GitHub CLI and verify the GitHub Release and PyPI handoff.
-**Prerequisites**: `gh` installed and authenticated, release version already set in `pyproject.toml`, and a checkout topology that can produce a clean release payload.
+**Prerequisites**: `gh` installed and authenticated, the target release version chosen, and a checkout topology that can produce a clean release payload.
 
 ## Overview
 
@@ -95,6 +95,11 @@ git worktree add --detach "$RELEASE_WORKTREE" codex/release-bootstrap-X.Y.Z
 cd "$RELEASE_WORKTREE"
 ```
 
+If the bootstrap payload intentionally left the final release version or changelog entry unresolved,
+finish those edits inside the clean release worktree before Step 2. Treat the clean worktree as the
+authoritative place to finalize `pyproject.toml`, versioned markdown frontmatter, lockfiles, and the
+target `CHANGELOG.md` release entry.
+
 ## Step 2: Pre-flight And Release Readiness
 
 Run the local gates first:
@@ -115,6 +120,8 @@ Also confirm:
 
 - `CHANGELOG.md` contains the target release entry.
 - `pyproject.toml` has the final target version.
+- all version-carrying metadata that ships with the repo (for example markdown frontmatter and
+  `uv.lock`) is synchronized to that target version.
 - the release checkout is based on current `origin/main` or you explicitly understand the delta.
 
 Do not cut the release branch or tag anything while any gate is red.
