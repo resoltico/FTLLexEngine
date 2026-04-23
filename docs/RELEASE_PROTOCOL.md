@@ -11,7 +11,7 @@ route:
 # Release Protocol
 
 **Purpose**: Publish a tagged FTLLexEngine release through GitHub CLI and verify the GitHub Release and PyPI handoff.
-**Prerequisites**: `gh` installed and authenticated, the target release version chosen, and a checkout topology that can produce a clean release payload.
+**Prerequisites**: `gh` installed and authenticated, `uv` installed, the target release version chosen, and a checkout topology that can produce a clean release payload.
 
 ## Overview
 
@@ -19,17 +19,19 @@ The release flow is `gh`-first and branch-based. Do not push release commits dir
 Use a release branch, open a PR, merge it, verify the merged `main` commit is green, tag that
 commit, and then verify the GitHub Release and published artifacts directly.
 
-## Step 0: Verify GitHub CLI Readiness
+## Step 0: Verify Tooling Readiness
 
 Before doing anything else, run:
 
 ```bash
 gh --version
 gh auth status
+uv --version
 ```
 
-If either command fails, stop immediately. Do not continue with release work until `gh` is both
-installed and authenticated for the target repository.
+If any command fails, stop immediately. Do not continue with release work until `gh` is both
+installed and authenticated for the target repository and `uv` is available for managed Python
+and packaging operations.
 
 ## Step 1: Choose The Authoritative Checkout
 
@@ -302,11 +304,15 @@ gh release download vX.Y.Z \
   shasum -a 256 -c "ftllexengine-X.Y.Z.sha256"
 )
 
-python3.13 -m venv "$TMP_DIR/py313"
+uv venv --python 3.13 --seed "$TMP_DIR/py313"
 "$TMP_DIR/py313/bin/pip" install --no-cache-dir "ftllexengine==X.Y.Z"
 "$TMP_DIR/py313/bin/python" -c "import ftllexengine as pkg; print(pkg.__version__)"
 rm -rf "$TMP_DIR"
 ```
+
+Use `uv` for this installability check even if the host shell does not expose a direct
+`python3.13` binary. The release verifier must exercise a real Python 3.13 environment, but it
+does not need to come from the system PATH.
 
 The release is not complete until the release object, assets, and real install test all succeed.
 
