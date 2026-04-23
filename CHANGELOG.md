@@ -14,6 +14,12 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+
+- **The release protocol now treats `uv` as a required tool and uses a `uv`-managed Python 3.13 environment for public install verification.**
+  The maintainer runbook no longer assumes a host `python3.13` binary is present on PATH during
+  the final release smoke test; it now verifies the published package in a seeded
+  `uv venv --python 3.13` environment, which matches the project's actual Python management model.
 
 ## [0.164.0] - 2026-04-23
 ### Changed
