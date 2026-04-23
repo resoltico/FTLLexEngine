@@ -73,9 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The locale guide now documents `get_system_locale()` as a fallback-returning
   helper instead of implying a default-path `ValueError`, contributing docs no
   longer claim the examples rely on local stubs, the release runbook now keeps
-  pre-flight worktrees detached until the gates pass, and the Atheris docs now
-  state clearly that `--list` inspects stored crashes and findings instead of
-  enumerating target names.
+  pre-flight worktrees detached until the gates pass, explicitly distinguishes
+  bootstrap-path staged diffs from the full PR diff against `origin/main`, and
+  the Atheris docs now state clearly that `--list` inspects stored crashes and
+  findings instead of enumerating target names.
 - **Shipped examples now assert their own contracts, and the example runner enforces those contracts.**
   `examples/parser_only.py` now demonstrates the real top-level `validate_resource()`
   surface plus warning-only versus invalid validation semantics, `examples/ftl_linter.py`

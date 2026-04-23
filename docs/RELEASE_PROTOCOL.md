@@ -128,7 +128,8 @@ Do not cut the release branch or tag anything while any gate is red.
 
 ## Step 3: Release Branch And Staging Checkpoint
 
-Create the release branch and treat staging as a scope-verification checkpoint:
+Create the release branch and treat staging as a scope-verification checkpoint for the delta from
+the branch point:
 
 ```bash
 git switch -c release/X.Y.Z
@@ -145,6 +146,9 @@ Requirements before continuing:
 - `git status --short` shows no intended release file left unstaged or untracked.
 - `git diff --cached --name-status` matches the expected file set.
 - `git diff --cached --stat` confirms the staged payload is the release you intend to ship.
+- If the branch started from a bootstrap payload rather than `origin/main`, interpret this
+  checkpoint narrowly: it proves only the release-finalization delta since the bootstrap commit,
+  not the full release scope against `origin/main`.
 
 If the staged diff is incomplete or polluted, fix the branch before committing.
 
@@ -170,7 +174,9 @@ gh pr checks <N>
 
 Rules:
 
-- `gh pr diff <N> --name-only` must still match the intended release file set.
+- `gh pr diff <N> --name-only` must match the full intended release file set against `origin/main`.
+- For bootstrap-path releases, treat this PR diff checkpoint as the authoritative full-scope review;
+  it supersedes the narrower Step 3 staged-diff view.
 - If `gh pr diff <N> --name-only` fails with HTTP 406 because the PR diff is too large, fall back
   to GitHub's paginated file list API and the local branch comparison:
 
