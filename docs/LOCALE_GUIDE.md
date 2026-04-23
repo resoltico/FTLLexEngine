@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: LOCALE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [locale, NUMBER, DATETIME, CURRENCY, normalize_locale, get_system_locale, use_isolating]
   questions: ["why did my number not format?", "what locale string should I use?", "what does use_isolating do?"]
@@ -11,7 +11,7 @@ route:
 # Locale Guide
 
 **Purpose**: Explain how locale normalization and locale-aware formatting work in FTLLexEngine.
-**Prerequisites**: Basic Fluent syntax.
+**Prerequisites**: Basic Fluent syntax. The formatting examples use the full runtime install; `normalize_locale()` and `get_system_locale()` also work in parser-only installs.
 
 ## Overview
 
@@ -35,18 +35,23 @@ assert fmt == "1.234,50\u00a0€"
 ## Locale Codes
 
 - Public runtime APIs normalize locale codes to the canonical internal form.
-- `normalize_locale()` is useful when you need the exact canonical string yourself.
-- `get_system_locale()` reads the OS and environment variables for a default locale.
+- `normalize_locale()` is useful when you need the exact canonical string yourself, but it only canonicalizes spelling and separators.
+- Public formatting and localization entry points validate against Babel/CLDR and raise `ValueError` for unknown locales.
+- `get_system_locale()` reads the OS and environment variables for a default locale and falls back to `"en_us"` unless `raise_on_failure=True` is used.
 
 ```python
-from ftllexengine import get_system_locale, normalize_locale
+from ftllexengine import FluentBundle, get_system_locale, normalize_locale
 
 assert normalize_locale("de-DE") == "de_de"
 try:
-    detected = get_system_locale()
+    FluentBundle("xx_INVALID")
 except ValueError:
-    detected = None
-assert detected is None or isinstance(detected, str)
+    pass
+else:
+    raise AssertionError("Unknown locales must raise ValueError")
+detected = get_system_locale()
+assert isinstance(detected, str)
+assert detected
 ```
 
 ## Bidi Isolation

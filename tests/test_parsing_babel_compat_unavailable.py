@@ -26,15 +26,15 @@ from ftllexengine.core.babel_compat import (
 from ftllexengine.parsing.dates import _is_word_boundary, _strip_era
 
 # ============================================================================
-# babel_compat.py: _check_babel_available ImportError path
+# babel_compat.py: _check_babel_available missing-package vs broken-install paths
 # ============================================================================
 
 
 class TestCheckBabelAvailableImportError:
-    """Test _check_babel_available() ImportError path."""
+    """Test _check_babel_available() import-failure classification."""
 
-    def test_check_babel_available_handles_import_error(self) -> None:
-        """_check_babel_available returns False when import fails.
+    def test_check_babel_available_handles_missing_top_level_babel(self) -> None:
+        """_check_babel_available returns False only for missing top-level Babel.
 
         Resets the module-level sentinel, simulates Babel unavailability,
         then restores state for subsequent tests.
@@ -64,8 +64,9 @@ class TestCheckBabelAvailableImportError:
                 level: int = 0,
             ) -> object:
                 if name == "babel":
-                    msg = "Mocked: Babel not installed"
-                    raise ImportError(msg)
+                    err = ModuleNotFoundError("No module named 'babel'")
+                    err.name = "babel"
+                    raise err
                 return original_import(
                     name, globals_dict, locals_dict, fromlist, level,
                 )
@@ -77,6 +78,67 @@ class TestCheckBabelAvailableImportError:
         finally:
             # Restore Babel modules and sentinel
             sys.modules.update(saved_modules)
+            bc._babel_available = original_sentinel
+
+    def test_check_babel_available_reraises_internal_import_failure(self) -> None:
+        """Internal Babel import failures must surface instead of looking missing."""
+        import ftllexengine.core.babel_compat as bc
+
+        original_sentinel = bc._babel_available
+        bc._babel_available = None
+
+        try:
+            original_import = __import__
+
+            def mock_import_babel(
+                name: str,
+                globals_dict: dict[str, object] | None = None,
+                locals_dict: dict[str, object] | None = None,
+                fromlist: tuple[str, ...] = (),
+                level: int = 0,
+            ) -> object:
+                if name == "babel":
+                    msg = "simulated internal babel import failure"
+                    raise ImportError(msg)
+                return original_import(
+                    name, globals_dict, locals_dict, fromlist, level,
+                )
+
+            with (
+                patch("builtins.__import__", side_effect=mock_import_babel),
+                pytest.raises(ImportError, match="simulated internal babel import failure"),
+            ):
+                bc._check_babel_available()
+        finally:
+            bc._babel_available = original_sentinel
+
+    def test_check_babel_available_handles_importerror_message_fallback(self) -> None:
+        """Message-based fallback still recognizes a mocked missing Babel import."""
+        import ftllexengine.core.babel_compat as bc
+
+        original_sentinel = bc._babel_available
+        bc._babel_available = None
+
+        try:
+            original_import = __import__
+
+            def mock_import_babel(
+                name: str,
+                globals_dict: dict[str, object] | None = None,
+                locals_dict: dict[str, object] | None = None,
+                fromlist: tuple[str, ...] = (),
+                level: int = 0,
+            ) -> object:
+                if name == "babel":
+                    err = ModuleNotFoundError("No module named 'babel'")
+                    raise err
+                return original_import(
+                    name, globals_dict, locals_dict, fromlist, level,
+                )
+
+            with patch("builtins.__import__", side_effect=mock_import_babel):
+                assert bc._check_babel_available() is False
+        finally:
             bc._babel_available = original_sentinel
 
 

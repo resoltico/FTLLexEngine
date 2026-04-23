@@ -18,6 +18,7 @@ from .errors import FrozenFluentError, ParseResult
 from .formatter import DiagnosticFormatter, OutputFormat
 from .templates import ErrorTemplate
 from .validation import (
+    ParserAnnotation,
     ValidationError,
     ValidationResult,
     ValidationWarning,
@@ -40,6 +41,7 @@ __all__ = [
     "ParseResult",
     "ParseTypeLiteral",
     # Validation
+    "ParserAnnotation",
     "ValidationError",
     "ValidationResult",
     "ValidationWarning",

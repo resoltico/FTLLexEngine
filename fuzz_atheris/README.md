@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: FUZZING
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [atheris, fuzz inventory, fuzz targets, libfuzzer, corpus]
   questions: ["what do the Atheris fuzzers cover?", "which targets exist?", "how do I map a target name to a file?"]
@@ -43,6 +43,6 @@ route:
 
 ```bash
 ./scripts/fuzz_atheris.sh numbers --time 60
-./scripts/fuzz_atheris.sh --list
+./scripts/fuzz_atheris.sh --list   # stored crashes/findings, not target names
 ./scripts/fuzz_atheris.sh --replay runtime path/to/finding
 ```

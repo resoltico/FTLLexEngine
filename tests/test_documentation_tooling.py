@@ -116,6 +116,27 @@ def test_validate_docs_configuration_tracks_runnable_python_docs() -> None:
     assert validate_docs.validate_python_code("raise RuntimeError('boom')", REPO_ROOT) is not None
 
 
+def test_run_examples_registers_contracts_for_all_shipped_examples() -> None:
+    """Every shipped example should have an explicit output contract."""
+    run_examples = _load_script_module(
+        "run_examples_script", REPO_ROOT / "scripts" / "run_examples.py"
+    )
+
+    shipped_examples = {
+        path.name
+        for path in (REPO_ROOT / "examples").glob("*.py")
+        if path.is_file()
+    }
+
+    assert set(run_examples.EXAMPLE_CONTRACTS) == shipped_examples
+    assert run_examples.EXAMPLE_CONTRACTS["parser_only.py"](
+        "[PASS] Warning-only validation semantics verified\n"
+        "[PASS] Invalid syntax semantics verified\n"
+        "All examples completed successfully!\n"
+    ) is None
+    assert run_examples.EXAMPLE_CONTRACTS["parser_only.py"]("incomplete output") is not None
+
+
 def test_validate_version_uses_afad_frontmatter_version_contract() -> None:
     """validate_version should enforce the AFAD v3.5 `version:` frontmatter key."""
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
@@ -361,6 +382,18 @@ def test_reference_signature_parameter_names_match_live_exports() -> None:
                 )
 
     assert issues == []
+
+
+def test_diagnostics_reference_documents_parser_annotation_contract() -> None:
+    """Diagnostics reference should document the structural parser annotation API."""
+    diagnostics_doc = REPO_ROOT / "docs" / "DOC_05_Diagnostics.md"
+
+    parser_annotation_signature = _extract_signature_block(diagnostics_doc, "ParserAnnotation")
+    validation_result_signature = _extract_signature_block(diagnostics_doc, "ValidationResult")
+
+    assert parser_annotation_signature is not None
+    assert "class ParserAnnotation(Protocol):" in parser_annotation_signature
+    assert "annotations: tuple[ParserAnnotation, ...]" in (validation_result_signature or "")
 
 
 def test_sdist_includes_root_frontmatter_docs_and_readme() -> None:

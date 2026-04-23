@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: INDEX
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection]
   questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing and introspection APIs?", "where are syntax, parsing, and diagnostics references?"]
@@ -156,6 +156,7 @@ route:
 | `ValidationResult` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ValidationResult` |
 | `ValidationError` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ValidationError` |
 | `ValidationWarning` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ValidationWarning` |
+| `ParserAnnotation` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `ParserAnnotation` |
 | `WarningSeverity` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `WarningSeverity` |
 | `Diagnostic` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `Diagnostic` |
 | `DiagnosticCode` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `DiagnosticCode` |

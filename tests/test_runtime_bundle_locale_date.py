@@ -25,6 +25,16 @@ from ftllexengine.runtime.locale_context import LocaleContext
 
 # Valid locale alphabet for property-based tests
 _LOCALE_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+_KNOWN_BUNDLE_LOCALES = (
+    "en",
+    "en_US",
+    "en-US",
+    "de",
+    "de_DE",
+    "fr_FR",
+    "lv_LV",
+    "zh_Hans_CN",
+)
 
 
 class TestFluentBundleLocaleValidation:
@@ -65,19 +75,24 @@ class TestFluentBundleLocaleValidation:
         bundle = FluentBundle("en")
         assert bundle.locale == "en"
 
-    @given(
-        st.from_regex(r"[a-zA-Z][a-zA-Z0-9]*(_[a-zA-Z0-9]+)?", fullmatch=True)
-    )
+    @given(st.sampled_from(_KNOWN_BUNDLE_LOCALES))
     @settings(max_examples=50)
-    def test_valid_locale_formats_accepted(self, locale: str) -> None:
-        """Valid locale formats are accepted by __init__.
-
-        BCP 47 format: alphanumeric starting with letter, optional underscore-delimited subtag.
-        """
-        has_subtag = "_" in locale
-        event(f"outcome={'subtag' if has_subtag else 'simple'}")
+    def test_known_locale_formats_accepted(self, locale: str) -> None:
+        """Known locale formats are accepted by __init__ and canonicalized."""
+        match locale:
+            case value if "-" in value:
+                event("outcome=hyphenated")
+            case value if "_" in value:
+                event("outcome=underscored")
+            case _:
+                event("outcome=simple")
         bundle = FluentBundle(locale)
         assert bundle.locale == normalize_locale(locale)
+
+    def test_structurally_valid_but_unknown_locale_rejected(self) -> None:
+        """Syntactically valid locales must still exist in Babel's locale data."""
+        with pytest.raises(ValueError, match="Unknown locale identifier 'xx_xx'"):
+            FluentBundle("xx_XX")
 
     @given(st.text(min_size=1, max_size=10).filter(
         lambda s: s.strip() == "" or not is_structurally_valid_locale_code(s.strip())

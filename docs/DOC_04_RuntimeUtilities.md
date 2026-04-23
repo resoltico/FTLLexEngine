@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: RUNTIME_UTILITIES
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [detect_cycles, normalize_locale, get_system_locale, require_locale_code, __version__, require_date, require_datetime]
   questions: ["where are runtime utility exports documented?", "what package metadata constants are public?", "which boundary validators and locale helpers are exported from the root package?"]
@@ -19,7 +19,7 @@ Function that detects cycles in a dependency graph.
 
 ### Signature
 ```python
-def detect_cycles(dependencies: Mapping[str, set[str]]) -> list[list[str]]:
+def detect_cycles(dependencies: dict[str, set[str]]) -> list[list[str]]:
 ```
 
 ### Parameters
@@ -68,6 +68,7 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
 ### Constraints
 - Return: normalized POSIX-style locale string
 - Fallback: returns `"en_us"` when detection fails and `raise_on_failure` is false
+- Raises: `RuntimeError` when `raise_on_failure` is true and detection fails
 - State: Pure with respect to library state; reads OS process locale and env vars
 
 ---

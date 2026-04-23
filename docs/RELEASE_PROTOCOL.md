@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: RELEASE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [release, gh, github release, pypi, tag, assets, publish, verify, worktree, main]
   questions: ["how do I cut a release?", "how do I publish GitHub assets?", "how do I verify a release handoff?", "how do I rerun publish for an existing tag?"]
@@ -11,7 +11,7 @@ route:
 # Release Protocol
 
 **Purpose**: Publish a tagged FTLLexEngine release through GitHub CLI and verify the GitHub Release and PyPI handoff.
-**Prerequisites**: `gh` installed and authenticated, release version already set in `pyproject.toml`, and a checkout topology that can produce a clean release payload.
+**Prerequisites**: `gh` installed and authenticated, the target release version chosen, and a checkout topology that can produce a clean release payload.
 
 ## Overview
 
@@ -72,9 +72,12 @@ PRIMARY_CHECKOUT="$(git rev-parse --show-toplevel)"
 git fetch origin --prune
 git fetch origin --tags
 RELEASE_WORKTREE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git worktree add -b release/X.Y.Z "$RELEASE_WORKTREE" origin/main
+git worktree add --detach "$RELEASE_WORKTREE" origin/main
 cd "$RELEASE_WORKTREE"
 ```
+
+This flow intentionally keeps the worktree detached during pre-flight. Create
+`release/X.Y.Z` only after Step 2 passes.
 
 If the unpublished release payload exists only in the dirty primary checkout, move it explicitly
 before running release gates in the clean worktree. Preferred: create a local bootstrap branch that
@@ -88,9 +91,14 @@ git switch -c codex/release-bootstrap-X.Y.Z
 git add -A
 git commit -m "release: bootstrap X.Y.Z payload"
 RELEASE_WORKTREE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git worktree add -b release/X.Y.Z "$RELEASE_WORKTREE" codex/release-bootstrap-X.Y.Z
+git worktree add --detach "$RELEASE_WORKTREE" codex/release-bootstrap-X.Y.Z
 cd "$RELEASE_WORKTREE"
 ```
+
+If the bootstrap payload intentionally left the final release version or changelog entry unresolved,
+finish those edits inside the clean release worktree before Step 2. Treat the clean worktree as the
+authoritative place to finalize `pyproject.toml`, versioned markdown frontmatter, lockfiles, and the
+target `CHANGELOG.md` release entry.
 
 ## Step 2: Pre-flight And Release Readiness
 
@@ -112,16 +120,19 @@ Also confirm:
 
 - `CHANGELOG.md` contains the target release entry.
 - `pyproject.toml` has the final target version.
+- all version-carrying metadata that ships with the repo (for example markdown frontmatter and
+  `uv.lock`) is synchronized to that target version.
 - the release checkout is based on current `origin/main` or you explicitly understand the delta.
 
 Do not cut the release branch or tag anything while any gate is red.
 
 ## Step 3: Release Branch And Staging Checkpoint
 
-Create the release branch and treat staging as a scope-verification checkpoint:
+Create the release branch and treat staging as a scope-verification checkpoint for the delta from
+the branch point:
 
 ```bash
-git checkout -b release/X.Y.Z
+git switch -c release/X.Y.Z
 git add <release files>
 git status --short
 git diff --cached --name-status
@@ -135,6 +146,9 @@ Requirements before continuing:
 - `git status --short` shows no intended release file left unstaged or untracked.
 - `git diff --cached --name-status` matches the expected file set.
 - `git diff --cached --stat` confirms the staged payload is the release you intend to ship.
+- If the branch started from a bootstrap payload rather than `origin/main`, interpret this
+  checkpoint narrowly: it proves only the release-finalization delta since the bootstrap commit,
+  not the full release scope against `origin/main`.
 
 If the staged diff is incomplete or polluted, fix the branch before committing.
 
@@ -160,7 +174,9 @@ gh pr checks <N>
 
 Rules:
 
-- `gh pr diff <N> --name-only` must still match the intended release file set.
+- `gh pr diff <N> --name-only` must match the full intended release file set against `origin/main`.
+- For bootstrap-path releases, treat this PR diff checkpoint as the authoritative full-scope review;
+  it supersedes the narrower Step 3 staged-diff view.
 - If `gh pr diff <N> --name-only` fails with HTTP 406 because the PR diff is too large, fall back
   to GitHub's paginated file list API and the local branch comparison:
 

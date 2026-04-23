@@ -61,6 +61,10 @@ assert errors == ()
 assert result == "500 bags of Ethiopian coffee"
 ```
 
+Unknown locales raise `ValueError` on `FluentBundle`,
+`FluentLocalization`, `number_format()`, `datetime_format()`, and
+`currency_format()` rather than silently formatting with a fallback locale.
+
 > `use_isolating=False` removes Unicode bidi isolation markers from output, making strings suitable for direct comparison and logging. The default `use_isolating=True` wraps each placeable in U+2068/U+2069 markers for correct bidirectional text rendering in UI contexts.
 
 **Parse user input back to Python types:**
@@ -110,6 +114,9 @@ Or with pip:
 pip install ftllexengine[babel]
 ```
 
+This is the **full runtime** install: locale-aware formatting, localization orchestration,
+bidirectional parsing, and Babel-backed ISO helpers.
+
 **Requirements**: Python >= 3.13 | Babel >= 2.18
 
 <details>
@@ -121,16 +128,32 @@ uv add ftllexengine
 
 Or: `pip install ftllexengine`
 
-**Works without Babel:**
+**Available in parser-only installs:**
 - FTL syntax parsing (`parse_ftl()`, `serialize_ftl()`)
 - AST manipulation and transformation
 - Validation and message introspection
+- Zero-dependency runtime helpers such as `CacheConfig`, `FluentNumber`,
+  `FunctionRegistry`, `fluent_function`, and `make_fluent_number`
+- Zero-dependency localization loading types such as `PathResourceLoader`,
+  `FallbackInfo`, `ResourceLoadResult`, and `LoadSummary`
+- Embedded ISO 4217 decimal precision lookup via `get_currency_decimal_digits()`
 
-**Requires Babel:**
+**Requires the full runtime install:**
 - `FluentBundle` (locale-aware formatting)
+- `AsyncFluentBundle`
 - `FluentLocalization` (multi-locale fallback)
+- `LocalizationBootConfig`
+- Runtime formatter and registry helpers such as `number_format()`,
+  `datetime_format()`, `currency_format()`, `select_plural_category()`,
+  `create_default_registry()`, and `get_shared_registry()`
 - Bidirectional parsing (numbers, dates, currency)
-- ISO territory and currency lookups
+- Localized ISO territory/currency metadata lookups and ISO code validation helpers
+
+Public formatting and localization entry points reject unknown locales
+instead of silently falling back to `en_US`.
+Parser-only facade probes such as `hasattr(ftllexengine.runtime, "number_format")`
+and `getattr(ftllexengine, "FluentBundle", None)` treat Babel-backed names
+as absent instead of raising during feature detection.
 
 </details>
 
@@ -636,17 +659,17 @@ Alice's invoices format correctly: JPY 28,125,000 in Tokyo, $187,500.00 in New Y
 
 ## Architecture at a Glance
 
-| Component | What It Does | Requires Babel? |
-|:----------|:-------------|:----------------|
-| **Syntax** — `ftllexengine.syntax` | FTL parser, AST, serializer, visitor pattern | No |
-| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`) | Yes |
-| **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains; `LocalizationBootConfig` strict-mode production boot | Yes |
-| **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Yes |
-| **Introspection** — `ftllexengine.introspection` | Message-variable/function extraction, ISO 3166/4217 territory and currency data | Partial |
-| **Analysis** — `ftllexengine.analysis` | Dependency-graph helpers such as `detect_cycles()` | No |
-| **Validation** — `ftllexengine.validation` | Resource validation, unresolved-reference checks, semantic checks | No |
-| **Diagnostics** — `ftllexengine.diagnostics` | Structured error types, error codes, formatting | No |
-| **Integrity** — `ftllexengine.integrity` | BLAKE2b checksums, strict mode, immutable exceptions | No |
+| Component | What It Does | Install Mode |
+|:----------|:-------------|:-------------|
+| **Syntax** — `ftllexengine.syntax` | FTL parser, AST, serializer, visitor pattern | Parser-only install |
+| **Runtime** — `ftllexengine.runtime` | `FluentBundle`, message resolution, thread-safe formatting, built-in functions (`NUMBER`, `CURRENCY`, `DATETIME`), plus zero-dependency helper types | Mixed: parser-only helpers + full-runtime formatters |
+| **Localization** — `ftllexengine.localization` | `FluentLocalization` multi-locale fallback chains; `LocalizationBootConfig` strict-mode production boot; zero-dependency loading types | Mixed: parser-only loading types + full-runtime orchestration |
+| **Parsing** — `ftllexengine.parsing` | Bidirectional parsing: numbers, dates, currency back to Python types | Full runtime install |
+| **Introspection** — `ftllexengine.introspection` | Message-variable/function extraction, AST reference analysis, and ISO helpers; localized territory/currency metadata needs the full runtime while `get_currency_decimal_digits()` uses embedded tables | Mixed: parser-only helpers + full-runtime localized metadata |
+| **Analysis** — `ftllexengine.analysis` | Dependency-graph helpers such as `detect_cycles()` | Parser-only install |
+| **Validation** — `ftllexengine.validation` | Resource validation, unresolved-reference checks, semantic checks | Parser-only install |
+| **Diagnostics** — `ftllexengine.diagnostics` | Structured error types, error codes, formatting | Parser-only install |
+| **Integrity** — `ftllexengine.integrity` | BLAKE2b checksums, strict mode, immutable exceptions | Parser-only install |
 
 ---
 

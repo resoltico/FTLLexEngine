@@ -86,6 +86,10 @@ def number_format(
     Returns:
         FluentNumber with formatted string and computed precision for plural matching
 
+    Raises:
+        ValueError: If ``locale_code`` is structurally valid but not recognized
+            by Babel/CLDR.
+
     Examples:
         >>> from decimal import Decimal  # doctest: +SKIP
         >>> number_format(Decimal('1234.5'), "en-US")  # doctest: +SKIP
@@ -125,9 +129,9 @@ def number_format(
     get_decimal_symbol = babel_numbers.get_decimal_symbol
     parse_pattern = babel_numbers.parse_pattern
 
-    # Delegate to LocaleContext (immutable, thread-safe)
-    # create() always returns LocaleContext with en_US fallback for invalid locales
-    ctx = LocaleContext.create(locale_code)
+    # Public runtime entry points fail fast on unknown locales instead of
+    # silently downgrading to a different locale's formatting rules.
+    ctx = LocaleContext.create_or_raise(locale_code)
     formatted = ctx.format_number(
         value,
         minimum_fraction_digits=minimum_fraction_digits,
@@ -203,6 +207,10 @@ def datetime_format(
     Returns:
         Formatted date/datetime string
 
+    Raises:
+        ValueError: If ``locale_code`` is structurally valid but not recognized
+            by Babel/CLDR.
+
     Examples:
         >>> from datetime import date, datetime, UTC  # doctest: +SKIP
         >>> dt = datetime(2025, 10, 27, tzinfo=UTC)  # doctest: +SKIP
@@ -233,9 +241,9 @@ def datetime_format(
         Matches Intl.DateTimeFormat semantics.
         Custom patterns follow Babel datetime pattern syntax.
     """
-    # Delegate to LocaleContext (immutable, thread-safe)
-    # create() always returns LocaleContext with en_US fallback for invalid locales
-    ctx = LocaleContext.create(locale_code)
+    # Public runtime entry points fail fast on unknown locales instead of
+    # silently downgrading to a different locale's formatting rules.
+    ctx = LocaleContext.create_or_raise(locale_code)
     return ctx.format_datetime(
         value,
         date_style=date_style,
@@ -287,6 +295,10 @@ def currency_format(
         Returning FluentNumber enables CURRENCY results to be used as selectors
         in plural/select expressions, matching NUMBER() behavior.
 
+    Raises:
+        ValueError: If ``locale_code`` is structurally valid but not recognized
+            by Babel/CLDR.
+
     Examples:
         >>> from decimal import Decimal  # doctest: +SKIP
         >>> currency_format(Decimal('123.45'), "en-US", currency="EUR")  # doctest: +SKIP
@@ -330,9 +342,9 @@ def currency_format(
     get_decimal_symbol = babel_numbers.get_decimal_symbol
     parse_pattern = babel_numbers.parse_pattern
 
-    # Delegate to LocaleContext (immutable, thread-safe)
-    # create() always returns LocaleContext with en_US fallback for invalid locales
-    ctx = LocaleContext.create(locale_code)
+    # Public runtime entry points fail fast on unknown locales instead of
+    # silently downgrading to a different locale's formatting rules.
+    ctx = LocaleContext.create_or_raise(locale_code)
     formatted = ctx.format_currency(
         value,
         currency=currency,

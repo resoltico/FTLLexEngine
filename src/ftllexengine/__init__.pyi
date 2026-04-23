@@ -1,4 +1,4 @@
-# ISO data utilities (require Babel)
+# ISO data utilities (call-time Babel requirement)
 from .analysis import detect_cycles as detect_cycles
 from .core.babel_compat import get_cldr_version as get_cldr_version
 
@@ -76,15 +76,17 @@ from .introspection.message import (
 )
 from .introspection.message import validate_message_variables as validate_message_variables
 
-# Localization and runtime (requires Babel)
+# Localization loading and runtime helpers (parser-only safe)
 from .localization import FallbackInfo as FallbackInfo
-from .localization import FluentLocalization as FluentLocalization
 from .localization import LoadSummary as LoadSummary
-from .localization import LocalizationBootConfig as LocalizationBootConfig
-from .localization import LocalizationCacheStats as LocalizationCacheStats
 from .localization import PathResourceLoader as PathResourceLoader
 from .localization import ResourceLoader as ResourceLoader
 from .localization import ResourceLoadResult as ResourceLoadResult
+
+# Babel-backed facades
+from .localization.boot import LocalizationBootConfig as LocalizationBootConfig
+from .localization.orchestrator import FluentLocalization as FluentLocalization
+from .localization.orchestrator import LocalizationCacheStats as LocalizationCacheStats
 from .runtime import AsyncFluentBundle as AsyncFluentBundle
 from .runtime import FluentBundle as FluentBundle
 from .runtime import FluentNumber as FluentNumber
@@ -113,17 +115,12 @@ __recommended_encoding__: str
 # Explicit __all__ for mypy to recognize re-exports
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
 __all__: list[str] = [
-    # Bundle and Localization (Babel-optional; absent in parser-only installs)
-    "AsyncFluentBundle",
+    # Runtime helpers and localization loading (parser-only safe)
     "CacheConfig",
     "FallbackInfo",
-    "FluentBundle",
     "FluentNumber",
-    "FluentLocalization",
     "FluentValue",
     "LoadSummary",
-    "LocalizationBootConfig",
-    "LocalizationCacheStats",
     "PathResourceLoader",
     "ResourceLoadResult",
     "ResourceLoader",
@@ -187,4 +184,10 @@ __all__: list[str] = [
     "__recommended_encoding__",
     "__spec_url__",
     "__version__",
+    # Babel-backed facades
+    "AsyncFluentBundle",
+    "FluentBundle",
+    "FluentLocalization",
+    "LocalizationBootConfig",
+    "LocalizationCacheStats",
 ]

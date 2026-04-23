@@ -1,9 +1,10 @@
 """Tests for the ftllexengine package __init__.py module.
 
 Covers the full lifecycle of the package entry point:
-- Direct attribute access (Babel-optional via try/except imports)
+- Direct attribute access across parser-only-safe and Babel-backed exports
 - Symbol identity: top-level names alias the same objects as submodule imports
 - Babel-optional ImportError with actionable diagnostic message (parser-only install)
+- Parser-only installs keep zero-dependency runtime/localization helpers available
 - AttributeError for genuinely unknown attributes
 - ParseResult is Babel-independent (importable without Babel via diagnostics)
 - Fallback version when package metadata is unavailable
@@ -13,10 +14,61 @@ Covers the full lifecycle of the package entry point:
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _snapshot_ftl_modules() -> dict[str, ModuleType]:
+    """Capture loaded ftllexengine modules for later restoration."""
+    return {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "ftllexengine" or name.startswith("ftllexengine.")
+    }
+
+
+def _clear_ftl_modules() -> None:
+    """Remove loaded ftllexengine modules from sys.modules."""
+    for module_name in [
+        name for name in sys.modules if name == "ftllexengine" or name.startswith("ftllexengine.")
+    ]:
+        del sys.modules[module_name]
+
+
+@contextmanager
+def _fresh_ftl_import(
+    *,
+    block_babel: bool = False,
+    blocked_imports: frozenset[str] = frozenset(),
+) -> Iterator[ModuleType]:
+    """Import a fresh ftllexengine module with optional Babel blocking."""
+    import builtins
+    import importlib
+
+    saved_modules = _snapshot_ftl_modules()
+    original_import = builtins.__import__
+
+    def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
+        if block_babel and (name == "babel" or name.startswith("babel.")):
+            raise ImportError("No module named 'babel'")
+        if name in blocked_imports or any(name.startswith(prefix + ".") for prefix in blocked_imports):
+            message = f"blocked import: {name}"
+            raise ModuleNotFoundError(message)
+        return original_import(name, globs, locs, fromlist, level)
+
+    try:
+        _clear_ftl_modules()
+        builtins.__import__ = mock_import
+        yield importlib.import_module("ftllexengine")
+    finally:
+        builtins.__import__ = original_import
+        _clear_ftl_modules()
+        sys.modules.update(saved_modules)
 
 
 class TestBabelOptionalSymbolAccess:
@@ -140,152 +192,96 @@ class TestBabelOptionalAttrsSet:
 
         expected = {
             "AsyncFluentBundle",
-            "CacheConfig",
-            "FallbackInfo",
             "FluentBundle",
-            "FluentNumber",
             "FluentLocalization",
-            "FluentValue",
-            "LoadSummary",
             "LocalizationBootConfig",
             "LocalizationCacheStats",
-            "PathResourceLoader",
-            "ResourceLoadResult",
-            "ResourceLoader",
-            "fluent_function",
-            "make_fluent_number",
-            "get_cldr_version",
         }
         assert expected == ftllexengine._BABEL_OPTIONAL_ATTRS  # type: ignore[attr-defined]
 
 
-class TestBabelImportErrorPath:
-    """Babel import failures produce an actionable error message.
+class TestParserOnlyFacadeBehavior:
+    """Parser-only installs keep zero-dependency exports while gating Babel-backed facades."""
 
-    Simulates Babel unavailability by re-importing ftllexengine in an environment
-    where runtime imports fail. In a real parser-only installation the same code
-    path is triggered when Babel is not installed.
-    """
+    def test_direct_optional_attribute_access_provides_install_guidance(self) -> None:
+        """Direct optional attribute access raises AttributeError with install guidance."""
+        with (
+            _fresh_ftl_import(block_babel=True) as ftllexengine,
+            pytest.raises(
+                AttributeError,
+                match=r"FluentBundle requires the full runtime install.*pip install ftllexengine\[babel\]",
+            ),
+        ):
+            _ = ftllexengine.FluentBundle
 
-    def test_babel_import_error_message_for_fluent_bundle(self) -> None:
-        """ImportError for FluentBundle provides an install-command hint."""
-        saved_modules = {
-            name: module
-            for name, module in sys.modules.items()
-            if name == "ftllexengine" or name.startswith("ftllexengine.")
-        }
+    def test_zero_dependency_root_symbols_remain_accessible_without_babel(self) -> None:
+        """Parser-only installs still expose zero-dependency root helpers."""
+        with _fresh_ftl_import(block_babel=True) as ftllexengine:
+            assert "FluentBundle" not in vars(ftllexengine)
+            assert "FluentBundle" not in ftllexengine.__all__
+            assert "FluentLocalization" not in ftllexengine.__all__
 
-        try:
-            for module_name in list(saved_modules.keys()):
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
+            assert "CacheConfig" in vars(ftllexengine)
+            assert "FluentNumber" in vars(ftllexengine)
+            assert "FluentValue" in vars(ftllexengine)
+            assert "LoadSummary" in vars(ftllexengine)
+            assert "PathResourceLoader" in vars(ftllexengine)
+            assert "fluent_function" in vars(ftllexengine)
+            assert "get_cldr_version" in vars(ftllexengine)
 
-            import builtins
-            import importlib
+    def test_runtime_and_localization_facades_stay_partially_available_without_babel(self) -> None:
+        """Parser-only installs keep zero-dependency runtime/localization names visible."""
+        with _fresh_ftl_import(block_babel=True):
+            from ftllexengine import localization, runtime
 
-            original_import = builtins.__import__
+            assert "FluentBundle" not in runtime.__all__
+            assert "AsyncFluentBundle" not in runtime.__all__
+            assert "number_format" not in runtime.__all__
+            assert "datetime_format" not in runtime.__all__
+            assert "currency_format" not in runtime.__all__
+            assert "select_plural_category" not in runtime.__all__
+            assert "create_default_registry" not in runtime.__all__
+            assert "get_shared_registry" not in runtime.__all__
+            assert "CacheConfig" in runtime.__all__
+            assert runtime.CacheConfig.__name__ == "CacheConfig"
 
-            def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
-                # Exempt Babel-free localization submodules (types, loading) that
-                # are always importable regardless of Babel availability.
-                is_babel_free_localization = (
-                    "localization.types" in name
-                    or "localization.loading" in name
-                    or (level > 0 and ("localization.types" in name or "localization.loading" in name))
-                )
-                is_runtime_import = (
-                    not is_babel_free_localization
-                    and (
-                        name == "ftllexengine.runtime"
-                        or (name.startswith("ftllexengine") and "runtime" in name)
-                        or (level > 0 and "runtime" in name)
-                        or (name.startswith("ftllexengine") and "localization" in name)
-                        or (level > 0 and "localization" in name)
-                    )
-                )
-                if is_runtime_import:
-                    raise ImportError("No module named 'babel'")
-                return original_import(name, globs, locs, fromlist, level)
+            assert "FluentLocalization" not in localization.__all__
+            assert "LocalizationBootConfig" not in localization.__all__
+            assert "CacheAuditLogEntry" in localization.__all__
+            assert localization.PathResourceLoader.__name__ == "PathResourceLoader"
 
-            builtins.__import__ = mock_import
-            try:
-                ftllexengine = importlib.import_module("ftllexengine")
+    def test_parser_only_feature_probing_treats_optional_names_as_absent(self) -> None:
+        """hasattr/getattr(default) treat Babel-backed names as absent in parser-only mode."""
+        with _fresh_ftl_import(block_babel=True) as ftllexengine:
+            from ftllexengine import localization, runtime
 
-                with pytest.raises(
-                    ImportError,
-                    match=r"FluentBundle requires the full runtime install.*pip install ftllexengine\[babel\]",
-                ):
-                    _ = ftllexengine.FluentBundle
-            finally:
-                builtins.__import__ = original_import
+            assert hasattr(ftllexengine, "FluentBundle") is False
+            assert getattr(ftllexengine, "FluentBundle", None) is None
 
-        finally:
-            all_ftl_modules = [
-                n for n in sys.modules if n == "ftllexengine" or n.startswith("ftllexengine.")
-            ]
-            for m in all_ftl_modules:
-                del sys.modules[m]
-            sys.modules.update(saved_modules)
+            assert hasattr(runtime, "number_format") is False
+            assert getattr(runtime, "number_format", None) is None
 
-    def test_babel_import_error_message_for_cache_config(self) -> None:
-        """ImportError for CacheConfig provides an install-command hint."""
-        saved_modules = {
-            name: module
-            for name, module in sys.modules.items()
-            if name == "ftllexengine" or name.startswith("ftllexengine.")
-        }
+            assert hasattr(localization, "FluentLocalization") is False
+            assert getattr(localization, "FluentLocalization", None) is None
 
-        try:
-            for module_name in list(saved_modules.keys()):
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
+    def test_parser_only_runtime_formatter_access_still_gives_install_hint(self) -> None:
+        """Direct runtime formatter access raises AttributeError with install guidance."""
+        with _fresh_ftl_import(block_babel=True):
+            from ftllexengine import runtime
 
-            import builtins
-            import importlib
+            with pytest.raises(
+                AttributeError,
+                match=r"number_format requires the full runtime install.*pip install ftllexengine\[babel\]",
+            ):
+                _ = runtime.number_format
 
-            original_import = builtins.__import__
-
-            def mock_import(name, globs=None, locs=None, fromlist=(), level=0):
-                # Exempt Babel-free localization submodules (types, loading) that
-                # are always importable regardless of Babel availability.
-                is_babel_free_localization = (
-                    "localization.types" in name
-                    or "localization.loading" in name
-                    or (level > 0 and ("localization.types" in name or "localization.loading" in name))
-                )
-                is_runtime_import = (
-                    not is_babel_free_localization
-                    and (
-                        name == "ftllexengine.runtime"
-                        or (name.startswith("ftllexengine") and "runtime" in name)
-                        or (level > 0 and "runtime" in name)
-                        or (name.startswith("ftllexengine") and "localization" in name)
-                        or (level > 0 and "localization" in name)
-                    )
-                )
-                if is_runtime_import:
-                    raise ImportError("No module named 'babel'")
-                return original_import(name, globs, locs, fromlist, level)
-
-            builtins.__import__ = mock_import
-            try:
-                ftllexengine = importlib.import_module("ftllexengine")
-
-                with pytest.raises(
-                    ImportError,
-                    match=r"CacheConfig requires the full runtime install.*pip install ftllexengine\[babel\]",
-                ):
-                    _ = ftllexengine.CacheConfig
-            finally:
-                builtins.__import__ = original_import
-
-        finally:
-            all_ftl_modules = [
-                n for n in sys.modules if n == "ftllexengine" or n.startswith("ftllexengine.")
-            ]
-            for m in all_ftl_modules:
-                del sys.modules[m]
-            sys.modules.update(saved_modules)
+    def test_internal_runtime_import_failure_is_not_masked_as_missing_babel(self) -> None:
+        """A broken runtime import must surface its real error instead of a Babel hint."""
+        with (
+            pytest.raises(ModuleNotFoundError, match=r"ftllexengine\.runtime\.bundle"),
+            _fresh_ftl_import(blocked_imports=frozenset({"ftllexengine.runtime.bundle"})),
+        ):
+            pass
 
 
 class TestUnknownAttributeError:
@@ -313,6 +309,24 @@ class TestUnknownAttributeError:
 
         with pytest.raises(AttributeError):
             _ = ftllexengine.UNKNOWN_CONSTANT  # type: ignore[attr-defined]
+
+
+class TestOptionalExportHelper:
+    """Direct tests for the optional-export helper branches."""
+
+    def test_helper_without_parser_only_hint_raises_plain_attribute_error(self) -> None:
+        """Optional symbols raise AttributeError outside import machinery."""
+        from ftllexengine._optional_exports import raise_missing_babel_symbol
+
+        with pytest.raises(
+            AttributeError,
+            match=r"FluentBundle requires the full runtime install.*pip install ftllexengine\[babel\]",
+        ):
+            raise_missing_babel_symbol(
+                module_name="ftllexengine.runtime",
+                name="FluentBundle",
+                optional_attrs=frozenset({"FluentBundle"}),
+            )
 
 
 class TestDirectImportIntrospectionSymbols:
@@ -559,11 +573,12 @@ class TestClearModuleCaches:
         # Should not raise; just a no-op
         ftllexengine.clear_module_caches(frozenset())
 
-    def test_clear_unknown_component_is_ignored(self) -> None:
-        """Unknown component names in the frozenset are silently ignored."""
+    def test_clear_unknown_component_raises_value_error(self) -> None:
+        """Unknown component names fail fast with ValueError."""
         import ftllexengine
 
-        ftllexengine.clear_module_caches(frozenset({"nonexistent.component"}))
+        with pytest.raises(ValueError, match="Unknown cache component selector"):
+            ftllexengine.clear_module_caches(frozenset({"nonexistent.component"}))
 
     def test_clear_module_caches_in_all(self) -> None:
         """clear_module_caches is exported in ftllexengine.__all__."""

@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: ARCHITECTURE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCheckFailedError, cache audit, boot validation]
   questions: ["how does strict mode relate to integrity?", "what audit evidence does the runtime expose?", "what is boot validation for?"]
@@ -11,7 +11,7 @@ route:
 # Data Integrity Architecture
 
 **Purpose**: Summarize the fail-fast and immutable-evidence patterns used by FTLLexEngine.
-**Prerequisites**: Familiarity with `FluentBundle`, `FluentLocalization`, and `LocalizationBootConfig`.
+**Prerequisites**: Familiarity with `FluentBundle`, `FluentLocalization`, and `LocalizationBootConfig` from the full runtime install.
 
 ## Overview
 
@@ -26,7 +26,7 @@ The library pushes validation as early as possible and represents runtime failur
 
 - `FluentBundle` and `FluentLocalization` default to `strict=True`.
 - Resource junk and formatting failures raise instead of silently degrading.
-- `strict=False` is an explicit opt-in for fallback-return behavior.
+- `strict=False` is an explicit opt-in for `(result, errors)` tuple returns on formatting APIs that would otherwise raise.
 
 ## Boot Validation
 

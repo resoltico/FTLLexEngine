@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: CUSTOM_FUNCTIONS
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [custom functions, fluent_function, FunctionRegistry, locale injection, add_function]
   questions: ["how do I add a custom function?", "how does locale injection work?", "should I use a registry or add_function?"]
@@ -11,7 +11,7 @@ route:
 # Custom Functions Guide
 
 **Purpose**: Add domain-specific functions to `FluentBundle` or `FluentLocalization`.
-**Prerequisites**: Familiarity with `FluentBundle.format_pattern()` and FTL function calls.
+**Prerequisites**: Full runtime install (`ftllexengine[babel]`) plus familiarity with `FluentBundle.format_pattern()` and FTL function calls.
 
 ## Overview
 
@@ -19,6 +19,7 @@ FTLLexEngine supports two patterns:
 
 - `bundle.add_function("NAME", func)` for one bundle or one localization object.
 - `FunctionRegistry` for reusable or shared function sets.
+- This guide assumes the full runtime because the examples attach functions to `FluentBundle` and use `create_default_registry()`.
 
 FTL uses uppercase function names by convention. Python callables can keep normal snake_case parameter names; the bridge maps FTL camelCase named arguments onto Python snake_case parameters automatically.
 

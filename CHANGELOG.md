@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: CHANGELOG
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.164.0] - 2026-04-23
 ### Changed
 
 - **Release publication now stages PyPI uploads separately from GitHub Release assets.** The
@@ -22,6 +23,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the `.sha256` receipt in the GitHub Release asset path, and the maintainer runbook now
   documents rerunning `workflow_dispatch` against an existing tag to recover a partial release
   without moving or recreating the tag.
+- **GitHub Actions now opt into Node 24 and pin the Node 24-capable immutable action releases.**
+  The `Test` and `Build and Publish` workflows now set
+  `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`, move `astral-sh/setup-uv` to its
+  official `v8.1.0` commit pin, and update `actions/setup-python`,
+  `actions/upload-artifact`, and `actions/download-artifact` to their current
+  Node 24-native immutable releases.
+- **Parser-only facades now expose the zero-dependency helpers that actually work without Babel.**
+  `ftllexengine`, `ftllexengine.runtime`, and `ftllexengine.localization` now keep
+  `CacheConfig`, `FluentNumber`, `fluent_function`, `make_fluent_number`,
+  `PathResourceLoader`, `FallbackInfo`, `ResourceLoadResult`, `LoadSummary`, and
+  `CacheAuditLogEntry` importable in parser-only installs while gating only the
+  Babel-backed bundle/orchestration facades behind the runtime extra.
+- **Public locale-aware entry points now reject unknown locales instead of silently formatting as `en_US`.**
+  `FluentBundle`, `FluentLocalization`, `number_format()`, `datetime_format()`, and
+  `currency_format()` now validate locale identifiers against Babel/CLDR up front so
+  a misconfigured locale cannot claim one public value while rendering with another.
+- **`clear_module_caches()` now validates selector names and no longer masks internal import failures as missing Babel.**
+  Unknown cache component names raise `ValueError`, parser-only skips are driven by
+  Babel availability instead of broad `ImportError` swallowing, and broken runtime
+  imports now surface their real exception path.
+- **Parser-only optional facades now behave like truly absent names during feature probing.**
+  Babel-backed names such as `ftllexengine.FluentBundle`,
+  `ftllexengine.localization.FluentLocalization`, and parser-only-hidden
+  `ftllexengine.runtime.number_format()` now return `False` from `hasattr()` and
+  honor `getattr(..., default)` instead of raising during routine capability
+  checks, while direct access still carries explicit runtime-install guidance.
+- **The Babel availability gate no longer rewrites broken Babel imports into misleading “install Babel” errors.**
+  `core.babel_compat._check_babel_available()` now treats only a genuinely missing
+  top-level `babel` package as parser-only mode; internal `ImportError` failures
+  from a broken Babel install now surface unchanged for diagnosis instead of being
+  collapsed into `BabelImportError`.
+- **Parser-only `ftllexengine.runtime` no longer advertises locale-formatting helpers that cannot run without Babel.**
+  `create_default_registry()`, `get_shared_registry()`, `number_format()`,
+  `datetime_format()`, `currency_format()`, and `select_plural_category()` are
+  now gated with the same full-runtime boundary as the bundle classes instead of
+  remaining importable-but-immediately-failing in parser-only installs.
+- **Documentation now uses consistent parser-only vs full-runtime terminology and fixes Babel requirement scope.**
+  README and guide pages now distinguish the two install modes explicitly,
+  document that unknown locales fail fast at public formatting boundaries, and
+  stop implying that all ISO helpers require Babel when
+  `get_currency_decimal_digits()` works from embedded tables.
+- **Core and runtime reference docs now match the current localization and cache contracts.**
+  The reference set now describes `FluentLocalization` as eager-load plus
+  demand-driven bundle materialization, documents the exact
+  `clear_module_caches()` selector names, and correctly describes
+  `CacheAuditLogEntry` as the public alias of `WriteLogEntry` rather than a
+  separate dataclass.
+- **Quick-reference and example index docs now steer users toward the actual default behavior.**
+  The quick reference labels full-runtime vs parser-only install commands,
+  removes an unnecessary `strict=False` from the multi-locale example, and the
+  examples index now calls out the parser-only helper facades shown by
+  `examples/parser_only.py`.
+- **Locale, contributing, release, and fuzzing docs now match the shipped workflows more precisely.**
+  The locale guide now documents `get_system_locale()` as a fallback-returning
+  helper instead of implying a default-path `ValueError`, contributing docs no
+  longer claim the examples rely on local stubs, the release runbook now keeps
+  pre-flight worktrees detached until the gates pass, explicitly distinguishes
+  bootstrap-path staged diffs from the full PR diff against `origin/main`, and
+  the Atheris docs now state clearly that `--list` inspects stored crashes and
+  findings instead of enumerating target names.
+- **Shipped examples now assert their own contracts, and the example runner enforces those contracts.**
+  `examples/parser_only.py` now demonstrates the real top-level `validate_resource()`
+  surface plus warning-only versus invalid validation semantics, `examples/ftl_linter.py`
+  now detects attribute-only no-value messages and undefined term references as advertised,
+  and `scripts/run_examples.py` now rejects examples that exit `0` but miss their registered
+  output-contract markers.
+- **Diagnostics docs now describe the real structural parser-annotation contract.**
+  `ParserAnnotation` is now a documented public diagnostics export, and the
+  diagnostics reference plus regression tests now bind `ValidationResult.annotations`
+  to `tuple[ParserAnnotation, ...]` instead of implying a single concrete `Annotation`
+  implementation.
+- **Additional god-files are now split, and architecture budgets reach beyond `src/`.**
+  `introspection.iso` now delegates lookup, validation, and cache clearing into
+  focused modules instead of carrying all ISO logic in one file, the
+  `runtime.bundle` property test monolith is now partitioned into focused test
+  modules, and `tests/test_architecture_contract.py` now enforces explicit line
+  budgets for the previously ungoverned test, fuzz, and script hotspots as well
+  as the remaining large internal utility modules.
 
 ## [0.163.0] - 2026-04-22
 
@@ -6897,6 +6976,7 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0
-[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...HEAD
+[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.164.0...HEAD
+[0.164.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...v0.164.0
 [0.163.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.162.0...v0.163.0
 [0.162.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.161.0...v0.162.0

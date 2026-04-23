@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: EXAMPLES
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [examples, quickstart, parser-only, localization, custom functions, thread safety, benchmarks]
   questions: ["what examples are available?", "how do I run the examples?", "which example should I start with?"]
@@ -34,7 +34,7 @@ uv run --python 3.13 python scripts/run_examples.py
 | Script | Focus |
 |:-------|:------|
 | `quickstart.py` | Single-locale bundle usage, variables, plurals, parsing handoff |
-| `parser_only.py` | Parser-only install surface: parse, validate, inspect, serialize |
+| `parser_only.py` | Parser-only install surface: zero-dependency helper facades, parse, validate, inspect, serialize |
 | `locale_fallback.py` | `FluentLocalization`, fallback chains, disk and custom loaders |
 | `bidirectional_formatting.py` | Locale-aware parsing for numbers, dates, currency |
 | `custom_functions.py` | `FunctionRegistry`, `bundle.add_function()`, `@fluent_function` |
@@ -48,7 +48,7 @@ uv run --python 3.13 python scripts/run_examples.py
 ## Picking A Starting Point
 
 - New to the runtime: start with `examples/quickstart.py`.
-- Working without Babel: start with `examples/parser_only.py`.
+- Working in a parser-only install: start with `examples/parser_only.py`.
 - Building a multi-locale app: use `examples/locale_fallback.py`.
 - Accepting localized user input: use `examples/bidirectional_formatting.py`.
 

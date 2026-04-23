@@ -9,7 +9,8 @@ Designed for applications that require audited, validated localization boot
 cleanly and declared message schemas must match exactly before the application
 accepts production traffic.
 
-Python 3.13+. Zero external dependencies.
+Python 3.13+. Requires the Babel-enabled runtime because it constructs
+``FluentLocalization`` / ``FluentBundle`` instances during boot.
 """
 
 from __future__ import annotations

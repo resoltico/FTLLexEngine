@@ -989,7 +989,7 @@ class TestPrivateBabelWrappers:
             }
 
         with patch(
-            "ftllexengine.introspection.iso._get_babel_currencies",
+            "ftllexengine.introspection.iso_lookup._get_babel_currencies",
             side_effect=mock_get_babel_currencies,
         ):
             result = list_currencies()

@@ -101,8 +101,9 @@ class TestPluralRulesBabelImportError:
                     level: int = 0,
                 ) -> object:
                     if name == "babel" or name.startswith("babel."):
-                        msg = "Mocked: Babel not installed"
-                        raise ImportError(msg)
+                        err = ModuleNotFoundError("No module named 'babel'")
+                        err.name = "babel"
+                        raise err
                     return original_import(name, globals_dict, locals_dict, fromlist, level)
 
                 with patch("builtins.__import__", side_effect=mock_import_babel):

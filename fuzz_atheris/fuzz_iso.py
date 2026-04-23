@@ -604,10 +604,17 @@ def _check_clear_multiple_components(fdp: atheris.FuzzedDataProvider) -> None:
 
 
 def _check_clear_unknown_component(fdp: atheris.FuzzedDataProvider) -> None:
-    """clear_module_caches(components=...): unknown component names silently ignored."""
+    """clear_module_caches(components=...): unknown component names must fail fast."""
     unknown = fdp.ConsumeUnicodeNoSurrogates(fdp.ConsumeIntInRange(1, 40)) or "bogus"
-    _ftllexengine.clear_module_caches(components=frozenset({unknown}))
-    # No exception must be raised for unknown component names
+    try:
+        _ftllexengine.clear_module_caches(components=frozenset({unknown}))
+    except ValueError as error:
+        if "Unknown cache component selector" not in str(error):
+            msg = f"Unexpected selector validation error for {unknown!r}: {error}"
+            raise ISOFuzzError(msg) from error
+    else:
+        msg = f"clear_module_caches accepted unknown selector {unknown!r}"
+        raise ISOFuzzError(msg)
     _domain.module_cache_clears += 1
 
 

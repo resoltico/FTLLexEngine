@@ -1,14 +1,18 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: CORE
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [FluentBundle, AsyncFluentBundle, FluentLocalization, LocalizationBootConfig, PathResourceLoader, LoadSummary, ResourceLoadResult, LocalizationCacheStats, require_clean, get_load_summary]
   questions: ["how do I format messages?", "how do I load multiple locales?", "how do I inspect localization load results?", "how do I boot localization safely?"]
 ---
 
 # Core API Reference
+
+Availability note:
+- Full runtime only: `FluentBundle`, `AsyncFluentBundle`, `FluentLocalization`, `LocalizationBootConfig`, and `LocalizationCacheStats`
+- Parser-only safe: `PathResourceLoader`, `ResourceLoader`, `LoadStatus`, `ResourceLoadResult`, `LoadSummary`, and `FallbackInfo`
 
 ---
 
@@ -48,10 +52,11 @@ class FluentBundle:
 
 ### Constraints
 - Return: Bundle with normalized locale and empty resource store
-- Raises: `ValueError` on invalid locale; `TypeError` on invalid registry
+- Raises: `ValueError` on invalid or unknown locale; `TypeError` on invalid registry
 - State: Mutable resources/functions; optional cache
 - Thread: Safe
 - Main methods: `add_resource()`, `add_resource_stream()`, `format_pattern()`, `add_function()`, `validate_resource()`
+- Availability: full-runtime only
 
 ---
 
@@ -94,6 +99,7 @@ class AsyncFluentBundle:
 - State: Delegates to an internal bundle instance
 - Thread: Safe
 - Async: Formatting and mutation paths run through `asyncio.to_thread()`
+- Availability: full-runtime only
 
 ---
 
@@ -130,10 +136,11 @@ class FluentLocalization:
 
 ### Constraints
 - Return: Multi-locale runtime with canonicalized locale chain
-- Raises: `ValueError` on empty locales or inconsistent loader inputs
-- State: Hybrid initialization. When `resource_loader` and `resource_ids` are supplied, resource loads happen eagerly during `__init__()`, bundles for those loaded locales are created eagerly, and untouched fallback bundles stay lazy until first access
+- Raises: `ValueError` on empty locales, invalid or unknown locales, or inconsistent loader inputs
+- State: Eager resource loading when `resource_loader` and `resource_ids` are supplied; bundles materialize on the first successful load for a locale, while locales with no successful loads stay unmaterialized until a later access path needs them
 - Thread: Safe
 - Main methods: `format_value()`, `format_pattern()`, `add_resource()`, `add_function()`, `get_load_summary()`, `require_clean()`, `validate_message_schemas()`, `get_cache_stats()`
+- Availability: full-runtime only
 
 ---
 
@@ -178,6 +185,7 @@ class LocalizationBootConfig:
 - State: One-shot boot coordinator
 - Thread: Safe
 - Main methods: `boot()`, `boot_simple()`, `from_path()`
+- Availability: full-runtime only
 
 ---
 
@@ -321,3 +329,4 @@ class LocalizationCacheStats(CacheStats, total=True):
 - Purpose: Summarize per-locale cache state from `FluentLocalization.get_cache_stats()`
 - Fields: Includes all `CacheStats` fields aggregated across initialized bundles, plus `bundle_count`
 - State: Read-only result object
+- Availability: full-runtime only

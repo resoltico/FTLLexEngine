@@ -15,7 +15,6 @@ from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
-from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.runtime.bundle import FluentBundle
@@ -37,16 +36,15 @@ class TestLocaleValidationDoSPrevention:
         with pytest.raises(ValueError, match=r"locale exceeds maximum length"):
             FluentBundle(malicious_locale)
 
-    def test_locale_at_hard_limit_boundary_accepted(self) -> None:
-        """Locale at exact MAX_LOCALE_LENGTH_HARD_LIMIT boundary is accepted."""
+    def test_locale_at_hard_limit_boundary_reaches_unknown_locale_validation(self) -> None:
+        """Boundary-length locales pass length checks and then fail as unknown locales."""
         # Create locale at exact boundary (1000 chars total)
         # Format: "a" + ("b" * 998) + "c" = 1000 chars
         boundary_locale = "a" + ("b" * (MAX_LOCALE_LENGTH_HARD_LIMIT - 2)) + "c"
         assert len(boundary_locale) == MAX_LOCALE_LENGTH_HARD_LIMIT
 
-        # Should succeed (at boundary, not exceeding)
-        bundle = FluentBundle(boundary_locale)
-        assert bundle.locale == normalize_locale(boundary_locale)
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            FluentBundle(boundary_locale)
 
     def test_locale_one_over_hard_limit_rejected(self) -> None:
         """Locale at MAX_LOCALE_LENGTH_HARD_LIMIT + 1 is rejected."""

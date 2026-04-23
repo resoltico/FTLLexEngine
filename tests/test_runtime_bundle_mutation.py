@@ -41,12 +41,12 @@ class TestBundleInitialization:
             FluentBundle("")
 
     def test_bundle_with_single_char_locale(self):
-        """Kills: len(locale) > 1 mutations.
+        """Kills: single-character unknown locale acceptance mutations.
 
-        Single character locale should work.
+        Single-character locale reaches strict locale validation and is rejected.
         """
-        bundle = FluentBundle("a")
-        assert bundle.locale == "a"
+        with pytest.raises(ValueError, match="Unknown locale identifier 'a'"):
+            FluentBundle("a")
 
 
 class TestAddResourceTypeValidation:

@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: TESTING
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [testing, lint, pytest, fuzz, HypoFuzz, Atheris, test.sh, lint.sh, check.sh]
   questions: ["how do I run lint and tests?", "what is the fuzz marker for?", "which scripts drive testing?"]
@@ -56,9 +56,10 @@ uv run python scripts/run_examples.py [--pattern '*.py'] [--list]
 ```
 
 ### Constraints
-- Purpose: keep `examples/*.py` runnable as a supported, repeatable gate
+- Purpose: keep `examples/*.py` runnable and semantically self-checking as a supported, repeatable gate
 - Import mode: clears `PYTHONPATH` so examples run against the installed package contract
-- Failure mode: exits non-zero when any example script fails
+- Output contracts: every shipped example must register a stdout contract so semantic regressions cannot hide behind exit code `0`
+- Failure mode: exits non-zero when any example script fails, omits expected contract markers, or is missing a registered contract
 
 ---
 
@@ -159,3 +160,4 @@ Repository script for native Atheris/libFuzzer targets.
 - Purpose: Run, replay, list, and minimize Atheris findings
 - Behavior: Manages `.venv-atheris` separately from the main project venvs
 - Output: Target-oriented CLI workflow around the `fuzz_atheris/` tree
+- `--list`: shows stored crashes and finding artifacts; use [fuzz_atheris/README.md](../fuzz_atheris/README.md) for the target inventory

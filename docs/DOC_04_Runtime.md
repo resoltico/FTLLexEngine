@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: RUNTIME
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [CacheConfig, FunctionRegistry, fluent_function, number_format, currency_format, select_plural_category, clear_module_caches]
   questions: ["how do I configure runtime formatting?", "how do custom functions and registries work?", "where are cache config and write-log entry types documented?"]
@@ -10,8 +10,13 @@ route:
 
 # Runtime Reference
 
-This reference covers cache configuration, function registries, built-in formatters, plural selection, and cache/audit entry types.
+This reference covers cache configuration, function registries, built-in formatters, plural selection, cache/audit entry types, and the root-level `clear_module_caches()` helper.
 Runtime-adjacent utilities, validators, and package metadata constants are documented in [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md).
+
+Parser-only facade note:
+- `CacheConfig`, `FunctionRegistry`, `fluent_function`, `make_fluent_number`, `CacheAuditLogEntry`, `WriteLogEntry`, and `ValidationResult` remain importable in parser-only installs.
+- `create_default_registry`, `get_shared_registry`, `number_format`, `datetime_format`, `currency_format`, `select_plural_category`, `FluentBundle`, and `AsyncFluentBundle` require the full runtime install and are absent from `ftllexengine.runtime` in parser-only installs.
+- `clear_module_caches()` is a root-level helper that works in both parser-only and full-runtime installs.
 
 ## `CacheConfig`
 
@@ -93,6 +98,7 @@ def create_default_registry() -> FunctionRegistry:
 ### Constraints
 - Return: New mutable registry
 - State: Fresh object on each call
+- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
 
 ---
 
@@ -108,6 +114,7 @@ def get_shared_registry() -> FunctionRegistry:
 ### Constraints
 - Return: Shared frozen registry
 - State: Shared singleton-style object
+- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
 
 ---
 
@@ -134,6 +141,7 @@ def number_format(
 - Raises: Locale/value boundary errors
 - State: Pure
 - Thread: Safe
+- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
 
 ---
 
@@ -158,6 +166,7 @@ def datetime_format(
 - Raises: Locale/value boundary errors
 - State: Pure
 - Thread: Safe
+- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
 
 ---
 
@@ -185,6 +194,7 @@ def currency_format(
 - Raises: Locale/value boundary errors
 - State: Pure
 - Thread: Safe
+- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
 
 ---
 
@@ -207,6 +217,7 @@ def select_plural_category(
 - Return: CLDR plural category string
 - State: Pure
 - Thread: Safe
+- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
 
 ---
 
@@ -241,6 +252,9 @@ def clear_module_caches(components: frozenset[str] | None = None) -> None:
 | `components` | N | Specific cache components |
 
 ### Constraints
+- Import: `from ftllexengine import clear_module_caches`
+- Raises: `ValueError` on unknown cache selectors
+- Selectors: `"parsing.currency"`, `"parsing.dates"`, `"locale"`, `"runtime.locale_context"`, `"introspection.message"`, `"introspection.iso"`
 - State: Mutates module cache state
 - Thread: Safe
 
@@ -248,30 +262,23 @@ def clear_module_caches(components: frozenset[str] | None = None) -> None:
 
 ## `CacheAuditLogEntry`
 
-Dataclass representing one immutable cache audit-log record.
+Public alias for the cache audit-log record type.
 
 ### Signature
 ```python
-@dataclass(frozen=True, slots=True)
-class CacheAuditLogEntry:
-    operation: str
-    key_hash: str
-    timestamp: float
-    sequence: int
-    checksum_hex: str
-    wall_time_unix: float
+CacheAuditLogEntry = WriteLogEntry
 ```
 
 ### Constraints
-- Purpose: Public audit-log payload
-- State: Immutable
-- Thread: Safe
+- Purpose: Stable public alias returned by bundle/localization cache-audit APIs
+- Underlying type: `WriteLogEntry`
+- Import: `from ftllexengine.runtime import CacheAuditLogEntry` or `from ftllexengine.localization import CacheAuditLogEntry`
 
 ---
 
 ## `WriteLogEntry`
 
-Dataclass alias used by the runtime cache implementation for audit-log records.
+Immutable dataclass that represents one cache audit-log record.
 
 ### Signature
 ```python
@@ -286,7 +293,7 @@ class WriteLogEntry:
 ```
 
 ### Constraints
-- Purpose: Same public payload shape as `CacheAuditLogEntry`
+- Purpose: Underlying runtime cache dataclass behind the `CacheAuditLogEntry` public alias
 - State: Immutable
 - Thread: Safe
 

@@ -1,8 +1,8 @@
 ---
 afad: "3.5"
-version: "0.163.0"
+version: "0.164.0"
 domain: PARSING
-updated: "2026-04-22"
+updated: "2026-04-23"
 route:
   keywords: [parsing, parse_decimal, parse_currency, parse_date, parse_datetime, parse_fluent_number]
   questions: ["how do I parse localized user input?", "how do I do roundtrip formatting and parsing?", "what do parse errors look like?"]
@@ -11,7 +11,7 @@ route:
 # Parsing Guide
 
 **Purpose**: Parse locale-formatted numbers, currency, dates, and datetimes back into Python values.
-**Prerequisites**: Babel-enabled install (`ftllexengine[babel]`).
+**Prerequisites**: Full runtime install (`ftllexengine[babel]`).
 
 ## Overview
 
