@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeping the `.sha256` receipt in the GitHub Release asset path, and the maintainer runbook now
   documents rerunning `workflow_dispatch` against an existing tag to recover a partial release
   without moving or recreating the tag.
+- **GitHub Actions now opt into Node 24 and pin the Node 24-capable immutable action releases.**
+  The `Test` and `Build and Publish` workflows now set
+  `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`, move `astral-sh/setup-uv` to its
+  official `v8.1.0` commit pin, and update `actions/setup-python`,
+  `actions/upload-artifact`, and `actions/download-artifact` to their current
+  Node 24-native immutable releases.
 - **Parser-only facades now expose the zero-dependency helpers that actually work without Babel.**
   `ftllexengine`, `ftllexengine.runtime`, and `ftllexengine.localization` now keep
   `CacheConfig`, `FluentNumber`, `fluent_function`, `make_fluent_number`,
