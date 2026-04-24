@@ -116,6 +116,21 @@ PY_VERSION=3.14 ./scripts/test.sh
 uv run python scripts/validate_docs.py
 uv run python scripts/validate_version.py
 uv build
+tar -tzf "dist/ftllexengine-X.Y.Z.tar.gz" | rg '(^|/)AGENTS\\.md$|(^|/)\\.codex/' || true
+python - <<'PY'
+import zipfile
+from pathlib import Path
+
+wheel = Path("dist/ftllexengine-X.Y.Z-py3-none-any.whl")
+with zipfile.ZipFile(wheel) as zf:
+    leaked = [
+        name
+        for name in zf.namelist()
+        if name.endswith("AGENTS.md") or name.startswith(".codex/") or "/.codex/" in name
+    ]
+if leaked:
+    raise SystemExit(f"wheel leaked repository-only files: {leaked}")
+PY
 ```
 
 Also confirm:
@@ -124,6 +139,9 @@ Also confirm:
 - `pyproject.toml` has the final target version.
 - all version-carrying metadata that ships with the repo (for example markdown frontmatter and
   `uv.lock`) is synchronized to that target version.
+- built distributions exclude repository-only guidance files that are intentionally committed for
+  repo use but must never ship in public artifacts. For this repository, `AGENTS.md` and `/.codex`
+  must be absent from both the sdist and wheel.
 - the release checkout is based on current `origin/main` or you explicitly understand the delta.
 
 Do not cut the release branch or tag anything while any gate is red.

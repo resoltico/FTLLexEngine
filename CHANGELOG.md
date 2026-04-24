@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The maintainer runbook no longer assumes a host `python3.13` binary is present on PATH during
   the final release smoke test; it now verifies the published package in a seeded
   `uv venv --python 3.13` environment, which matches the project's actual Python management model.
+- **Release preflight now checks built artifacts for repository-only guidance file leaks.**
+  The maintainer runbook now tells release authors to inspect the locally built sdist and wheel for
+  repo-only policy files such as `AGENTS.md` and `/.codex/`, so packaging drift is caught before a
+  tag or publish job is ever created.
 - **Runtime and diagnostics internals are now split into focused modules instead of continuing to grow monolithic owners.**
   `runtime.bundle` now delegates lifecycle and mutation responsibilities into dedicated runtime
   modules, `runtime.cache` separates audit/stat/key helpers, `runtime.function_bridge` delegates
