@@ -28,11 +28,11 @@ from ftllexengine.syntax import (
 )
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.validation.resource import (
-    _build_dependency_graph,
     _check_undefined_references,
     _collect_entries,
     validate_resource,
 )
+from ftllexengine.validation.resource_graph import build_dependency_graph
 
 # ============================================================================
 # Shadow Warnings
@@ -291,7 +291,7 @@ class TestDependencyGraphWithKnownEntries:
         messages_dict: dict[str, Message] = {}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=frozenset(["known1", "known2"]),
@@ -309,7 +309,7 @@ class TestDependencyGraphWithKnownEntries:
         messages_dict: dict[str, Message] = {}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_terms=frozenset(["known1", "known2"]),
@@ -340,7 +340,7 @@ class TestDependencyGraphWithKnownEntries:
         messages_dict = {"local": message}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=frozenset(["known"]),

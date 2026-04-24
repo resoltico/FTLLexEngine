@@ -21,11 +21,13 @@ from ftllexengine.syntax import (
 )
 from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.validation.resource import (
-    _build_dependency_graph,
-    _compute_longest_paths,
     _detect_circular_references,
     _extract_syntax_errors,
     validate_resource,
+)
+from ftllexengine.validation.resource_graph import (
+    _compute_longest_paths,
+    build_dependency_graph,
 )
 
 
@@ -746,7 +748,7 @@ class TestMissingBranchCoverage:
         terms_dict: dict[str, Term] = {}
 
         # Build dependency graph
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         # Call the real function without mocking
         warnings = _detect_circular_references(graph)
 
@@ -793,7 +795,7 @@ class TestMissingBranchCoverage:
         terms_dict = {"ta": term_a, "tb": term_b}
 
         # Build dependency graph
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         # Call the real function without mocking
         warnings = _detect_circular_references(graph)
 
@@ -1273,7 +1275,7 @@ class TestValidationResourceCompleteIntegration:
         terms_dict: dict[str, Term] = {}
 
         # Build dependency graph
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Compute longest paths (exercises diamond pattern)
         result = _compute_longest_paths(graph)
@@ -1315,7 +1317,7 @@ class TestValidationResourceCompleteIntegration:
         terms_dict = {"termB": term_b}
 
         # Build dependency graph
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Compute longest paths
         result = _compute_longest_paths(graph)
@@ -1375,7 +1377,7 @@ class TestValidationResourceCompleteIntegration:
         terms_dict: dict[str, Term] = {}
 
         # Build and compute - should not raise
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         result = _compute_longest_paths(graph)
 
         # All messages should be in result

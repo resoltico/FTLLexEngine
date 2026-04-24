@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: TERMINOLOGY
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [terminology, glossary, message, term, resource, locale code, strict mode]
   questions: ["what does resource mean here?", "what is the difference between a message and a term?", "what does strict mode mean in FTLLexEngine?"]

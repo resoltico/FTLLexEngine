@@ -461,7 +461,7 @@ def validation_dependency_graphs(
     """Generate typed dependency graphs for _compute_longest_paths testing.
 
     Generates adjacency lists with msg:/term: prefixed node names, mirroring
-    the output of _build_dependency_graph(). Covers msg-only, term-only,
+    the output of build_dependency_graph(). Covers msg-only, term-only,
     mixed-namespace, and empty graphs.
 
     Args:

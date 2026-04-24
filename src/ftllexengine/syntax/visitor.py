@@ -16,7 +16,8 @@ Python 3.13+.
 """
 
 from dataclasses import Field, fields, replace
-from typing import ClassVar, cast
+from functools import cache
+from typing import Any, ClassVar, cast
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.core.depth_guard import DepthGuard
@@ -58,6 +59,12 @@ __all__ = ["ASTTransformer", "ASTVisitor"]
 # Type aliases for visitor return types
 type VisitorResult = ASTNode
 type TransformerResult = ASTNode | None | list[ASTNode]
+
+
+@cache
+def _cached_node_fields(node_type: type[object]) -> tuple[Field[object], ...]:
+    """Cache dataclass field lookups with interpreter-managed locking."""
+    return fields(cast("type[ASTNode]", node_type))
 
 
 class ASTVisitor[T = ASTNode]:
@@ -105,10 +112,6 @@ class ASTVisitor[T = ASTNode]:
     # compared to AST traversal and avoids accumulating unreachable objects
     # that require gc cycle collection.
     _class_visit_methods: ClassVar[dict[str, str]] = {}
-
-    # Class-level cache for dataclass fields per node type
-    # Avoids repeated introspection in generic_visit (PERF-VISITOR-002)
-    _fields_cache: ClassVar[dict[type[ASTNode], tuple[Field[object], ...]]] = {}
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Build class-level dispatch table when subclass is defined."""
@@ -172,14 +175,14 @@ class ASTVisitor[T = ASTNode]:
             node_type_name = type(node).__name__
             method_name = self._class_visit_methods.get(node_type_name)
             if method_name is not None:
-                return getattr(self, method_name)(node)  # type: ignore[no-any-return]
+                return cast("T", getattr(self, method_name)(node))
             return self.generic_visit(node)
 
     def _get_node_fields(self, node_type: type[ASTNode]) -> tuple[Field[object], ...]:
         """Get cached dataclass fields for a node type.
 
-        Uses class-level cache to avoid repeated introspection.
-        Thread-safe: dict operations are atomic in CPython.
+        Uses an ``lru_cache``-backed helper to avoid repeated introspection
+        without relying on CPython dict atomicity for correctness.
 
         Args:
             node_type: The AST node type to get fields for
@@ -187,9 +190,7 @@ class ASTVisitor[T = ASTNode]:
         Returns:
             Tuple of dataclass Field objects
         """
-        if node_type not in ASTVisitor._fields_cache:
-            ASTVisitor._fields_cache[node_type] = fields(node_type)
-        return ASTVisitor._fields_cache[node_type]
+        return _cached_node_fields(cast("Any", node_type))
 
     def generic_visit(self, node: ASTNode) -> T:
         """Default visitor that traverses all child nodes.

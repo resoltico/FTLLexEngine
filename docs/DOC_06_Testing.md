@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: TESTING
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [testing, lint, pytest, fuzz, HypoFuzz, Atheris, test.sh, lint.sh, check.sh]
   questions: ["how do I run lint and tests?", "what is the fuzz marker for?", "which scripts drive testing?"]

@@ -31,6 +31,7 @@ python_exec_globs = [
     "docs/QUICK_REFERENCE.md",
     "docs/TYPE_HINTS_GUIDE.md",
     "docs/VALIDATION_GUIDE.md",
+    "docs/WORKFLOW_TOUR.md",
 ]
 # Substrings that trigger skipping a specific FTL code block
 skip_markers = [
@@ -52,7 +53,7 @@ parser_path = "ftllexengine.syntax.parser:FluentParserV1"
 
 [project]
 name = "ftllexengine"
-version = "0.164.0"
+version = "0.165.0"
 description = "Python runtime for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware formatting, and fail-fast boot validation with structured audit evidence."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -162,6 +163,8 @@ license-files = ["LICENSE", "NOTICE", "PATENTS.md"]
 # - Working examples (/examples) - educational value and learning resources
 # - User documentation (*.md) - offline reference and API docs
 # - License files (LICENSE, NOTICE, PATENTS.md) - legal compliance
+# Intentionally excludes repository-only agent guidance (`AGENTS.md`, `/.codex`)
+# even when those files are committed to git
 #
 # IMPORTANT: Hatch uses VCS (git) mode by default and respects git tracking
 # Files must be committed to git to be included in sdist
@@ -182,6 +185,7 @@ only-include = [
 [tool.hatch.build.targets.wheel]
 # Wheel contains ONLY runtime code (src/ftllexengine/)
 # Automatically excludes: tests, examples, docs
+# Also excludes repository-only agent guidance such as `AGENTS.md` and `/.codex/`
 # Hatch auto-detects packages in src-layout (src/ftllexengine/)
 # No explicit configuration needed - hatch finds src/ftllexengine/ automatically
 

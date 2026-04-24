@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: VALIDATION
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [validation, validate_resource, ValidationResult, require_clean, boot validation, message schemas]
   questions: ["how do I validate FTL before loading it?", "how do I fail fast at startup?", "how do I validate message variables?"]

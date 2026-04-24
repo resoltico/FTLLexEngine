@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: EXAMPLES
-updated: "2026-04-22"
+updated: "2026-04-24"
 route:
   keywords: [examples, mypy, type checking, strict, explicit ownership, thread safety]
   questions: ["how do I type-check the examples?", "what mypy config do the examples use?", "how do the examples stay strict without local stubs?"]

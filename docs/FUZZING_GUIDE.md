@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: FUZZING
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [fuzzing, HypoFuzz, Atheris, Hypothesis, fuzz_hypofuzz.sh, fuzz_atheris.sh]
   questions: ["which fuzzer should I use?", "how do I start fuzzing?", "how do I reproduce a fuzz failure?"]

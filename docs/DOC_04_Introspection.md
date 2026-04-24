@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: INTROSPECTION
-updated: "2026-04-22"
+updated: "2026-04-24"
 route:
   keywords: [introspection, validate_message_variables, extract_variables, extract_references, ISO 4217, ISO 3166, get_currency, get_territory]
   questions: ["how do I inspect a message's variables and references?", "which ISO lookup helpers exist?", "how do I validate message-variable schemas?", "which Babel-backed introspection helpers are public?"]

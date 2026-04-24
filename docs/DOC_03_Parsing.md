@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: PARSING
-updated: "2026-04-22"
+updated: "2026-04-24"
 route:
   keywords: [parse_ftl, serialize_ftl, validate_resource, FluentParserV1, Cursor, ASTVisitor, ASTTransformer, ParseError]
   questions: ["how do I parse FTL?", "what does validate_resource return?", "what syntax traversal helpers are public?", "where is the syntax parser API documented?"]

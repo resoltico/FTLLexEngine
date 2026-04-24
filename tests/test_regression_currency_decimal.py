@@ -16,7 +16,7 @@ from ftllexengine import FluentBundle
 from ftllexengine.constants import ISO_4217_DECIMAL_DIGITS
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.validation import validate_resource
-from ftllexengine.validation.resource import _detect_long_chains
+from ftllexengine.validation.resource_graph import detect_long_chains
 
 # ============================================================================
 # LOGIC-CURRENCY-INCONSISTENCY-001: CURRENCY DECIMAL CONSISTENCY
@@ -122,7 +122,7 @@ class TestValidationChainReporting:
             "msg:d": {"msg:e"},  # Depth 4 chain: a->b->c->d->e
         }
 
-        warnings = _detect_long_chains(graph, max_depth=3)
+        warnings = detect_long_chains(graph, max_depth=3)
         assert len(warnings) == 1
         assert "exceeds maximum" in warnings[0].message
 
@@ -142,7 +142,7 @@ class TestValidationChainReporting:
             "msg:w": set(),
         }
 
-        warnings = _detect_long_chains(graph, max_depth=2)
+        warnings = detect_long_chains(graph, max_depth=2)
         # Both chains should be reported
         assert len(warnings) >= 1, "At least one chain should be reported"
 
@@ -153,7 +153,7 @@ class TestValidationChainReporting:
             "msg:b": set(),
         }
 
-        warnings = _detect_long_chains(graph, max_depth=5)
+        warnings = detect_long_chains(graph, max_depth=5)
         assert len(warnings) == 0
 
     def test_warnings_sorted_by_depth(self) -> None:
@@ -174,7 +174,7 @@ class TestValidationChainReporting:
             "msg:l5": set(),
         }
 
-        warnings = _detect_long_chains(graph, max_depth=2)
+        warnings = detect_long_chains(graph, max_depth=2)
         # If multiple warnings, deepest should be first
         if len(warnings) >= 2:
             # Extract depths from messages
@@ -205,7 +205,7 @@ msg-c = value
 
     def test_empty_graph_no_warnings(self) -> None:
         """Empty graph produces no warnings."""
-        warnings = _detect_long_chains({}, max_depth=100)
+        warnings = detect_long_chains({}, max_depth=100)
         assert len(warnings) == 0
 
 

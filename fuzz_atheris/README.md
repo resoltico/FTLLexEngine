@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: FUZZING
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [atheris, fuzz inventory, fuzz targets, libfuzzer, corpus]
   questions: ["what do the Atheris fuzzers cover?", "which targets exist?", "how do I map a target name to a file?"]

@@ -25,11 +25,11 @@ from ftllexengine.syntax import (
     Term,
     TextElement,
 )
-from ftllexengine.validation.resource import (
-    _build_dependency_graph,
+from ftllexengine.validation.resource import validate_resource
+from ftllexengine.validation.resource_graph import (
     _compute_longest_paths,
-    _detect_long_chains,
-    validate_resource,
+    build_dependency_graph,
+    detect_long_chains,
 )
 
 # ============================================================================
@@ -142,9 +142,9 @@ class TestChainPathTruncation:
         terms_dict: dict[str, Term] = {}
 
         # Build dependency graph
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         # Use max_depth=5 to trigger warning
-        warnings = _detect_long_chains(graph, max_depth=5)
+        warnings = detect_long_chains(graph, max_depth=5)
 
         # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
         # With 15 nodes and max_depth=5, chains from msg0-msg8 all exceed the limit
@@ -181,9 +181,9 @@ class TestChainPathTruncation:
 
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         # Use max_depth=5 to trigger warning
-        warnings = _detect_long_chains(graph, max_depth=5)
+        warnings = detect_long_chains(graph, max_depth=5)
 
         # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
         assert len(warnings) >= 1
@@ -218,8 +218,8 @@ class TestChainPathTruncation:
 
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
-        warnings = _detect_long_chains(graph, max_depth=3)
+        graph = build_dependency_graph(messages_dict, terms_dict)
+        warnings = detect_long_chains(graph, max_depth=3)
 
         # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
         assert len(warnings) >= 1
@@ -269,8 +269,8 @@ class TestChainPathTruncation:
 
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
-        warnings = _detect_long_chains(graph, max_depth=5)
+        graph = build_dependency_graph(messages_dict, terms_dict)
+        warnings = detect_long_chains(graph, max_depth=5)
 
         # VAL-REDUNDANT-REPORTS-001: Reports ALL chains exceeding max_depth
         # First warning (deepest chain) should show truncation for > 10 nodes
@@ -414,14 +414,14 @@ class TestChainDepthIntegration:
     def test_empty_graph_no_chain_warnings(self) -> None:
         """Empty dependency graph produces no chain warnings."""
         graph: dict[str, set[str]] = {}
-        warnings = _detect_long_chains(graph)
+        warnings = detect_long_chains(graph)
 
         assert len(warnings) == 0
 
     def test_single_node_no_chain_warnings(self) -> None:
         """Single node with no dependencies produces no chain warnings."""
         graph: dict[str, set[str]] = {"msg:single": set()}
-        warnings = _detect_long_chains(graph)
+        warnings = detect_long_chains(graph)
 
         assert len(warnings) == 0
 

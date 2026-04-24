@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: REFERENCE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [quick reference, cheat sheet, fluentbundle, fluentlocalization, parsing, validation, boot]
   questions: ["show me the common commands", "what is the smallest working example?", "how do I boot localization safely?"]

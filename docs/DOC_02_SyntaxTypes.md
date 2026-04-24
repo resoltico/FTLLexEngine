@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
-version: "0.164.0"
+afad: "4.0"
+version: "0.165.0"
 domain: SYNTAX_TYPES
-updated: "2026-04-22"
+updated: "2026-04-24"
 route:
   keywords: [AST, Resource, Message, Term, Pattern, Span, Annotation, syntax nodes]
   questions: ["how is FTL represented in the AST?", "which public AST container and declaration node types exist?", "where are spans and parser annotations documented?"]

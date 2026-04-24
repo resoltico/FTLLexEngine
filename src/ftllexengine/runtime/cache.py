@@ -30,25 +30,20 @@ Python 3.13+. Zero external dependencies.
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import time
 from collections import OrderedDict, deque
 from threading import Lock
 from typing import TYPE_CHECKING, final
 
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT, MAX_DEPTH
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
 from ftllexengine.integrity import (
     CacheCorruptionError,
     IntegrityContext,
     WriteConflictError,
 )
-from ftllexengine.runtime.cache_keys import (
-    HASHABLE_NODE_BUDGET,
-    compute_key_hash,
-    make_hashable,
-    make_key,
-)
+from ftllexengine.runtime.cache_audit import _CacheAuditMixin
+from ftllexengine.runtime.cache_introspection import _CacheKeyMixin, _CacheStatsMixin
 from ftllexengine.runtime.cache_types import (
     _DEFAULT_MAX_ERRORS_PER_ENTRY,
     CacheAuditLogEntry,
@@ -77,7 +72,7 @@ __all__ = [
 
 
 @final
-class IntegrityCache:
+class IntegrityCache(_CacheStatsMixin, _CacheAuditMixin, _CacheKeyMixin):
     """Financial-grade format cache with integrity verification.
 
     Thread-safe LRU cache that provides:
@@ -448,202 +443,3 @@ class IntegrityCache:
             #   — cumulative counters for production observability and audit.
             # Note: sequence NOT reset (monotonic for audit trail)
             # Note: audit log NOT cleared (historical record)
-
-    def get_stats(self) -> CacheStats:
-        """Get cache statistics.
-
-        Thread-safe. Returns a consistent snapshot taken under the lock.
-        All fields are read atomically; calling individual properties (e.g.,
-        .hits, .misses) gives weaker consistency across multiple calls.
-
-        Returns:
-            CacheStats TypedDict with per-field type precision.
-            See CacheStats for field documentation.
-        """
-        with self._lock:
-            total = self._hits + self._misses
-            hit_rate = (self._hits / total * 100) if total > 0 else 0.0
-
-            return {
-                "size": len(self._cache),
-                "maxsize": self._maxsize,
-                "max_entry_weight": self._max_entry_weight,
-                "max_errors_per_entry": self._max_errors_per_entry,
-                "hits": self._hits,
-                "misses": self._misses,
-                "hit_rate": round(hit_rate, 2),
-                "unhashable_skips": self._unhashable_skips,
-                "oversize_skips": self._oversize_skips,
-                "error_bloat_skips": self._error_bloat_skips,
-                "combined_weight_skips": self._combined_weight_skips,
-                "corruption_detected": self._corruption_detected,
-                "idempotent_writes": self._idempotent_writes,
-                "write_once_conflicts": self._write_once_conflicts,
-                "sequence": self._sequence,
-                "write_once": self._write_once,
-                "strict": self._strict,
-                "audit_enabled": self._audit_log is not None,
-                "audit_entries": len(self._audit_log) if self._audit_log is not None else 0,
-            }
-
-    def get_audit_log(self) -> tuple[WriteLogEntry, ...]:
-        """Get audit log entries.
-
-        Thread-safe. Returns immutable copy of audit log.
-
-        Returns:
-            Tuple of WriteLogEntry instances (empty if audit disabled)
-        """
-        with self._lock:
-            if self._audit_log is None:
-                return ()
-            return tuple(self._audit_log)
-
-    def _audit(
-        self,
-        operation: str,
-        key: _CacheKey,
-        entry: IntegrityCacheEntry | None,
-    ) -> None:
-        """Record audit log entry (internal, assumes lock held).
-
-        Args:
-            operation: Operation type (GET, PUT, HIT, MISS, EVICT, CORRUPTION)
-            key: Cache key
-            entry: Cache entry (None for MISS operations)
-        """
-        if self._audit_log is None:
-            return
-
-        # Create privacy-preserving key hash
-        key_hash = hashlib.blake2b(
-            str(key).encode("utf-8", errors="surrogatepass"),
-            digest_size=8,
-        ).hexdigest()
-
-        log_entry = WriteLogEntry(
-            operation=operation,
-            key_hash=key_hash,
-            timestamp=time.monotonic(),
-            sequence=entry.sequence if entry is not None else 0,
-            checksum_hex=entry.checksum.hex() if entry is not None else "",
-            wall_time_unix=time.time(),
-        )
-
-        # deque with maxlen provides automatic O(1) eviction of oldest entries
-        self._audit_log.append(log_entry)
-
-    # Bound recursive cache-key normalization to prevent DAG expansion abuse.
-    _MAX_HASHABLE_NODES: int = HASHABLE_NODE_BUDGET
-
-    @staticmethod
-    def _make_hashable(value: object, depth: int = MAX_DEPTH) -> HashableValue:
-        """Convert potentially unhashable cache arguments into a stable hashable form."""
-        return make_hashable(value, depth=depth)
-
-    @staticmethod
-    def _compute_key_hash(key: _CacheKey) -> bytes:
-        """Compute the 8-byte key binding used to detect cache slot confusion."""
-        return compute_key_hash(key)
-
-    @staticmethod
-    def _make_key(
-        message_id: str,
-        args: Mapping[str, FluentValue] | None,
-        attribute: str | None,
-        locale_code: str,
-        *,
-        use_isolating: bool,
-    ) -> _CacheKey | None:
-        """Create the immutable lookup key for a formatting request."""
-        return make_key(
-            message_id,
-            args,
-            attribute,
-            locale_code,
-            use_isolating=use_isolating,
-        )
-
-    def __len__(self) -> int:
-        """Get current cache size. Thread-safe."""
-        with self._lock:
-            return len(self._cache)
-
-    @property
-    def size(self) -> int:
-        """Current number of cached entries. Thread-safe."""
-        return len(self)
-
-    @property
-    def maxsize(self) -> int:
-        """Maximum cache size."""
-        return self._maxsize
-
-    @property
-    def hits(self) -> int:
-        """Number of cache hits. Thread-safe."""
-        with self._lock:
-            return self._hits
-
-    @property
-    def misses(self) -> int:
-        """Number of cache misses. Thread-safe."""
-        with self._lock:
-            return self._misses
-
-    @property
-    def unhashable_skips(self) -> int:
-        """Number of operations skipped due to unhashable args. Thread-safe."""
-        with self._lock:
-            return self._unhashable_skips
-
-    @property
-    def oversize_skips(self) -> int:
-        """Number of operations skipped due to result weight. Thread-safe."""
-        with self._lock:
-            return self._oversize_skips
-
-    @property
-    def max_entry_weight(self) -> int:
-        """Maximum memory weight for cached results."""
-        return self._max_entry_weight
-
-    @property
-    def corruption_detected(self) -> int:
-        """Number of checksum mismatches detected. Thread-safe."""
-        with self._lock:
-            return self._corruption_detected
-
-    @property
-    def idempotent_writes(self) -> int:
-        """Number of benign concurrent writes with identical content. Thread-safe."""
-        with self._lock:
-            return self._idempotent_writes
-
-    @property
-    def error_bloat_skips(self) -> int:
-        """Number of puts skipped due to excess error count. Thread-safe."""
-        with self._lock:
-            return self._error_bloat_skips
-
-    @property
-    def combined_weight_skips(self) -> int:
-        """Number of puts skipped due to combined formatted+error weight. Thread-safe."""
-        with self._lock:
-            return self._combined_weight_skips
-
-    @property
-    def write_once_conflicts(self) -> int:
-        """Number of true write-once conflicts (different content, same key). Thread-safe."""
-        with self._lock:
-            return self._write_once_conflicts
-
-    @property
-    def write_once(self) -> bool:
-        """Whether write-once mode is enabled."""
-        return self._write_once
-
-    @property
-    def strict(self) -> bool:
-        """Whether strict mode is enabled."""
-        return self._strict

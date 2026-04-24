@@ -21,15 +21,12 @@ Babel Optionality:
 Python 3.13+.
 """
 
-# ruff: noqa: RUF022 - __all__ organized by category for readability
-
 from typing import TYPE_CHECKING
 
 from ftllexengine._optional_exports import (
-    LOCALIZATION_BABEL_OPTIONAL_ATTRS as _BABEL_OPTIONAL_ATTRS,
-)
-from ftllexengine._optional_exports import (
-    load_localization_babel_optional_exports,
+    babel_optional_attr_set,
+    babel_optional_attr_tuple,
+    load_babel_optional_export,
     raise_missing_babel_symbol,
 )
 from ftllexengine.core.babel_compat import is_babel_available
@@ -45,20 +42,27 @@ from ftllexengine.localization.loading import (
 from ftllexengine.runtime.cache import CacheAuditLogEntry
 
 if TYPE_CHECKING:
-    from ftllexengine.localization.boot import LocalizationBootConfig
+    from ftllexengine.localization.boot import (
+        LocalizationBootConfig as LocalizationBootConfig,
+    )
     from ftllexengine.localization.orchestrator import (
-        FluentLocalization,
-        LocalizationCacheStats,
+        FluentLocalization as FluentLocalization,
+    )
+    from ftllexengine.localization.orchestrator import (
+        LocalizationCacheStats as LocalizationCacheStats,
     )
 
 _BABEL_AVAILABLE = is_babel_available()
-
-if _BABEL_AVAILABLE:
-    globals().update(load_localization_babel_optional_exports())
+_BABEL_OPTIONAL_ATTRS = babel_optional_attr_set(__name__)
+_BABEL_OPTIONAL_NAMES = babel_optional_attr_tuple(__name__)
 
 
 def __getattr__(name: str) -> object:
     """Raise a targeted missing-symbol error for Babel-backed localization symbols."""
+    if _BABEL_AVAILABLE and name in _BABEL_OPTIONAL_ATTRS:
+        value = load_babel_optional_export(__name__, name)
+        globals()[name] = value
+        return value
     return raise_missing_babel_symbol(
         module_name=__name__,
         name=name,
@@ -70,22 +74,21 @@ def __getattr__(name: str) -> object:
     )
 
 
-__all__ = [
+# ruff: noqa: RUF022 - grouped localization exports mirror the reader-facing facade
+__all__: list[str] = [
     "CacheAuditLogEntry",
     "FallbackInfo",
     "FTLSource",
-    "FluentLocalization",
     "LoadStatus",
     "LoadSummary",
     "LocaleCode",
-    "LocalizationBootConfig",
-    "LocalizationCacheStats",
     "MessageId",
     "PathResourceLoader",
     "ResourceId",
     "ResourceLoadResult",
     "ResourceLoader",
 ]
+__all__[6:6] = list(_BABEL_OPTIONAL_NAMES)
 
 if not _BABEL_AVAILABLE:
     __all__ = [name for name in __all__ if name not in _BABEL_OPTIONAL_ATTRS]

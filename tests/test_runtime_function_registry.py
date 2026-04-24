@@ -126,7 +126,7 @@ class TestFluentBundleFunctionsParameter:
 
         registry.register(custom_curr, ftl_name="CURRENCY")
 
-        with patch("ftllexengine.runtime.bundle.get_system_locale", return_value="en_US"):
+        with patch("ftllexengine.runtime.bundle_lifecycle.get_system_locale", return_value="en_US"):
             bundle = FluentBundle.for_system_locale(functions=registry)
         bundle.add_resource('test = { CURRENCY(100, currency: "EUR") }')
         result, errors = bundle.format_pattern("test")

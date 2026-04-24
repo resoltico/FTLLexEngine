@@ -1,7 +1,7 @@
-"""Dependency graph construction tests for validation/resource.py.
+"""Dependency graph construction tests for validation/resource_graph.py.
 
 Tests attribute-qualified reference resolution and known entry dependency
-propagation to achieve 100% coverage of _build_dependency_graph and
+propagation to achieve 100% coverage of build_dependency_graph and
 related helper functions.
 
 Coverage targets:
@@ -29,10 +29,8 @@ from ftllexengine.syntax.ast import (
     TextElement,
     Variant,
 )
-from ftllexengine.validation.resource import (
-    _build_dependency_graph,
-    _detect_circular_references,
-)
+from ftllexengine.validation.resource import _detect_circular_references
+from ftllexengine.validation.resource_graph import build_dependency_graph
 
 
 class TestAttributeQualifiedMessageReferences:
@@ -64,7 +62,7 @@ class TestAttributeQualifiedMessageReferences:
         messages_dict = {"referrer": ref_msg}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:referrer" node but NO dependency (undefined.tooltip ignored)
         assert "msg:referrer" in graph
@@ -111,7 +109,7 @@ class TestAttributeQualifiedMessageReferences:
         messages_dict = {"base": base_msg, "referrer": ref_msg}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:referrer" node with dependency on "msg:base.tooltip"
         assert "msg:referrer" in graph
@@ -143,7 +141,7 @@ class TestAttributeQualifiedMessageReferences:
         terms_dict: dict[str, Term] = {}
         known_messages = frozenset({"known"})
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=known_messages,
@@ -175,7 +173,7 @@ class TestAttributeQualifiedMessageReferences:
         messages_dict = {"a": msg_a, "b": msg_b}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:b" -> "msg:a" (no attribute qualification)
         assert "msg:b" in graph
@@ -211,7 +209,7 @@ class TestAttributeQualifiedTermReferences:
         messages_dict = {"msg": msg}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:msg" node but NO dependency (undefined term ignored)
         assert "msg:msg" in graph
@@ -258,7 +256,7 @@ class TestAttributeQualifiedTermReferences:
         messages_dict = {"welcome": msg}
         terms_dict = {"brand": base_term}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:welcome" node with dependency on "term:brand.short"
         assert "msg:welcome" in graph
@@ -290,7 +288,7 @@ class TestAttributeQualifiedTermReferences:
         terms_dict: dict[str, Term] = {}
         known_terms = frozenset({"known_term"})
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_terms=known_terms,
@@ -323,7 +321,7 @@ class TestAttributeQualifiedTermReferences:
         messages_dict = {"welcome": msg}
         terms_dict = {"brand": term_brand}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:welcome" -> "term:brand" (no attribute qualification)
         assert "msg:welcome" in graph
@@ -355,7 +353,7 @@ class TestKnownMessageDependencies:
             "known_a": frozenset({"msg:known_b", "term:some_term"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=known_messages,
@@ -387,7 +385,7 @@ class TestKnownMessageDependencies:
             "some_other_msg": frozenset({"msg:dependency"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=known_messages,
@@ -430,7 +428,7 @@ class TestKnownMessageDependencies:
             "shared": frozenset({"msg:different_dependency"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=known_messages,
@@ -469,7 +467,7 @@ class TestKnownTermDependencies:
             "known_term_a": frozenset({"term:known_term_b", "msg:some_msg"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_terms=known_terms,
@@ -501,7 +499,7 @@ class TestKnownTermDependencies:
             "some_other_term": frozenset({"term:dependency"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_terms=known_terms,
@@ -544,7 +542,7 @@ class TestKnownTermDependencies:
             "shared_term": frozenset({"term:different_dependency"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_terms=known_terms,
@@ -588,7 +586,7 @@ class TestCrossResourceCycleDetectionWithDependencies:
             "b": frozenset({"msg:a"}),
         }
 
-        graph = _build_dependency_graph(
+        graph = build_dependency_graph(
             messages_dict,
             terms_dict,
             known_messages=known_messages,
@@ -658,7 +656,7 @@ class TestAttributeReferenceProperties:
         messages_dict = {base_id: base_msg, "ref": ref_msg}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Property: qualified node exists
         expected_node = f"msg:{base_id}.{attr_id}"
@@ -714,7 +712,7 @@ class TestAttributeReferenceProperties:
         messages_dict = {"msg": msg}
         terms_dict = {base_id: base_term}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Property: qualified node exists
         expected_node = f"term:{base_id}.{attr_id}"
@@ -776,7 +774,7 @@ class TestComplexAttributeReferences:
         messages_dict = {"a": msg_a, "b": msg_b, "complex": msg_complex}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have dependencies on both qualified attributes
         assert "msg:complex" in graph
@@ -811,7 +809,7 @@ class TestComplexAttributeReferences:
         messages_dict = {"base": base_msg, "complex": msg_with_attr_ref}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:complex.tooltip" node with dependency on "msg:base"
         assert "msg:complex.tooltip" in graph
@@ -857,7 +855,7 @@ class TestComplexAttributeReferences:
         messages_dict = {"base": base_msg, "selector": msg_with_select_attr}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
 
         # Should have "msg:selector.dynamic" node with dependency on "msg:base"
         assert "msg:selector.dynamic" in graph
@@ -923,7 +921,7 @@ class TestValidationResourceBranchCoverage:
         messages_dict = {"a": msg_a, "b": msg_b}
         terms_dict = {"x": term_x, "y": term_y}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         warnings = _detect_circular_references(graph)
 
         cycle_warnings = [w for w in warnings if "circular" in w.message.lower()]
@@ -954,7 +952,7 @@ class TestValidationResourceBranchCoverage:
         messages_dict = {"a": msg_a}
         terms_dict = {"t": term_t}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         warnings = _detect_circular_references(graph)
 
         assert any("circular" in w.message.lower() for w in warnings)
@@ -998,7 +996,7 @@ class TestResourceValidationBranchCoverageExtended:
         messages_dict = {"a": msg_a, "b": msg_b, "x": msg_x, "y": msg_y}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         warnings = _detect_circular_references(graph)
 
         cycle_warnings = [w for w in warnings if "circular" in w.message.lower()]
@@ -1036,7 +1034,7 @@ class TestResourceValidationBranchCoverageExtended:
         messages_dict = {"a": msg_a, "b": msg_b, "c": msg_c, "d": msg_d}
         terms_dict: dict[str, Term] = {}
 
-        graph = _build_dependency_graph(messages_dict, terms_dict)
+        graph = build_dependency_graph(messages_dict, terms_dict)
         warnings = _detect_circular_references(graph)
 
         cycle_warnings = [w for w in warnings if "circular" in w.message.lower()]

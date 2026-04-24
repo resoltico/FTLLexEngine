@@ -23,10 +23,8 @@ from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ValidationResult, WarningSeverity
 from ftllexengine.diagnostics.codes import DiagnosticCode
-from ftllexengine.validation.resource import (
-    _compute_longest_paths,
-    validate_resource,
-)
+from ftllexengine.validation.resource import validate_resource
+from ftllexengine.validation.resource_graph import _compute_longest_paths
 from tests.strategies import (
     dependency_graphs,
     ftl_simple_messages,
