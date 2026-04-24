@@ -7,6 +7,9 @@ Consolidates:
 
 from __future__ import annotations
 
+import asyncio
+
+import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
@@ -78,6 +81,19 @@ class TestCallFunctionSafeCustomFunction:
         result, errors = bundle.format_pattern("msg", {"x": 5})
         assert "10" in result
         assert len(errors) == 0
+
+    def test_custom_function_cancelled_error_propagates(self) -> None:
+        """Custom function cancellation must propagate instead of degrading to fallback text."""
+
+        def cancelled_func(_value: object) -> str:
+            raise asyncio.CancelledError
+
+        bundle = FluentBundle("en-US", strict=False)
+        bundle.add_function("CANCEL", cancelled_func)
+        bundle.add_resource("msg = { CANCEL($x) }")
+
+        with pytest.raises(asyncio.CancelledError):
+            bundle.format_pattern("msg", {"x": 42})
 
 
 # ============================================================================

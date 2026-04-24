@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: LOCALE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [locale, NUMBER, DATETIME, CURRENCY, normalize_locale, get_system_locale, use_isolating]
   questions: ["why did my number not format?", "what locale string should I use?", "what does use_isolating do?"]

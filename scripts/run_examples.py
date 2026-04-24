@@ -47,6 +47,7 @@ def _require_output_markers(*markers: str) -> ExampleContract:
 
 
 EXAMPLE_CONTRACTS: dict[str, ExampleContract] = {
+    "async_bundle.py": _require_output_markers("[SUCCESS] Async bundle examples complete!"),
     "benchmark_loaders.py": _require_output_markers("[OK] Benchmarks complete!"),
     "bidirectional_formatting.py": _require_output_markers("All examples completed!"),
     "custom_functions.py": _require_output_markers(
@@ -76,6 +77,9 @@ EXAMPLE_CONTRACTS: dict[str, ExampleContract] = {
     ),
     "quickstart.py": _require_output_markers(
         "[SUCCESS] All examples completed successfully!"
+    ),
+    "streaming_resources.py": _require_output_markers(
+        "[SUCCESS] Streaming resource examples complete!"
     ),
     "thread_safety.py": _require_output_markers(
         "[SUCCESS] All thread safety examples complete!"

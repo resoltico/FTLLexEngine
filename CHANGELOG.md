@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: CHANGELOG
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -20,6 +20,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The maintainer runbook no longer assumes a host `python3.13` binary is present on PATH during
   the final release smoke test; it now verifies the published package in a seeded
   `uv venv --python 3.13` environment, which matches the project's actual Python management model.
+- **Runtime and diagnostics internals are now split into focused modules instead of continuing to grow monolithic owners.**
+  `runtime.bundle` now delegates lifecycle and mutation responsibilities into dedicated runtime
+  modules, `runtime.cache` separates audit/stat/key helpers, `runtime.function_bridge` delegates
+  decorator and introspection helpers, and `diagnostics.templates` now composes focused
+  reference/runtime/parsing template families. Public facade imports stay the same, while the
+  architecture regression tests now enforce tighter size budgets so these seams do not collapse
+  again.
+- **Thread-safety-sensitive internals no longer rely on CPython-only atomicity claims.**
+  The AST visitor field cache now uses an interpreter-independent cached helper instead of a
+  mutable shared dictionary with a CPython dict-atomicity rationale, which aligns the parser and
+  introspection surface with Python 3.13 free-threaded expectations.
+- **Optional Babel-backed facade exports now derive from one canonical ownership map.**
+  The root, runtime, and localization facades now share a single optional-export definition for
+  parser-only versus full-runtime gating instead of duplicating symbol lists and mutating module
+  globals at import time, which keeps capability probing (`hasattr()` and `getattr(..., default)`)
+  consistent across the public facades.
+- **Validation dependency-graph helpers now have one internal owner module.**
+  The graph-building and longest-path helpers now live only in `validation.resource_graph`;
+  `validation.resource` no longer carries compatibility aliases for those private names, and the
+  test and fuzz surfaces now target the real owner directly.
+- **Async cancellation and Babel-backed ISO helpers now preserve failure meaning more precisely.**
+  Async formatting paths now re-raise `asyncio.CancelledError` instead of collapsing it into a
+  generic runtime warning path, and the ISO metadata helpers now narrow their Babel-backed error
+  handling so unknown locales, broken imports, and valid empty-result cases are distinguished
+  cleanly.
+- **Architecture and runtime docs now describe the live seam ownership and concurrency contract more accurately.**
+  The runtime, thread-safety, and integrity architecture guides now state that stable imports live
+  on the package facades, that concurrency guarantees come from internal synchronization rather
+  than CPython-only assumptions, and that the public runtime/integrity namespaces are implemented
+  by smaller focused internal modules.
+- **Repository agent instructions are now explicitly trackable in git while staying out of release artifacts.**
+  The root `AGENTS.md` and the `/.codex` tree are now protected by explicit un-ignore rules for
+  repository use, while the sdist/wheel policy and release workflow checks continue to exclude
+  those repository-only guidance files from published distribution payloads.
 
 ## [0.164.0] - 2026-04-23
 ### Changed

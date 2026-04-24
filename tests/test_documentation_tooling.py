@@ -25,6 +25,7 @@ DOCUMENTED_MODULES = (
     "ftllexengine.parsing",
     "ftllexengine.diagnostics",
     "ftllexengine.introspection",
+    "ftllexengine.analysis",
     "ftllexengine.validation",
 )
 DOCUMENTED_REPO_SCRIPTS = (
@@ -138,7 +139,7 @@ def test_run_examples_registers_contracts_for_all_shipped_examples() -> None:
 
 
 def test_validate_version_uses_afad_frontmatter_version_contract() -> None:
-    """validate_version should enforce the AFAD v3.5 `version:` frontmatter key."""
+    """validate_version should enforce the AFAD v4.0 `version:` frontmatter key."""
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     validate_version = _load_script_module(
@@ -411,6 +412,22 @@ def test_sdist_includes_root_frontmatter_docs_and_readme() -> None:
 
     missing = sorted(expected - only_include)
     assert missing == []
+
+
+def test_repo_agent_guidance_is_git_trackable_but_not_in_sdist() -> None:
+    """Agent instructions should be committable without becoming package payload."""
+    gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    only_include = set(pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["only-include"])
+
+    assert "!/AGENTS.md" in gitignore
+    assert "!/.codex/" in gitignore
+    assert "!/.codex/**" in gitignore
+
+    assert "AGENTS.md" not in only_include
+    assert "/AGENTS.md" not in only_include
+    assert "/.codex" not in only_include
+    assert "/.codex/" not in only_include
 
 
 def test_release_protocol_lives_under_docs_and_repo_links_follow_it() -> None:

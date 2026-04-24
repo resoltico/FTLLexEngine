@@ -112,10 +112,9 @@ from importlib.metadata import version as _get_version
 from typing import TYPE_CHECKING
 
 from ._optional_exports import (
-    ROOT_BABEL_OPTIONAL_ATTRS as _BABEL_OPTIONAL_ATTRS,
-)
-from ._optional_exports import (
-    load_root_babel_optional_exports,
+    babel_optional_attr_set,
+    babel_optional_attr_tuple,
+    load_babel_optional_export,
     raise_missing_babel_symbol,
 )
 from .analysis import detect_cycles
@@ -130,10 +129,6 @@ from .core.validators import (
     require_datetime,
     require_fluent_number,
 )
-
-# Error types must load before core to avoid circular import:
-# diagnostics -> validation -> syntax.ast -> syntax.__init__ -> serializer -> core.depth_guard
-# depth_guard imports from diagnostics; diagnostics must be in sys.modules first.
 from .diagnostics import (
     ErrorCategory,
     FrozenErrorContext,
@@ -179,17 +174,33 @@ from .syntax import serialize as serialize_ftl
 from .validation import validate_resource
 
 if TYPE_CHECKING:
-    from .localization import FluentLocalization, LocalizationBootConfig, LocalizationCacheStats
-    from .runtime import AsyncFluentBundle, FluentBundle
+    from .localization import (
+        FluentLocalization as FluentLocalization,
+    )
+    from .localization import (
+        LocalizationBootConfig as LocalizationBootConfig,
+    )
+    from .localization import (
+        LocalizationCacheStats as LocalizationCacheStats,
+    )
+    from .runtime import (
+        AsyncFluentBundle as AsyncFluentBundle,
+    )
+    from .runtime import (
+        FluentBundle as FluentBundle,
+    )
 
 _BABEL_AVAILABLE = is_babel_available()
-
-if _BABEL_AVAILABLE:
-    globals().update(load_root_babel_optional_exports())
+_BABEL_OPTIONAL_ATTRS = babel_optional_attr_set(__name__)
+_BABEL_OPTIONAL_NAMES = babel_optional_attr_tuple(__name__)
 
 
 def __getattr__(name: str) -> object:
     """Provide a helpful missing-symbol error for Babel-backed facade symbols."""
+    if _BABEL_AVAILABLE and name in _BABEL_OPTIONAL_ATTRS:
+        value = load_babel_optional_export(__name__, name)
+        globals()[name] = value
+        return value
     return raise_missing_babel_symbol(
         module_name=__name__,
         name=name,
@@ -218,20 +229,14 @@ __spec_url__ = "https://github.com/projectfluent/fluent/blob/master/spec/fluent.
 # Encoding requirements per Fluent spec recommendations.md
 __recommended_encoding__ = "UTF-8"  # Per spec: "The recommended encoding for Fluent files is UTF-8"
 
-# ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
-__all__ = [
-    # Babel-backed facades
-    "AsyncFluentBundle",
+# ruff: noqa: RUF022 - grouped public exports are easier to audit by contract area
+__all__: list[str] = [
     # Runtime helpers and localization loading (parser-only safe)
     "CacheConfig",
     "FallbackInfo",
-    "FluentBundle",
     "FluentNumber",
-    "FluentLocalization",
     "FluentValue",
     "LoadSummary",
-    "LocalizationBootConfig",
-    "LocalizationCacheStats",
     "PathResourceLoader",
     "ResourceLoadResult",
     "ResourceLoader",
@@ -296,6 +301,7 @@ __all__ = [
     "__spec_url__",
     "__version__",
 ]
+__all__[0:0] = list(_BABEL_OPTIONAL_NAMES)
 
 if not _BABEL_AVAILABLE:
     __all__ = [name for name in __all__ if name not in _BABEL_OPTIONAL_ATTRS]

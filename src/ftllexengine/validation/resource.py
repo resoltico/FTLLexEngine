@@ -10,7 +10,7 @@ Architecture:
     - _collect_entries(): Pass 2 - Collect messages/terms, check duplicates
     - _check_undefined_references(): Pass 3 - Validate message/term references
     - _detect_circular_references(): Pass 4 - Check for reference cycles
-    - _detect_long_chains(): Pass 5 - Check for chains exceeding MAX_DEPTH
+    - detect_long_chains(): Pass 5 - Check for chains exceeding MAX_DEPTH
     - SemanticValidator: Pass 6 - Fluent spec compliance
 
 Python 3.13+.
@@ -36,9 +36,6 @@ from ftllexengine.syntax.cursor import LineOffsetCache
 from ftllexengine.syntax.reference_extraction import extract_references
 from ftllexengine.syntax.validator import SemanticValidator
 from ftllexengine.validation.resource_graph import (
-    _compute_longest_paths as _compute_longest_paths_impl,
-)
-from ftllexengine.validation.resource_graph import (
     build_dependency_graph,
     detect_long_chains,
 )
@@ -52,11 +49,6 @@ if TYPE_CHECKING:
     from ftllexengine.syntax.parser import FluentParserV1
 
 __all__ = ["validate_resource"]
-
-# Backward-compatible private re-exports for existing tests and internal callers.
-_build_dependency_graph = build_dependency_graph
-_compute_longest_paths = _compute_longest_paths_impl
-_detect_long_chains = detect_long_chains
 
 logger = logging.getLogger(__name__)
 

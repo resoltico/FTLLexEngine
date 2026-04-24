@@ -1,11 +1,11 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: INDEX
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
-  keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection]
-  questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing and introspection APIs?", "where are syntax, parsing, and diagnostics references?"]
+  keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection, detect_cycles, entry_dependency_set]
+  questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing, introspection, and analysis APIs?", "where are syntax, parsing, diagnostics, and dependency-graph references?"]
 ---
 
 # FTLLexEngine API Reference Index
@@ -110,7 +110,9 @@ route:
 | `clear_module_caches` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `clear_module_caches` |
 | `CacheAuditLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheAuditLogEntry` |
 | `WriteLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `WriteLogEntry` |
-| `detect_cycles` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `detect_cycles` |
+| `detect_cycles` | [DOC_04_Analysis.md](DOC_04_Analysis.md) | `detect_cycles` |
+| `entry_dependency_set` | [DOC_04_Analysis.md](DOC_04_Analysis.md) | `entry_dependency_set` |
+| `make_cycle_key` | [DOC_04_Analysis.md](DOC_04_Analysis.md) | `make_cycle_key` |
 | `normalize_locale` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `normalize_locale` |
 | `get_system_locale` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `get_system_locale` |
 | `require_locale_code` | [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | `require_locale_code` |
@@ -177,7 +179,16 @@ route:
 
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 - [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md)
+- [DATA_INTEGRITY_ARCHITECTURE.md](DATA_INTEGRITY_ARCHITECTURE.md)
+- [FUZZING_GUIDE.md](FUZZING_GUIDE.md)
+- [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md)
+- [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md)
 - [LOCALE_GUIDE.md](LOCALE_GUIDE.md)
+- [MIGRATION.md](MIGRATION.md)
 - [PARSING_GUIDE.md](PARSING_GUIDE.md)
 - [RELEASE_PROTOCOL.md](RELEASE_PROTOCOL.md)
+- [TERMINOLOGY.md](TERMINOLOGY.md)
+- [THREAD_SAFETY.md](THREAD_SAFETY.md)
+- [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md)
 - [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md)
+- [WORKFLOW_TOUR.md](WORKFLOW_TOUR.md)

@@ -277,11 +277,22 @@ class TestParserOnlyFacadeBehavior:
 
     def test_internal_runtime_import_failure_is_not_masked_as_missing_babel(self) -> None:
         """A broken runtime import must surface its real error instead of a Babel hint."""
-        with (
-            pytest.raises(ModuleNotFoundError, match=r"ftllexengine\.runtime\.bundle"),
-            _fresh_ftl_import(blocked_imports=frozenset({"ftllexengine.runtime.bundle"})),
+        import importlib
+
+        def fail_bundle_import(name: str, package: str | None = None) -> ModuleType:
+            if name == "ftllexengine.runtime.bundle":
+                msg = "blocked import: ftllexengine.runtime.bundle"
+                raise ModuleNotFoundError(msg)
+            return importlib.import_module(name, package)
+
+        with _fresh_ftl_import() as ftllexengine, pytest.raises(
+            ModuleNotFoundError,
+            match=r"blocked import: ftllexengine\.runtime\.bundle",
+        ), patch(
+            "ftllexengine._optional_exports.import_module",
+            side_effect=fail_bundle_import,
         ):
-            pass
+            _ = ftllexengine.FluentBundle
 
 
 class TestUnknownAttributeError:
@@ -327,6 +338,26 @@ class TestOptionalExportHelper:
                 name="FluentBundle",
                 optional_attrs=frozenset({"FluentBundle"}),
             )
+
+    def test_unknown_facade_contract_raises_key_error(self) -> None:
+        """Unknown facade names fail fast instead of fabricating empty optional exports."""
+        from ftllexengine._optional_exports import babel_optional_attr_tuple
+
+        with pytest.raises(
+            KeyError,
+            match=r"No optional export contract registered for facade 'ftllexengine\.unknown'",
+        ):
+            babel_optional_attr_tuple("ftllexengine.unknown")
+
+    def test_unknown_optional_export_name_raises_attribute_error(self) -> None:
+        """Known facades reject optional-export names they do not own."""
+        from ftllexengine._optional_exports import load_babel_optional_export
+
+        with pytest.raises(
+            AttributeError,
+            match=r"module 'ftllexengine' has no optional Babel export 'DefinitelyMissing'",
+        ):
+            load_babel_optional_export("ftllexengine", "DefinitelyMissing")
 
 
 class TestDirectImportIntrospectionSymbols:

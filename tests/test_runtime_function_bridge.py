@@ -936,7 +936,7 @@ class TestRegisterWithUninspectableCallable:
 
         with (
             patch(
-                "ftllexengine.runtime.function_bridge.signature",
+                "ftllexengine.runtime.function_registry_helpers.signature",
                 side_effect=ValueError("No signature"),
             ),
             pytest.raises(

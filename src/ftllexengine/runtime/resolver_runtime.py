@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
@@ -105,6 +106,8 @@ class _ResolverRuntimeMixin:
         try:
             return self._function_registry.call(func_name, positional, named)
         except FrozenFluentError:
+            raise
+        except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - function adapters may raise arbitrary user exceptions
             logger.warning(

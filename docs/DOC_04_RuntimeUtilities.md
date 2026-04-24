@@ -1,38 +1,17 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: RUNTIME_UTILITIES
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
-  keywords: [detect_cycles, normalize_locale, get_system_locale, require_locale_code, __version__, require_date, require_datetime]
-  questions: ["where are runtime utility exports documented?", "what package metadata constants are public?", "which boundary validators and locale helpers are exported from the root package?"]
+  keywords: [normalize_locale, get_system_locale, require_locale_code, __version__, require_date, require_datetime, require_fluent_number]
+  questions: ["where are root-level runtime utility exports documented?", "what package metadata constants are public?", "which boundary validators and locale helpers are exported from the root package?"]
 ---
 
 # Runtime Utilities Reference
 
 This reference covers root-level runtime-adjacent utilities, package metadata constants, locale helpers, and boundary validators.
-Formatting functions, registries, cache configuration, and audit entry types live in [DOC_04_Runtime.md](DOC_04_Runtime.md).
-
-## `detect_cycles`
-
-Function that detects cycles in a dependency graph.
-
-### Signature
-```python
-def detect_cycles(dependencies: dict[str, set[str]]) -> list[list[str]]:
-```
-
-### Parameters
-| Name | Req | Semantics |
-|:-----|:----|:----------|
-| `dependencies` | Y | Graph adjacency mapping |
-
-### Constraints
-- Return: Canonicalized cycle paths
-- State: Pure
-- Thread: Safe
-
----
+Formatting functions, registries, cache configuration, and audit entry types live in [DOC_04_Runtime.md](DOC_04_Runtime.md). Dependency-graph helpers live in [DOC_04_Analysis.md](DOC_04_Analysis.md).
 
 ## `normalize_locale`
 

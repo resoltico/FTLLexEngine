@@ -41,8 +41,10 @@ from ftllexengine.introspection.iso import (
     _get_babel_currency_name,
     _get_babel_currency_symbol,
     _get_babel_official_languages,
+    _get_babel_territories,
     _get_babel_territory_currencies,
 )
+from ftllexengine.introspection.iso_babel import _is_unknown_locale_error
 
 
 class TestTerritoryInfo:
@@ -1737,6 +1739,193 @@ class TestUnknownLocaleErrorImportFailure:
             _get_babel_currency_symbol("USD", "en")
 
         assert exc_info.value is original_exc
+
+
+class TestIsoBabelDefensiveBranches:
+    """Direct coverage for defensive helper branches in iso_babel.py."""
+
+    def test_is_unknown_locale_error_returns_false_when_babel_is_unavailable(self) -> None:
+        """BabelImportError while resolving the error class yields False."""
+        with patch(
+            "ftllexengine.introspection.iso_babel.get_unknown_locale_error_class",
+            side_effect=BabelImportError("UnknownLocaleError"),
+        ):
+            assert _is_unknown_locale_error(ValueError("not a locale error")) is False
+
+    def test_is_unknown_locale_error_returns_true_for_matching_exception(self) -> None:
+        """The helper returns True when the exception matches Babel's error class."""
+
+        class FakeUnknownLocaleError(Exception):
+            """Stand-in for babel.core.UnknownLocaleError."""
+
+        with patch(
+            "ftllexengine.introspection.iso_babel.get_unknown_locale_error_class",
+            return_value=FakeUnknownLocaleError,
+        ):
+            assert _is_unknown_locale_error(FakeUnknownLocaleError("bad locale")) is True
+
+    def test_get_babel_territories_without_unknown_locale_class_success(self) -> None:
+        """The no-UnknownLocaleError branch still returns territory data when lookup succeeds."""
+
+        class FakeLocale:
+            def __init__(self) -> None:
+                self.territories = {"US": "United States"}
+
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel._get_babel_locale",
+                return_value=FakeLocale(),
+            ),
+        ):
+            assert _get_babel_territories("en") == {"US": "United States"}
+
+    def test_get_babel_territories_without_unknown_locale_class_failure(self) -> None:
+        """The no-UnknownLocaleError branch returns an empty mapping on locale lookup errors."""
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel._get_babel_locale",
+                side_effect=ValueError("bad locale"),
+            ),
+        ):
+            assert _get_babel_territories("en") == {}
+
+    def test_get_babel_currency_name_without_unknown_locale_class_success(self) -> None:
+        """The no-UnknownLocaleError branch returns the localized currency name."""
+
+        class FakeLocale:
+            def __init__(self) -> None:
+                self.currencies = {"USD": "US Dollar"}
+
+        class FakeLocaleClass:
+            @staticmethod
+            def parse(_locale_str: str) -> FakeLocale:
+                return FakeLocale()
+
+        class FakeNumbers:
+            @staticmethod
+            def get_currency_name(_code: str, *, locale: str) -> str:
+                assert locale == "en"
+                return "US Dollar"
+
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_locale_class",
+                return_value=FakeLocaleClass,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_babel_numbers",
+                return_value=FakeNumbers,
+            ),
+        ):
+            assert _get_babel_currency_name("USD", "en") == "US Dollar"
+
+    def test_get_babel_currency_name_without_unknown_locale_class_failure(self) -> None:
+        """The no-UnknownLocaleError branch returns None on locale parse errors."""
+
+        class FakeLocaleClass:
+            @staticmethod
+            def parse(_locale_str: str) -> object:
+                msg = "bad locale"
+                raise ValueError(msg)
+
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_locale_class",
+                return_value=FakeLocaleClass,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_babel_numbers",
+                return_value=MagicMock(),
+            ),
+        ):
+            assert _get_babel_currency_name("USD", "en") is None
+
+    def test_get_babel_currency_name_without_unknown_locale_class_missing_code(self) -> None:
+        """The no-UnknownLocaleError branch returns None for absent currency codes."""
+
+        class FakeLocale:
+            def __init__(self) -> None:
+                self.currencies = {"EUR": "Euro"}
+
+        class FakeLocaleClass:
+            @staticmethod
+            def parse(_locale_str: str) -> FakeLocale:
+                return FakeLocale()
+
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_locale_class",
+                return_value=FakeLocaleClass,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_babel_numbers",
+                return_value=MagicMock(),
+            ),
+        ):
+            assert _get_babel_currency_name("USD", "en") is None
+
+    def test_get_babel_currency_symbol_without_unknown_locale_class_success(self) -> None:
+        """The no-UnknownLocaleError branch returns the localized symbol when lookup succeeds."""
+
+        class FakeNumbers:
+            @staticmethod
+            def get_currency_symbol(_code: str, *, locale: str) -> str:
+                assert locale == "en"
+                return "$"
+
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_babel_numbers",
+                return_value=FakeNumbers,
+            ),
+        ):
+            assert _get_babel_currency_symbol("USD", "en") == "$"
+
+    def test_get_babel_currency_symbol_without_unknown_locale_class_failure(self) -> None:
+        """The no-UnknownLocaleError branch falls back to the code on lookup errors."""
+
+        class FakeNumbers:
+            @staticmethod
+            def get_currency_symbol(_code: str, *, locale: str) -> str:
+                _ = locale
+                msg = "bad locale"
+                raise ValueError(msg)
+
+        with (
+            patch(
+                "ftllexengine.introspection.iso_babel._maybe_unknown_locale_error_class",
+                return_value=None,
+            ),
+            patch(
+                "ftllexengine.introspection.iso_babel.get_babel_numbers",
+                return_value=FakeNumbers,
+            ),
+        ):
+            assert _get_babel_currency_symbol("USD", "en") == "USD"
 
 
 # ===========================================================================

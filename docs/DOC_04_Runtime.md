@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: RUNTIME
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [CacheConfig, FunctionRegistry, fluent_function, number_format, currency_format, select_plural_category, clear_module_caches]
   questions: ["how do I configure runtime formatting?", "how do custom functions and registries work?", "where are cache config and write-log entry types documented?"]
@@ -17,6 +17,10 @@ Parser-only facade note:
 - `CacheConfig`, `FunctionRegistry`, `fluent_function`, `make_fluent_number`, `CacheAuditLogEntry`, `WriteLogEntry`, and `ValidationResult` remain importable in parser-only installs.
 - `create_default_registry`, `get_shared_registry`, `number_format`, `datetime_format`, `currency_format`, `select_plural_category`, `FluentBundle`, and `AsyncFluentBundle` require the full runtime install and are absent from `ftllexengine.runtime` in parser-only installs.
 - `clear_module_caches()` is a root-level helper that works in both parser-only and full-runtime installs.
+
+Facade ownership note:
+- The stable contract is the facade import path (`ftllexengine.runtime`, plus the root and localization facades where noted), not the internal helper module that implements a detail today.
+- Smaller internal runtime modules exist to keep cache, bundle, function-registry, and diagnostic responsibilities partitioned; callers should continue importing from the documented facades.
 
 ## `CacheConfig`
 
@@ -81,6 +85,7 @@ def fluent_function(
 
 ### Constraints
 - Purpose: Mark custom functions for locale injection behavior
+- Ownership: attaches the locale-injection metadata that `FunctionRegistry` reads during registration
 - State: Pure decorator
 - Thread: Safe
 

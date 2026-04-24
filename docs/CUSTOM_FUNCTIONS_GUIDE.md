@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: CUSTOM_FUNCTIONS
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [custom functions, fluent_function, FunctionRegistry, locale injection, add_function]
   questions: ["how do I add a custom function?", "how does locale injection work?", "should I use a registry or add_function?"]

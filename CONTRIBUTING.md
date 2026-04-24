@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: CONTRIBUTING
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [contributing, development, uv, lint, test, fuzz, benchmark, release, virtualenv]
   questions: ["how do I set up development?", "how do I run lint and tests?", "how do I work on fuzzing?", "how do I prepare a release?"]

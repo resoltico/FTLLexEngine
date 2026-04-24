@@ -43,7 +43,8 @@ from ftllexengine.core.value_types import (
     _make_fluent_number,
 )
 
-from .function_bridge import _FTL_REQUIRES_LOCALE_ATTR, FunctionRegistry
+from .function_bridge import FunctionRegistry
+from .function_decorator import _FTL_REQUIRES_LOCALE_ATTR
 from .locale_context import LocaleContext
 
 __all__ = ["create_default_registry", "get_shared_registry"]
@@ -389,7 +390,7 @@ def currency_format(
 # Mark built-in functions that require locale injection.
 # This attribute is checked by FunctionRegistry.should_inject_locale() to determine
 # whether to append the bundle's locale to the function call arguments.
-# The constant _FTL_REQUIRES_LOCALE_ATTR is imported from function_bridge.py
+# The constant _FTL_REQUIRES_LOCALE_ATTR is imported from function_decorator.py
 # to ensure a single source of truth.
 
 

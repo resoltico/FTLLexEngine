@@ -983,7 +983,7 @@ class TestBundleForSystemLocale:
     def test_creates_bundle_with_detected_locale(self) -> None:
         """for_system_locale creates bundle with system locale."""
         with patch(
-            "ftllexengine.runtime.bundle.get_system_locale",
+            "ftllexengine.runtime.bundle_lifecycle.get_system_locale",
             return_value="en_US",
         ):
             bundle = FluentBundle.for_system_locale()
@@ -992,7 +992,7 @@ class TestBundleForSystemLocale:
     def test_passes_configuration_parameters(self) -> None:
         """for_system_locale passes all configuration parameters."""
         with patch(
-            "ftllexengine.runtime.bundle.get_system_locale",
+            "ftllexengine.runtime.bundle_lifecycle.get_system_locale",
             return_value="de_DE",
         ):
             bundle = FluentBundle.for_system_locale(
@@ -1012,7 +1012,7 @@ class TestBundleForSystemLocale:
     def test_raises_when_locale_unavailable(self) -> None:
         """for_system_locale raises RuntimeError when locale unavailable."""
         with patch(
-            "ftllexengine.runtime.bundle.get_system_locale",
+            "ftllexengine.runtime.bundle_lifecycle.get_system_locale",
             side_effect=RuntimeError("Cannot determine system locale"),
         ), pytest.raises(RuntimeError, match="Cannot determine"):
             FluentBundle.for_system_locale()

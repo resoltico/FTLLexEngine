@@ -184,10 +184,4 @@ __all__: list[str] = [
     "__recommended_encoding__",
     "__spec_url__",
     "__version__",
-    # Babel-backed facades
-    "AsyncFluentBundle",
-    "FluentBundle",
-    "FluentLocalization",
-    "LocalizationBootConfig",
-    "LocalizationCacheStats",
 ]

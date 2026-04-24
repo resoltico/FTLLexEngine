@@ -297,7 +297,7 @@ class TestForSystemLocaleWithCacheParameters:
             max_entry_weight=8000,
             max_errors_per_entry=30,
         )
-        with patch("ftllexengine.runtime.bundle.get_system_locale", return_value="en_US"):
+        with patch("ftllexengine.runtime.bundle_lifecycle.get_system_locale", return_value="en_US"):
             bundle = FluentBundle.for_system_locale(cache=cfg, strict=True)
 
         assert bundle.cache_enabled is True
@@ -312,7 +312,7 @@ class TestForSystemLocaleWithCacheParameters:
 
     def test_for_system_locale_cache_parameters_default(self) -> None:
         """for_system_locale uses default CacheConfig values."""
-        with patch("ftllexengine.runtime.bundle.get_system_locale", return_value="en_US"):
+        with patch("ftllexengine.runtime.bundle_lifecycle.get_system_locale", return_value="en_US"):
             bundle = FluentBundle.for_system_locale(cache=CacheConfig())
 
         assert bundle.cache_enabled is True

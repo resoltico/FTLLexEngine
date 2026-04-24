@@ -133,3 +133,8 @@ temp/
 pip-log.txt
 pip-delete-this-directory.txt
 pip-selfcheck.json
+
+# Repository policy files are tracked on purpose.
+!/AGENTS.md
+!/.codex/
+!/.codex/**

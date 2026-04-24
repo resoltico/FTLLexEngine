@@ -1,8 +1,8 @@
 ---
-afad: "3.5"
+afad: "4.0"
 version: "0.164.0"
 domain: RELEASE
-updated: "2026-04-23"
+updated: "2026-04-24"
 route:
   keywords: [release, gh, github release, pypi, tag, assets, publish, verify, worktree, main]
   questions: ["how do I cut a release?", "how do I publish GitHub assets?", "how do I verify a release handoff?", "how do I rerun publish for an existing tag?"]
