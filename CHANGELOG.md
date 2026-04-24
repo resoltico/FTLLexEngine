@@ -1,6 +1,6 @@
 ---
 afad: "4.0"
-version: "0.164.0"
+version: "0.165.0"
 domain: CHANGELOG
 updated: "2026-04-24"
 route:
@@ -14,6 +14,8 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.165.0] - 2026-04-24
 ### Changed
 
 - **The release protocol now treats `uv` as a required tool and uses a `uv`-managed Python 3.13 environment for public install verification.**
@@ -7016,7 +7018,8 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0
-[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.164.0...HEAD
+[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.165.0...HEAD
+[0.165.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...v0.164.0
 [0.163.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.162.0...v0.163.0
 [0.162.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.161.0...v0.162.0
