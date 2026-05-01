@@ -136,7 +136,7 @@ npx --yes @devcontainers/cli exec --workspace-folder . bash -lc '
   uv run --group dev --python 3.14 python scripts/validate_version.py
   uv build
 '
-tar -tzf "dist/ftllexengine-X.Y.Z.tar.gz" | rg '(^|/)AGENTS\\.md$|(^|/)\\.codex/' || true
+tar -tzf "dist/ftllexengine-X.Y.Z.tar.gz" | grep -E '(^|/)AGENTS\.md$|(^|/)\.codex/' || true
 python - <<'PY'
 import zipfile
 from pathlib import Path

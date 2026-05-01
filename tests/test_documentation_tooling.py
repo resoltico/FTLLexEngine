@@ -517,6 +517,15 @@ def test_release_protocol_uses_clean_clone_for_container_verified_preflight() ->
     assert "git worktree add" not in text
 
 
+def test_release_protocol_artifact_leak_check_uses_base_tooling() -> None:
+    """Release instructions should not depend on undeclared grep replacements."""
+    text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
+
+    assert 'tar -tzf "dist/ftllexengine-X.Y.Z.tar.gz" | grep -E ' in text
+    assert "tar -tzf" in text
+    assert "| rg " not in text
+
+
 def test_atheris_inventory_readme_matches_target_manifest() -> None:
     """The published Atheris inventory should stay aligned with the live target registry."""
     readme = (REPO_ROOT / "fuzz_atheris" / "README.md").read_text(encoding="utf-8")
