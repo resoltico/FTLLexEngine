@@ -80,7 +80,7 @@ PRIMARY_ORIGIN_URL="$(git -C "$PRIMARY_CHECKOUT" remote get-url origin)"
 git fetch origin --prune
 git fetch origin --tags
 RELEASE_CLONE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git clone "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"
+git clone --branch main "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"
 cd "$RELEASE_CLONE"
 git remote set-url origin "$PRIMARY_ORIGIN_URL"
 git fetch origin --prune
@@ -105,7 +105,7 @@ git commit -m "release: bootstrap X.Y.Z payload"
 PRIMARY_CHECKOUT="$(git rev-parse --show-toplevel)"
 PRIMARY_ORIGIN_URL="$(git -C "$PRIMARY_CHECKOUT" remote get-url origin)"
 RELEASE_CLONE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git clone "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"
+git clone --branch codex/release-bootstrap-X.Y.Z "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"
 cd "$RELEASE_CLONE"
 git remote set-url origin "$PRIMARY_ORIGIN_URL"
 git fetch origin --prune

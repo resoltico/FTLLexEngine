@@ -508,7 +508,11 @@ def test_release_protocol_uses_clean_clone_for_container_verified_preflight() ->
     text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
 
     assert "Do not use `git worktree` for release pre-flight in this repository." in text
-    assert 'git clone "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"' in text
+    assert 'git clone --branch main "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"' in text
+    assert (
+        'git clone --branch codex/release-bootstrap-X.Y.Z "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"'
+        in text
+    )
     assert 'git remote set-url origin "$PRIMARY_ORIGIN_URL"' in text
     assert "git worktree add" not in text
 
