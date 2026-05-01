@@ -1,17 +1,17 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: RELEASE
 updated: "2026-05-01"
 route:
-  keywords: [release, gh, github release, pypi, tag, assets, publish, verify, worktree, main]
+  keywords: [release, gh, github release, pypi, tag, assets, publish, verify, clone, main]
   questions: ["how do I cut a release?", "how do I publish GitHub assets?", "how do I verify a release handoff?", "how do I rerun publish for an existing tag?"]
 ---
 
 # Release Protocol
 
 **Purpose**: Publish a tagged FTLLexEngine release through GitHub CLI and verify the GitHub Release and PyPI handoff.
-**Prerequisites**: `gh` installed and authenticated, `uv` installed, Docker plus either the Dev Containers IDE integration or `npx --yes @devcontainers/cli`, the target release version chosen, and a checkout topology that can produce a clean release payload.
+**Prerequisites**: `gh` installed and authenticated, `uv` installed, Docker plus either the Dev Containers IDE integration or `npx --yes @devcontainers/cli`, the target release version chosen, and a checkout topology that can produce a clean release clone.
 
 ## Overview
 
@@ -51,10 +51,15 @@ Rules:
 
 - If the primary checkout is clean and current enough for release work, release from it directly.
 - If the primary checkout is intentionally dirty, contains unrelated unpublished work, or should
-  not be disturbed, create a clean release worktree from the same repository and do release work
+  not be disturbed, create a clean release clone from the same repository and do release work
   there.
 - Do not run the release from a dirty checkout just because the intended payload currently lives
   there.
+- Do not use `git worktree` for release pre-flight in this repository. The contributor
+  devcontainer mounts the workspace folder only, and the release gates include git-aware checks
+  that call `git ls-files` inside that container. A worktree `.git` indirection points back to a
+  host path outside the mounted workspace and causes those checks to fail for topology reasons
+  rather than release reasons.
 - If `git fetch origin --tags` fails with `would clobber existing tag`, stop and inspect the tag
   divergence before continuing. Compare the local and remote tag directly, delete only the stale
   local tag, and rerun the tag fetch:
@@ -67,24 +72,29 @@ git tag -d "$TAG"
 git fetch origin --tags
 ```
 
-Recommended clean-worktree flow:
+Recommended clean-clone flow:
 
 ```bash
 PRIMARY_CHECKOUT="$(git rev-parse --show-toplevel)"
+PRIMARY_ORIGIN_URL="$(git -C "$PRIMARY_CHECKOUT" remote get-url origin)"
 git fetch origin --prune
 git fetch origin --tags
-RELEASE_WORKTREE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git worktree add --detach "$RELEASE_WORKTREE" origin/main
-cd "$RELEASE_WORKTREE"
+RELEASE_CLONE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
+git clone "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"
+cd "$RELEASE_CLONE"
+git remote set-url origin "$PRIMARY_ORIGIN_URL"
+git fetch origin --prune
+git fetch origin --tags
+git switch --detach origin/main
 ```
 
-This flow intentionally keeps the worktree detached during pre-flight. Create
+This flow intentionally keeps the clone detached during pre-flight. Create
 `release/X.Y.Z` only after Step 2 passes.
 
 If the unpublished release payload exists only in the dirty primary checkout, move it explicitly
-before running release gates in the clean worktree. Preferred: create a local bootstrap branch that
-captures the payload, then add the release worktree from that branch. Acceptable: export one
-explicit patch and apply it inside the release worktree.
+before running release gates in the clean clone. Preferred: create a local bootstrap branch that
+captures the payload, then clone from the primary checkout after that bootstrap commit exists.
+Acceptable: export one explicit patch and apply it inside the clean clone.
 
 Bootstrap-branch example:
 
@@ -92,13 +102,19 @@ Bootstrap-branch example:
 git switch -c codex/release-bootstrap-X.Y.Z
 git add -A
 git commit -m "release: bootstrap X.Y.Z payload"
-RELEASE_WORKTREE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
-git worktree add --detach "$RELEASE_WORKTREE" codex/release-bootstrap-X.Y.Z
-cd "$RELEASE_WORKTREE"
+PRIMARY_CHECKOUT="$(git rev-parse --show-toplevel)"
+PRIMARY_ORIGIN_URL="$(git -C "$PRIMARY_CHECKOUT" remote get-url origin)"
+RELEASE_CLONE="$(mktemp -d -t ftllexengine-release-XXXXXX)"
+git clone "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"
+cd "$RELEASE_CLONE"
+git remote set-url origin "$PRIMARY_ORIGIN_URL"
+git fetch origin --prune
+git fetch origin --tags
+git switch --detach codex/release-bootstrap-X.Y.Z
 ```
 
 If the bootstrap payload intentionally left the final release version or changelog entry unresolved,
-finish those edits inside the clean release worktree before Step 2. Treat the clean worktree as the
+finish those edits inside the clean release clone before Step 2. Treat the clean clone as the
 authoritative place to finalize `pyproject.toml`, versioned markdown frontmatter, lockfiles, and the
 target `CHANGELOG.md` release entry.
 
@@ -351,7 +367,7 @@ Requirements:
 
 - The remote `release/X.Y.Z` branch is gone.
 - No stale historical `release/` branches remain locally or remotely.
-- If a dedicated release worktree was used, the primary checkout is explicitly returned to a
+- If a dedicated release clone was used, the primary checkout is explicitly returned to a
   truthful `main`:
 
 ```bash
@@ -361,4 +377,4 @@ git -C "$PRIMARY_CHECKOUT" pull --ff-only
 
 - Any still-needed unpublished local work from the old primary checkout is moved to a named branch
   or exported patch.
-- Disposable release worktrees are removed after the release closes.
+- Disposable release clones are removed after the release closes.

@@ -61,7 +61,7 @@ shell_exec_timeout_seconds = 180
 
 [project]
 name = "ftllexengine"
-version = "0.165.0"
+version = "0.166.0"
 description = "Python runtime for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware formatting, and fail-fast boot validation with structured audit evidence."
 readme = "README.md"
 requires-python = ">=3.13"

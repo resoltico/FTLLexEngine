@@ -503,6 +503,16 @@ def test_release_protocol_keeps_verification_commands_inside_devcontainer() -> N
         assert command in text
 
 
+def test_release_protocol_uses_clean_clone_for_container_verified_preflight() -> None:
+    """Release instructions should use a clone topology the devcontainer can verify."""
+    text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
+
+    assert "Do not use `git worktree` for release pre-flight in this repository." in text
+    assert 'git clone "$PRIMARY_CHECKOUT" "$RELEASE_CLONE"' in text
+    assert 'git remote set-url origin "$PRIMARY_ORIGIN_URL"' in text
+    assert "git worktree add" not in text
+
+
 def test_atheris_inventory_readme_matches_target_manifest() -> None:
     """The published Atheris inventory should stay aligned with the live target registry."""
     readme = (REPO_ROOT / "fuzz_atheris" / "README.md").read_text(encoding="utf-8")

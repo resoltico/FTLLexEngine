@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: ERRORS
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, DataIntegrityError, BabelImportError, ErrorTemplate]
   questions: ["what errors does FTLLexEngine expose?", "how do parse and format failures surface?", "what integrity exceptions exist?", "how does missing Babel surface?"]

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: ANALYSIS
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [analysis, detect_cycles, entry_dependency_set, make_cycle_key, dependency graph, cycle key]
   questions: ["where are the dependency-graph helpers documented?", "how do I detect cycles in an FTL dependency graph?", "how do I build namespace-prefixed dependency sets?"]

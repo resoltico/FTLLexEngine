@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: DIAGNOSTICS
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [ParserAnnotation, ValidationResult, ValidationError, ValidationWarning, DiagnosticCode, DiagnosticFormatter, OutputFormat, SourceSpan]
   questions: ["what validation result types exist?", "how do I format diagnostics output?", "where are diagnostic codes and source spans documented?"]

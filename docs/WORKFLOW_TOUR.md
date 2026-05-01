@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: GUIDE
-updated: "2026-04-30"
+updated: "2026-05-01"
 route:
   keywords: [workflow tour, multi-locale, bidirectional parsing, boot validation, thread safety, async, introspection, streaming]
   questions: ["how do I use FTLLexEngine end-to-end?", "multi-locale formatting example", "how do I parse localized user input?", "boot validation example", "thread-safe formatting", "async bundle example"]

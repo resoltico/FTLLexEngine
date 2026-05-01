@@ -76,6 +76,8 @@ CLDR data via Babel.
 - [API reference](docs/DOC_00_Index.md)
 - [Runnable examples](examples/)
 
+Maintainers: [Release protocol](docs/RELEASE_PROTOCOL.md).
+
 ## Legal
 
 MIT-licensed. The optional `[babel]` extra adds Babel under BSD-3-Clause. FTLLexEngine is an

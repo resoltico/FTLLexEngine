@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: RUNTIME
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [CacheConfig, FunctionRegistry, fluent_function, number_format, currency_format, select_plural_category, clear_module_caches]
   questions: ["how do I configure runtime formatting?", "how do custom functions and registries work?", "where are cache config and write-log entry types documented?"]

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: CHANGELOG
-updated: "2026-04-30"
+updated: "2026-05-01"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,8 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.166.0] - 2026-05-01
 
 ### Changed
 
@@ -7086,7 +7088,8 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0
-[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.165.0...HEAD
+[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.166.0...HEAD
+[0.166.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.165.0...v0.166.0
 [0.165.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...v0.164.0
 [0.163.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.162.0...v0.163.0

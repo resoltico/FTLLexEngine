@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: PARSING
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [parsing, parse_decimal, parse_currency, parse_date, parse_datetime, parse_fluent_number]
   questions: ["how do I parse localized user input?", "how do I do roundtrip formatting and parsing?", "what do parse errors look like?"]

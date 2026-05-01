@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: INDEX
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection, detect_cycles, entry_dependency_set]
   questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing, introspection, and analysis APIs?", "where are syntax, parsing, diagnostics, and dependency-graph references?"]
