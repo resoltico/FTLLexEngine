@@ -6,6 +6,7 @@ import doctest
 import importlib
 import importlib.util
 import inspect
+import json
 import pkgutil
 import re
 import subprocess
@@ -14,6 +15,8 @@ import tomllib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import ModuleType
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -32,6 +35,7 @@ DOCUMENTED_REPO_SCRIPTS = (
     "check.sh",
     "scripts/validate_docs.py",
     "scripts/validate_version.py",
+    "scripts/validate-devcontainer.sh",
     "scripts/run_examples.py",
     "scripts/lint.sh",
     "scripts/test.sh",
@@ -91,8 +95,23 @@ def _extract_signature_block(md_path: Path, section: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _atheris_targets() -> list[tuple[str, str, str]]:
+    """Return the canonical Atheris target registry rows."""
+    manifest = REPO_ROOT / "fuzz_atheris" / "targets.tsv"
+    rows: list[tuple[str, str, str]] = []
+
+    for raw_line in manifest.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, module, description = line.split("\t")
+        rows.append((name, module, description))
+
+    return rows
+
+
 def test_validate_docs_configuration_tracks_runnable_python_docs() -> None:
-    """validate_docs should know which markdown files contain runnable Python."""
+    """validate_docs should know which markdown files contain runnable examples."""
     validate_docs = _load_script_module(
         "validate_docs_script", REPO_ROOT / "scripts" / "validate_docs.py"
     )
@@ -110,11 +129,95 @@ def test_validate_docs_configuration_tracks_runnable_python_docs() -> None:
     assert "docs/QUICK_REFERENCE.md" in config.python_exec_globs
     assert "docs/TYPE_HINTS_GUIDE.md" in config.python_exec_globs
     assert "docs/VALIDATION_GUIDE.md" in config.python_exec_globs
+    assert "docs/WORKFLOW_TOUR.md" in config.python_exec_globs
+    assert "docs/FUZZING_GUIDE.md" in config.shell_exec_globs
+    assert "docs/FUZZING_GUIDE_ATHERIS.md" in config.shell_exec_globs
+    assert "docs/FUZZING_GUIDE_HYPOFUZZ.md" in config.shell_exec_globs
+    assert "fuzz_atheris/README.md" in config.shell_exec_globs
     assert (
         validate_docs.validate_python_code("from ftllexengine import __version__", REPO_ROOT)
         is None
     )
     assert validate_docs.validate_python_code("raise RuntimeError('boom')", REPO_ROOT) is not None
+    assert validate_docs.validate_shell_code("printf docs-shell-ok", REPO_ROOT, 5) is None
+    assert validate_docs.validate_shell_code("exit 7", REPO_ROOT, 5) is not None
+
+
+def test_validate_docs_prefers_path_bash_for_shell_snippets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shell snippet validation should prefer the PATH-resolved Bash runtime."""
+    validate_docs = _load_script_module(
+        "validate_docs_shell_resolution", REPO_ROOT / "scripts" / "validate_docs.py"
+    )
+
+    monkeypatch.setenv("BASH", "/bin/bash")
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    monkeypatch.setattr(
+        validate_docs.shutil,
+        "which",
+        lambda name: "/opt/homebrew/bin/bash" if name == "bash" else None,
+    )
+
+    shell, preamble = validate_docs._resolve_shell_runner()
+
+    assert shell == "/opt/homebrew/bin/bash"
+    assert preamble == "set -euo pipefail"
+
+
+def test_validate_docs_normalizes_devcontainer_wrapper_inside_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host-side devcontainer wrapper snippets should collapse inside the container."""
+    validate_docs = _load_script_module(
+        "validate_docs_devcontainer_normalization", REPO_ROOT / "scripts" / "validate_docs.py"
+    )
+
+    monkeypatch.setenv("FTLLEXENGINE_DEVCONTAINER", "1")
+    code = (
+        "npx --yes @devcontainers/cli up --workspace-folder .\n"
+        "npx --yes @devcontainers/cli exec --workspace-folder . ./scripts/fuzz_atheris.sh --help\n"
+    )
+
+    normalized = validate_docs._normalize_shell_code_for_runtime(code)
+
+    assert normalized.strip() == "./scripts/fuzz_atheris.sh --help"
+
+
+def test_hypofuzz_deep_mode_declares_and_uses_fuzz_tooling_group() -> None:
+    """Deep HypoFuzz runs must provision the fuzz dependency group explicitly."""
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    fuzz_group = pyproject["dependency-groups"]["fuzz"]
+    deep_mode = (REPO_ROOT / "scripts" / "lib" / "fuzz_hypofuzz" / "modes_fuzz.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert any(dep.startswith("hypothesis[cli]>=") for dep in fuzz_group)
+    assert any(dep.startswith("hypofuzz>=") for dep in fuzz_group)
+    assert 'uv run --group fuzz --python "$PY_VERSION"' in deep_mode
+
+
+def test_workflow_tour_runnable_blocks_are_self_contained() -> None:
+    """The workflow guide's runnable Python fences should execute independently."""
+    validate_docs = _load_script_module(
+        "validate_docs_workflow_tour", REPO_ROOT / "scripts" / "validate_docs.py"
+    )
+    config = validate_docs.CheckConfig.from_pyproject(REPO_ROOT)
+    parser = validate_docs.get_parser(config.parser_path)
+    assert parser is not None
+
+    report = validate_docs.ValidationReport(status="pass")
+    block_pattern = re.compile(
+        r"^([ \t]*)```(\S+)\n(.*?)\n\1```", re.DOTALL | re.MULTILINE | re.IGNORECASE
+    )
+    validate_docs.process_file(
+        REPO_ROOT / "docs" / "WORKFLOW_TOUR.md",
+        REPO_ROOT,
+        config,
+        parser,
+        report,
+        block_pattern,
+    )
+
+    assert report.failures == []
 
 
 def test_run_examples_registers_contracts_for_all_shipped_examples() -> None:
@@ -124,17 +227,18 @@ def test_run_examples_registers_contracts_for_all_shipped_examples() -> None:
     )
 
     shipped_examples = {
-        path.name
-        for path in (REPO_ROOT / "examples").glob("*.py")
-        if path.is_file()
+        path.name for path in (REPO_ROOT / "examples").glob("*.py") if path.is_file()
     }
 
     assert set(run_examples.EXAMPLE_CONTRACTS) == shipped_examples
-    assert run_examples.EXAMPLE_CONTRACTS["parser_only.py"](
-        "[PASS] Warning-only validation semantics verified\n"
-        "[PASS] Invalid syntax semantics verified\n"
-        "All examples completed successfully!\n"
-    ) is None
+    assert (
+        run_examples.EXAMPLE_CONTRACTS["parser_only.py"](
+            "[PASS] Warning-only validation semantics verified\n"
+            "[PASS] Invalid syntax semantics verified\n"
+            "All examples completed successfully!\n"
+        )
+        is None
+    )
     assert run_examples.EXAMPLE_CONTRACTS["parser_only.py"]("incomplete output") is not None
 
 
@@ -296,42 +400,155 @@ def test_check_script_covers_full_quality_surface() -> None:
 
     required_commands = (
         "scripts/validate_version.py",
+        "./scripts/validate-devcontainer.sh",
         "scripts/validate_docs.py",
         "scripts/run_examples.py",
         "./scripts/lint.sh",
         "./scripts/test.sh",
         "./scripts/fuzz_hypofuzz.sh --preflight",
         "./scripts/fuzz_atheris.sh --corpus",
-        "./scripts/fuzz_atheris.sh graph --time",
-        "./scripts/fuzz_atheris.sh introspection --time",
+        "./scripts/fuzz_atheris.sh --smoke-all --time",
     )
 
     for command in required_commands:
         assert command in text
 
 
-def test_atheris_corpus_health_bootstraps_its_venv() -> None:
-    """Atheris corpus health should create its dedicated venv before execution."""
-    text = (REPO_ROOT / "scripts" / "fuzz_atheris.sh").read_text(encoding="utf-8")
-    marker = "run_corpus_health() {"
-    assert marker in text
-    body = text.split(marker, 1)[1].split("}", 1)[0]
+def test_lint_script_uses_explicit_validator_registry() -> None:
+    """lint.sh should declare its validator surface instead of discovering it by comments."""
+    text = (REPO_ROOT / "scripts" / "lint.sh").read_text(encoding="utf-8")
 
-    assert "ensure_atheris_venv" in body or "run_diagnostics" in body
-
-
-def test_atheris_bootstrap_discovers_uv_managed_python_313() -> None:
-    """Atheris bootstrap should recognize uv-managed Python 3.13 interpreters."""
-    text = (REPO_ROOT / "scripts" / "fuzz_atheris.sh").read_text(encoding="utf-8")
-
-    assert "uv python find 3.13" in text
+    assert "SCRIPT_VALIDATORS=(" in text
+    assert "validate_pyi_sync.py" in text
+    assert "verify_iso4217.py" in text
+    assert "validate_docs.py" not in text
+    assert "validate_version.py" not in text
+    assert "@lint-plugin:" not in text
 
 
-def test_atheris_bootstrap_recreates_broken_venv_dirs() -> None:
-    """Atheris bootstrap should discard stale venv directories with broken Python links."""
-    text = (REPO_ROOT / "scripts" / "fuzz_atheris.sh").read_text(encoding="utf-8")
+def test_atheris_launcher_uses_explicit_target_manifest() -> None:
+    """Atheris target discovery should come from one manifest, not magic headers."""
+    text = (
+        REPO_ROOT / "scripts" / "lib" / "fuzz_atheris" / "common.sh"
+    ).read_text(encoding="utf-8")
+    manifest_rows = _atheris_targets()
 
-    assert '[[ -d "$ATHERIS_VENV" ]] && [[ ! -x "$ATHERIS_PYTHON" ]]' in text
+    assert "targets.tsv" in text
+    assert "FUZZ_PLUGIN" not in text
+    assert manifest_rows != []
+
+    for name, module, description in manifest_rows:
+        assert name
+        assert module.endswith(".py")
+        assert description
+
+
+def test_atheris_launcher_pivots_into_uv_managed_atheris_env() -> None:
+    """Atheris native runs should use the dedicated uv-managed environment contract."""
+    entrypoint = (REPO_ROOT / "scripts" / "fuzz_atheris.sh").read_text(encoding="utf-8")
+    common = (REPO_ROOT / "scripts" / "lib" / "fuzz_atheris" / "common.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'UV_PROJECT_ENVIRONMENT="$TARGET_VENV"' in common
+    assert "--group dev --group atheris --locked" in common
+    assert "FTLLEXENGINE_DEVCONTAINER" in common
+    assert ".venv-devcontainer-atheris" in common
+    assert ".venv-atheris" not in common
+    assert 'ORIGINAL_ARGS=("$@")' in entrypoint
+    assert 'pivot_to_atheris_env "${ORIGINAL_ARGS[@]}"' in entrypoint
+
+
+def test_atheris_docs_make_devcontainer_context_explicit() -> None:
+    """Published Atheris commands should state the required execution context."""
+    guide = (REPO_ROOT / "docs" / "FUZZING_GUIDE_ATHERIS.md").read_text(encoding="utf-8")
+    inventory = (REPO_ROOT / "fuzz_atheris" / "README.md").read_text(encoding="utf-8")
+    contributing = (REPO_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+
+    assert "Inside a contributor devcontainer terminal" in guide
+    assert "From the host, run the same entrypoint through the devcontainer wrapper" in guide
+    assert "Inside a contributor devcontainer terminal" in inventory
+    assert "Inside a devcontainer terminal: `./scripts/fuzz_atheris.sh" in contributing
+
+
+def test_devcontainer_declares_atheris_toolchain_contract() -> None:
+    """Contributor container must ship the native toolchain Atheris setup needs."""
+    dockerfile = (REPO_ROOT / ".devcontainer" / "Dockerfile").read_text(encoding="utf-8")
+    config_json = json.loads(
+        (REPO_ROOT / ".devcontainer" / "devcontainer.json").read_text(encoding="utf-8")
+    )
+
+    assert "clang-19" in dockerfile
+    assert "libclang-rt-19-dev" in dockerfile
+    assert 'find "$(clang --print-resource-dir)"/lib/linux' in dockerfile
+    assert config_json["containerEnv"]["CLANG_BIN"] == "/usr/local/bin/clang"
+    assert config_json["containerEnv"]["UV_LINK_MODE"] == "copy"
+
+
+def test_release_protocol_keeps_verification_commands_inside_devcontainer() -> None:
+    """Release instructions should not blur host and in-container verification steps."""
+    text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
+
+    required_exec_commands = (
+        "npx --yes @devcontainers/cli exec --workspace-folder . ./check.sh",
+        "npx --yes @devcontainers/cli exec --workspace-folder . bash -lc '",
+        "PY_VERSION=3.14 ./scripts/lint.sh",
+        "PY_VERSION=3.14 ./scripts/test.sh",
+        "uv run --group dev --python 3.14 python scripts/validate_docs.py",
+        "uv run --group dev --python 3.14 python scripts/validate_version.py",
+        "uv build",
+    )
+
+    for command in required_exec_commands:
+        assert command in text
+
+
+def test_atheris_inventory_readme_matches_target_manifest() -> None:
+    """The published Atheris inventory should stay aligned with the live target registry."""
+    readme = (REPO_ROOT / "fuzz_atheris" / "README.md").read_text(encoding="utf-8")
+    for name, module, description in _atheris_targets():
+        assert f"| `{name}` | `{module}` | {description} |" in readme
+
+
+def test_shell_gates_use_devcontainer_scoped_venv_names() -> None:
+    """Container-run shell gates should not reuse host `.venv-*` paths."""
+    script_paths = (
+        REPO_ROOT / "check.sh",
+        REPO_ROOT / "scripts" / "lint.sh",
+        REPO_ROOT / "scripts" / "test.sh",
+        REPO_ROOT / "scripts" / "fuzz_hypofuzz.sh",
+        REPO_ROOT / "scripts" / "benchmark.sh",
+    )
+
+    for path in script_paths:
+        text = path.read_text(encoding="utf-8")
+        assert "FTLLEXENGINE_DEVCONTAINER" in text
+        assert ".venv-devcontainer-" in text
+
+
+def test_shell_gates_default_uv_link_mode_for_devcontainer_reuse() -> None:
+    """Container-owned shell gates should force copy mode for reused devcontainers."""
+    script_paths = (
+        REPO_ROOT / "check.sh",
+        REPO_ROOT / "scripts" / "lint.sh",
+        REPO_ROOT / "scripts" / "test.sh",
+        REPO_ROOT / "scripts" / "fuzz_hypofuzz.sh",
+        REPO_ROOT / "scripts" / "benchmark.sh",
+        REPO_ROOT / "scripts" / "lib" / "fuzz_atheris" / "common.sh",
+    )
+
+    for path in script_paths:
+        text = path.read_text(encoding="utf-8")
+        assert 'FTLLEXENGINE_DEVCONTAINER:-}" == "1"' in text
+        assert 'export UV_LINK_MODE="copy"' in text
+
+
+def test_test_sh_executes_pytest_via_explicit_uv_command() -> None:
+    """test.sh should run pytest through the explicit uv execution path."""
+    text = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
+
+    assert 'declare -a CMD=("uv" "run" "--python" "$PY_VERSION" "pytest")' in text
+    assert 'exec uv run --python "$PY_VERSION" "${BASH:-bash}" "$0" "$@"' not in text
 
 
 def test_reference_signature_parameter_names_match_live_exports() -> None:
@@ -373,14 +590,10 @@ def test_reference_signature_parameter_names_match_live_exports() -> None:
                 if name != "self"
             ]
             live_params = [
-                param.name
-                for param in signature.parameters.values()
-                if param.name != "self"
+                param.name for param in signature.parameters.values() if param.name != "self"
             ]
             if live_params != doc_params:
-                issues.append(
-                    f"{route_name}: live={live_params!r} doc={doc_params!r}"
-                )
+                issues.append(f"{route_name}: live={live_params!r} doc={doc_params!r}")
 
     assert issues == []
 

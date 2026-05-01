@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BabelImportError",
     "get_babel_dates",
+    "get_babel_global_func",
     "get_babel_languages",
     "get_babel_numbers",
     "get_cldr_version",
@@ -250,6 +251,21 @@ def get_babel_languages() -> Any:
     from babel import languages  # noqa: PLC0415 - Babel-optional
 
     return languages
+
+
+def get_babel_global_func() -> Any:
+    """Get the ``babel.core.get_global`` function.
+
+    Returns:
+        The ``babel.core.get_global`` callable
+
+    Raises:
+        BabelImportError: If Babel is not installed
+    """
+    require_babel("babel.core.get_global")
+    from babel.core import get_global  # noqa: PLC0415 - Babel-optional
+
+    return get_global
 
 
 

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: integrity - Semantic Validation and Data Integrity
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """Semantic Validation and Data Integrity Fuzzer (Atheris).
 
 Targets:
@@ -59,19 +54,24 @@ if TYPE_CHECKING:
 _psutil_mod: Any = None
 _atheris_mod: Any = None
 
-try:  # noqa: SIM105 - captures module for check_dependencies
-    import psutil as _psutil_mod  # type: ignore[no-redef]
+try:
+    import psutil as _psutil_import
 except ImportError:
     pass
+else:
+    _psutil_mod = _psutil_import
 
-try:  # noqa: SIM105 - captures module for check_dependencies
-    import atheris as _atheris_mod  # type: ignore[no-redef]
+try:
+    import atheris as _atheris_import
 except ImportError:
     pass
+else:
+    _atheris_mod = _atheris_import
 
 from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
     GC_INTERVAL,
     BaseFuzzerState,
+    FuzzStats,
     build_base_stats_dict,
     build_weighted_schedule,
     check_dependencies,
@@ -88,9 +88,6 @@ from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: di
 check_dependencies(["psutil", "atheris"], [_psutil_mod, _atheris_mod])
 
 import atheris  # noqa: E402  # pylint: disable=C0412,C0413
-
-# --- Type Aliases (PEP 695) ---
-type FuzzStats = dict[str, int | str | float]
 
 # --- Suppress logging and instrument imports ---
 logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)

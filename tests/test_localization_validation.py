@@ -24,6 +24,7 @@ import pytest
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
 from ftllexengine.localization import (
     FluentLocalization,
     LoadStatus,
@@ -191,6 +192,13 @@ class TestFluentLocalizationAddResourceWhitespaceValidation:
         assert result == "test"
         assert errors == ()
         assert l10n.locales == ("en",)
+
+    def test_constructor_rejects_unknown_well_formed_boundary_locale(self) -> None:
+        """Constructor rejects unknown locales even when the boundary string is well formed."""
+        boundary_locale = "a" + ("b" * (MAX_LOCALE_LENGTH_HARD_LIMIT - 2)) + "C"
+
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            FluentLocalization(["en", f"  {boundary_locale}  "], strict=False)
 
 
 class TestFormatValueInvalidArgsTypeValidation:

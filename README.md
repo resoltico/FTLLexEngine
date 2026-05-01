@@ -1,25 +1,31 @@
-# FTLLexEngine — Fluent runtime for real-world localization
-
-FTLLexEngine is a Python runtime and parsing toolkit for Fluent `.ftl` resources, built for teams that need locale-aware text, money, dates, and user-input parsing without rebuilding the same rules in application code.
-
-If you are still stitching this together with string interpolation, one-off parsers, and per-locale edge-case fixes, the same bug tends to get fixed in three places.
+[![FTLLexEngine Art](https://raw.githubusercontent.com/resoltico/FTLLexEngine/main/images/FTLLexEngine.jpg)](https://github.com/resoltico/FTLLexEngine)
 
 [![PyPI](https://img.shields.io/pypi/v/ftllexengine.svg)](https://pypi.org/project/ftllexengine/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/ftllexengine.svg)](https://pypi.org/project/ftllexengine/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- Keep plural rules and locale formatting in `.ftl`, close to the messages themselves.
-- Parse localized numbers, dates, and currency back into exact Python types.
-- Fail startup early when resources or message schemas drift.
-- Share internally synchronized bundles safely across concurrent requests.
+# FTLLexEngine — Fluent localization runtime and parser for Python
 
-The nearby alternative is a mix of hand-kept formatting rules, ad-hoc parsing helpers, and translation checks that only happen after a request is already live. FTLLexEngine turns that into one repeatable runtime.
+FTLLexEngine is a Python library for the Fluent `.ftl` specification: format locale-aware prices,
+dates, and messages for 200+ locales, then parse localized user input back to exact Python types
+in the same stack.
 
-[Try a working snippet](docs/QUICK_REFERENCE.md) · [Take the deeper workflow tour](docs/WORKFLOW_TOUR.md) · [Get the package on PyPI](https://pypi.org/project/ftllexengine/)
+Most setups handle the two directions separately — one library brews the outbound message,
+something hand-rolled to parse the reply back. Locale rules drift between them. FTLLexEngine runs
+both from the same locale, validates `.ftl` resources at boot before the first request, and keeps
+threads isolated without touching global state.
 
-## One Small Workflow
+- Format currency, dates, and plural messages correctly for 200+ locales via CLDR
+- Parse localized user input back to `Decimal`, `date`, or typed values — no float drift
+- Validate `.ftl` resources and message schemas at boot, before the first request
+- Thread-safe bundles, no global locale state
 
-For a coffee exporter, one invoice line and one buyer reply are enough to create drift: display logic in one place, parsing logic in another, validation nowhere. FTLLexEngine keeps that move in one stack.
+[Copy-paste patterns](docs/QUICK_REFERENCE.md) · [Workflow tour](docs/WORKFLOW_TOUR.md) · [PyPI](https://pypi.org/project/ftllexengine/)
+
+## Both Ends of the Counter
+
+A specialty coffee exporter invoices buyers in German. Buyers reply in their local number format.
+One runtime handles both ends:
 
 ```python
 from decimal import Decimal
@@ -29,55 +35,51 @@ from ftllexengine.parsing import parse_currency
 bundle = FluentBundle("de_DE", use_isolating=False)
 bundle.add_resource('quote = Angebot: { CURRENCY($amount, currency: "EUR") }')
 
-text, errors = bundle.format_pattern("quote", {"amount": Decimal("12450.00")})
-assert errors == ()
-assert text == "Angebot: 12.450,00\u00a0€"
+text, _ = bundle.format_pattern("quote", {"amount": Decimal("12450.00")})
+# → "Angebot: 12.450,00 €" (non-breaking space before €)
 
-parsed, errors = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
-assert errors == ()
-assert parsed == (Decimal("12450.00"), "EUR")
+parsed, _ = parse_currency("12.450,00 EUR", "de_DE", default_currency="EUR")
+# → (Decimal("12450.00"), "EUR")
 ```
 
-The same locale-aware runtime formats the outgoing quote and parses the buyer’s reply back into an exact `Decimal`.
+Same locale rules write the invoice and read the buyer's reply. No separate parser. No float
+approximation.
 
 ## Where It Fits
 
-Use FTLLexEngine when the same message has to survive more than one locale, more than one direction, or more than one layer of your system.
+Python apps using Fluent `.ftl` for messages, plural rules, and locale-aware formatting —
+especially when users send localized prices, dates, or quantities that need to come back as exact
+typed values. Systems that validate `.ftl` resources before accepting traffic, and concurrent apps
+that need locale isolation without shared mutable state.
 
-- Good fit: Fluent-based apps, invoice and checkout flows, localized forms, startup validation for translation packs, and systems that care about exact decimals instead of float luck.
-- Good fit: Teams that want message grammar, money formatting, and localized input parsing to stay consistent instead of drifting between templates, helpers, and validation code.
-- Keep it simple: single-locale apps, plain string formatting, or projects that do not need Fluent at all.
+## Install
 
-## Start In Two Paths
-
-Use the full runtime when you need formatting, localization orchestration, and localized parsing:
+Full runtime — formatting, bidirectional parsing, CLDR locale data:
 
 ```bash
 uv add ftllexengine[babel]
+# or: pip install "ftllexengine[babel]"
 ```
 
-Use the parser-only install when you only need syntax parsing, AST work, validation, and zero-dependency helper surfaces:
+Parser only — FTL syntax, AST, validation, zero Babel dependency:
 
 ```bash
 uv add ftllexengine
+# or: pip install ftllexengine
 ```
 
-Start from the path that matches your job:
+Python 3.13+. Fully typed. Built on the [Fluent specification](https://projectfluent.org/) with
+CLDR data via Babel.
 
-- [Copy the smallest working examples](docs/QUICK_REFERENCE.md)
-- [Run the shipped examples](examples/README.md)
-- [Browse parsing, thread-safety, and boot-validation guides](docs/DOC_00_Index.md)
-
-## Why It Feels Safe To Try
-
-- Published on [PyPI](https://pypi.org/project/ftllexengine/) for Python 3.13+.
-- Built around the [Fluent specification](https://projectfluent.org/) and CLDR-backed locale data via Babel.
-- Fully typed, MIT-licensed, and shipped with runnable examples plus repository checks for docs, examples, and version sync.
-- Supports parser-only installs for syntax and validation work when you do not need the Babel-backed runtime surface.
-- Release and publishing steps live in [docs/RELEASE_PROTOCOL.md](docs/RELEASE_PROTOCOL.md).
+- [Copy-paste patterns](docs/QUICK_REFERENCE.md)
+- [Workflow tour](docs/WORKFLOW_TOUR.md)
+- [API reference](docs/DOC_00_Index.md)
+- [Runnable examples](examples/)
 
 ## Legal
 
-FTLLexEngine is MIT-licensed. The optional `babel` extra adds Babel under BSD-3-Clause terms. FTLLexEngine is an independent implementation of the [Fluent syntax specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf) and is not affiliated with or endorsed by Mozilla.
+MIT-licensed. The optional `[babel]` extra adds Babel under BSD-3-Clause. FTLLexEngine is an
+independent implementation of the [Fluent syntax specification](https://github.com/projectfluent/fluent/blob/master/spec/fluent.ebnf)
+and is not affiliated with or endorsed by Mozilla.
 
 [LICENSE](LICENSE) · [NOTICE](NOTICE) · [PATENTS.md](PATENTS.md)

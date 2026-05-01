@@ -41,7 +41,14 @@ shopt -s inherit_errexit
 
 # [SECTION: ENVIRONMENT_ISOLATION]
 PY_VERSION="${PY_VERSION:-3.13}"
-TARGET_VENV=".venv-${PY_VERSION}"
+if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
+    TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
+else
+    TARGET_VENV=".venv-${PY_VERSION}"
+fi
+if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" && -z "${UV_LINK_MODE:-}" ]]; then
+    export UV_LINK_MODE="copy"
+fi
 
 # Universal Pivot: Works with uv, or standard venvs
 if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
@@ -184,7 +191,8 @@ execute_tool() {
     local exit_code=$?
     set -e
     
-    local duration=$(printf "%.3f" "$(echo "${EPOCHREALTIME} - $start_time" | bc)")
+    local duration
+    duration=$(awk -v start="$start_time" -v end="$EPOCHREALTIME" 'BEGIN { printf "%.3f", end - start }')
     
     # Universal file counting (Pre-calc instead of parsing output)
     local file_count="0"
@@ -263,52 +271,35 @@ run_mypy() {
         log_info "  + Using ${config_source}: ${config}"
 
         # Flags: --no-color-output (agent), --no-error-summary (quiet)
-        local cmd=(mypy --config-file "$config" --python-version "$PY_VERSION" --no-color-output --no-error-summary)
+        local -a cmd=(mypy --config-file "$config" --python-version "$PY_VERSION" --no-color-output --no-error-summary)
+        if [[ "$target" == "fuzz_atheris" ]]; then
+            cmd=(env "MYPYPATH=$PWD/fuzz_atheris${MYPYPATH:+:$MYPYPATH}" "${cmd[@]}")
+        fi
         execute_tool "mypy" "$target" "${cmd[@]}" "$target"
     done
     log_group_end
 }
 
 
-# [SECTION: PLUGINS]
-run_plugins() {
-    if [[ -n "${LINT_PLUGIN_MODE:-}" ]]; then return 0; fi
-    export LINT_PLUGIN_MODE=1
-    
-    declare -a plugin_files=()
-    set +e
-    while IFS= read -r file; do
-        if grep -q "# @lint-plugin:" "$file"; then
-            plugin_files+=("$file")
-        fi
-    done < <(find "$SCRIPT_DIR" -maxdepth 1 -type f ! -name "lint.sh" ! -name "for_testing_lint.sh" 2>/dev/null)
-    set -e
-    
-    if [[ ${#plugin_files[@]} -eq 0 ]]; then return 0; fi
-    
-    log_group_start "Plugins"
-    for file in "${plugin_files[@]}"; do
-        local name
-        # Extract name: Header format "# @lint-plugin: Name" (Strict start of line)
-        name=$(grep -m 1 "^# @lint-plugin:" "$file" | sed "s/^# @lint-plugin:[[:space:]]*//" | tr -d '\r\n')
-        
-        # Skip placeholders, invalid names, or empty strings
-        if [[ -z "$name" || "$name" == "<Name>" ]]; then continue; fi
-        
-        local cmd=()
-        # Use the venv Python explicitly so plugins always run with the correct Python
-        # version. Bare `python` resolves to the system Python on GitHub Actions Ubuntu
-        # runners (3.12.x), not the venv Python (3.13.x), causing ImportError on any
-        # module that uses Python 3.13+ features (e.g. TypeIs from PEP 742).
-        if [[ "$file" == *.py ]]; then cmd=("${TARGET_VENV}/bin/python" "$file")
-        elif [[ "$file" == *.sh ]]; then cmd=("bash" "$file")
-        elif [[ -x "$file" ]]; then cmd=("$file")
-        else cmd=("bash" "$file"); fi
-        
-        execute_tool "plugin:$name" "all" "${cmd[@]}"
+# [SECTION: REPOSITORY_VALIDATORS]
+# Explicit registry keeps lint surface auditable: adding a helper script does not
+# silently change what "lint" means.
+readonly -a SCRIPT_VALIDATORS=(
+    "PISync:$SCRIPT_DIR/validate_pyi_sync.py"
+    "ISO4217:$SCRIPT_DIR/verify_iso4217.py"
+)
+
+run_script_validators() {
+    if [[ ${#SCRIPT_VALIDATORS[@]} -eq 0 ]]; then return 0; fi
+
+    log_group_start "Repository Validators"
+    local validator_entry name script_path
+    for validator_entry in "${SCRIPT_VALIDATORS[@]}"; do
+        name="${validator_entry%%:*}"
+        script_path="${validator_entry#*:}"
+        execute_tool "validator:$name" "all" "${TARGET_VENV}/bin/python" "$script_path"
     done
     log_group_end
-    unset LINT_PLUGIN_MODE
 }
 
 # [SECTION: NOQA AUDIT]
@@ -363,7 +354,7 @@ run_noqa_audit() {
 run_ruff || true
 run_mypy || true
 run_noqa_audit || true
-run_plugins || true
+run_script_validators || true
 
 # [SECTION: REPORT]
 log_group_start "Final Report"

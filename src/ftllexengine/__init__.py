@@ -197,19 +197,26 @@ _BABEL_OPTIONAL_NAMES = babel_optional_attr_tuple(__name__)
 
 def __getattr__(name: str) -> object:
     """Provide a helpful missing-symbol error for Babel-backed facade symbols."""
-    if _BABEL_AVAILABLE and name in _BABEL_OPTIONAL_ATTRS:
-        value = load_babel_optional_export(__name__, name)
+    if name in _BABEL_OPTIONAL_ATTRS:
+        if _BABEL_AVAILABLE:
+            value = load_babel_optional_export(__name__, name)
+        else:
+            value = raise_missing_babel_symbol(
+                module_name=__name__,
+                name=name,
+                optional_attrs=_BABEL_OPTIONAL_ATTRS,
+                parser_only_hint=(
+                    "For parser-only installs, use:\n"
+                    "  from ftllexengine.syntax import parse, serialize\n"
+                    "  from ftllexengine.syntax.ast import Message, Term, Pattern, ..."
+                ),
+            )
         globals()[name] = value
         return value
     return raise_missing_babel_symbol(
         module_name=__name__,
         name=name,
         optional_attrs=_BABEL_OPTIONAL_ATTRS,
-        parser_only_hint=(
-            "For parser-only installs, use:\n"
-            "  from ftllexengine.syntax import parse, serialize\n"
-            "  from ftllexengine.syntax.ast import Message, Term, Pattern, ..."
-        ),
     )
 
 

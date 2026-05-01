@@ -16,6 +16,7 @@ Python 3.13+.
 """
 
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from ftllexengine.core.babel_compat import (
     get_locale_class,
@@ -36,6 +37,7 @@ from ftllexengine.diagnostics import (
     ParseResult,
 )
 from ftllexengine.diagnostics.templates import ErrorTemplate
+from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
 __all__ = ["parse_decimal", "parse_fluent_number"]
 
@@ -78,6 +80,96 @@ def _validate_group_positions(
             return False
     # Leftmost group may have 1..secondary_group digits.
     return 1 <= len(groups[0]) <= secondary_group
+
+
+def _iter_numbering_systems(locale: Any) -> tuple[str, ...]:
+    """Return numbering systems to try for locale-aware parsing."""
+    default_system = getattr(locale, "default_numbering_system", "latn")
+    if not isinstance(default_system, str) or not default_system:
+        return ("latn",)
+    if default_system == "latn":
+        return ("latn",)
+    return (default_system, "latn")
+
+
+def _get_grouping_profile(
+    locale: Any,
+    numbering_system: str,
+) -> tuple[str, str, int, int]:
+    """Return grouping separators and sizes for one numbering system."""
+    try:
+        symbols = locale.number_symbols[numbering_system]
+        group_sep: str = symbols.get("group", "")
+        decimal_sep: str = symbols.get("decimal", ".")
+        fmt = locale.decimal_formats[None]
+        raw_grouping = getattr(fmt, "grouping", (3, 3))
+        primary_group: int = raw_grouping[0] if raw_grouping else 3
+        secondary_group: int = (
+            raw_grouping[1]
+            if len(raw_grouping) > 1 and raw_grouping[1] != 0
+            else primary_group
+        )
+        return (group_sep, decimal_sep, primary_group, secondary_group)
+    except (AttributeError, KeyError, IndexError, TypeError):
+        return ("", ".", 3, 3)
+
+
+def _parse_decimal_localized(
+    value: str,
+    locale: Any,
+    *,
+    babel_parse_decimal: Any,
+    number_format_error_class: type[Exception],
+) -> tuple[Decimal | None, str | None]:
+    """Parse one numeric string across the locale's supported numbering systems."""
+    last_reason: str | None = None
+    grouping_reason: str | None = None
+
+    for numbering_system in _iter_numbering_systems(locale):
+        group_sep, decimal_sep, primary_group, secondary_group = _get_grouping_profile(
+            locale, numbering_system
+        )
+        if (
+            group_sep
+            and group_sep in value
+            and not _validate_group_positions(
+                value, group_sep, decimal_sep, primary_group, secondary_group
+            )
+        ):
+            if grouping_reason is None:
+                grouping_reason = "group separators not at standard digit-boundary positions"
+            continue
+
+        try:
+            amount = babel_parse_decimal(
+                value,
+                locale=locale,
+                numbering_system=numbering_system,
+            )
+            return (amount, None)
+        except TypeError:
+            try:
+                amount = babel_parse_decimal(value, locale=locale)
+                return (amount, None)
+            except (
+                number_format_error_class,
+                InvalidOperation,
+                ValueError,
+                AttributeError,
+                TypeError,
+            ) as exc:
+                last_reason = str(exc)
+        except (
+            number_format_error_class,
+            InvalidOperation,
+            ValueError,
+            AttributeError,
+        ) as exc:
+            last_reason = str(exc)
+
+    if grouping_reason is not None:
+        return (None, grouping_reason)
+    return (None, last_reason or f"{value!r} is not a valid decimal number")
 
 
 def parse_decimal(
@@ -138,6 +230,22 @@ def parse_decimal(
     number_format_error_class = get_number_format_error_class()
     babel_parse_decimal = get_parse_decimal_func()
 
+    if not isinstance(value, str):
+        diagnostic = ErrorTemplate.parse_decimal_failed(  # type: ignore[unreachable]
+            str(value), locale_code, f"Expected string, got {type(value).__name__}"
+        )
+        context = FrozenErrorContext(
+            input_value=str(value),
+            locale_code=locale_code,
+            parse_type="decimal",
+        )
+        errors.append(FrozenFluentError(
+            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+        ))
+        return (None, tuple(errors))
+
+    normalized_value = strip_bidi_format_chars(value)
+
     # Guard: Babel silently accepts locale codes containing non-BCP-47 characters
     # (e.g. '/', '\x00') instead of raising UnknownLocaleError, then uses default
     # number format settings and parses any valid-looking number successfully.
@@ -169,61 +277,26 @@ def parse_decimal(
         errors.append(error)
         return (None, tuple(errors))
 
-    # Guard: Babel strips group separators without validating their positions.
-    # Extract the locale's group/decimal symbols and expected group sizes, then
-    # reject inputs where non-leftmost groups have the wrong digit count (e.g.,
-    # "1,2,3" for en_US becomes Decimal("123") without this check).
-    try:
-        _ns = locale.number_symbols[locale.default_numbering_system]
-        group_sep: str = _ns.get("group", "")
-        decimal_sep: str = _ns.get("decimal", ".")
-        fmt = locale.decimal_formats[None]
-        raw_grouping = getattr(fmt, "grouping", (3, 3))
-        primary_group: int = raw_grouping[0] if raw_grouping else 3
-        secondary_group: int = (
-            raw_grouping[1]
-            if len(raw_grouping) > 1 and raw_grouping[1] != 0
-            else primary_group
-        )
-    except (AttributeError, KeyError, IndexError, TypeError):
-        group_sep, decimal_sep, primary_group, secondary_group = "", ".", 3, 3
+    amount, failure_reason = _parse_decimal_localized(
+        normalized_value,
+        locale,
+        babel_parse_decimal=babel_parse_decimal,
+        number_format_error_class=number_format_error_class,
+    )
+    if amount is not None:
+        return (amount, tuple(errors))
 
-    if (
-        group_sep
-        and group_sep in value
-        and not _validate_group_positions(
-            value, group_sep, decimal_sep, primary_group, secondary_group
-        )
-    ):
-        diagnostic = ErrorTemplate.parse_decimal_failed(
-            value, locale_code, "group separators not at standard digit-boundary positions"
-        )
-        context = FrozenErrorContext(
-            input_value=str(value),
-            locale_code=locale_code,
-            parse_type="decimal",
-        )
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
-        )
-        return (None, (error,))
-
-    try:
-        return (babel_parse_decimal(value, locale=locale), tuple(errors))
-    except (
-        number_format_error_class, InvalidOperation, ValueError, AttributeError, TypeError,
-    ) as e:
-        diagnostic = ErrorTemplate.parse_decimal_failed(value, locale_code, str(e))
-        context = FrozenErrorContext(
-            input_value=str(value),
-            locale_code=locale_code,
-            parse_type="decimal",
-        )
-        error = FrozenFluentError(
-            str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
-        )
-        errors.append(error)
-        return (None, tuple(errors))
+    diagnostic = ErrorTemplate.parse_decimal_failed(value, locale_code, str(failure_reason))
+    context = FrozenErrorContext(
+        input_value=str(value),
+        locale_code=locale_code,
+        parse_type="decimal",
+    )
+    error = FrozenFluentError(
+        str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
+    )
+    errors.append(error)
+    return (None, tuple(errors))
 
 
 def parse_fluent_number(

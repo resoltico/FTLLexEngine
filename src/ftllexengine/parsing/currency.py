@@ -64,6 +64,8 @@ from ftllexengine.parsing.currency_maps import (
 from ftllexengine.parsing.currency_maps import (
     clear_currency_caches as _clear_currency_maps_caches,
 )
+from ftllexengine.parsing.numbers import _parse_decimal_localized
+from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
 __all__ = [
     "_FAST_TIER_UNAMBIGUOUS_SYMBOLS",
@@ -274,6 +276,7 @@ def _detect_currency_symbol(
 
 def _parse_currency_amount(
     value: str,
+    normalized_value: str,
     match: re.Match[str],
     locale: Any,
     locale_code: str,
@@ -299,14 +302,18 @@ def _parse_currency_amount(
     # Remove ONLY the matched occurrence, not all instances.
     # Prevents corruption if the symbol appears elsewhere in the string.
     number_str = (
-        value[:match.start(1)] + value[match.end(1):]
+        normalized_value[:match.start(1)] + normalized_value[match.end(1):]
     ).strip()
 
-    try:
-        amount = parse_decimal_fn(number_str, locale=locale)
-    except number_format_error as e:
+    amount, failure_reason = _parse_decimal_localized(
+        number_str,
+        locale,
+        babel_parse_decimal=parse_decimal_fn,
+        number_format_error_class=number_format_error,
+    )
+    if amount is None:
         diagnostic = ErrorTemplate.parse_amount_invalid(
-            number_str, value, str(e),
+            number_str, value, str(failure_reason),
         )
         context = FrozenErrorContext(
             input_value=str(value),
@@ -429,6 +436,7 @@ def parse_currency(
             diagnostic=diagnostic,
             context=context,
         ),))
+    normalized_value = strip_bidi_format_chars(value)
 
     # Guard: Babel silently accepts locale codes containing non-BCP-47 characters
     # (e.g. '/', '\x00') instead of raising UnknownLocaleError, then uses default
@@ -465,7 +473,7 @@ def parse_currency(
         ),))
 
     # Phase 2: Detect currency symbol/code
-    match, detect_error = _detect_currency_symbol(value, locale_code)
+    match, detect_error = _detect_currency_symbol(normalized_value, locale_code)
     if detect_error is not None or match is None:
         if detect_error is not None:
             return (None, (detect_error,))
@@ -519,6 +527,7 @@ def parse_currency(
     # Phase 4: Parse numeric amount
     amount, amount_error = _parse_currency_amount(
         value,
+        normalized_value,
         match,
         locale,
         locale_code,

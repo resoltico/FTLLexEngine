@@ -54,6 +54,29 @@ assert isinstance(detected, str)
 assert detected
 ```
 
+## Localization Instances Own Their Fallback Chains
+
+`FluentLocalization` is not a per-call locale switch. Each instance owns one immutable
+fallback chain, so a multi-user app typically caches one instance per supported chain and
+selects the instance by request locale.
+
+```python
+from ftllexengine import FluentLocalization
+
+de_checkout = FluentLocalization(["de_DE", "en_US"])
+de_checkout.add_resource("en_US", "checkout = Checkout")
+de_checkout.add_resource("de_DE", "checkout = Kasse")
+value, errors = de_checkout.format_value("checkout")
+assert errors == ()
+assert value == "Kasse"
+
+en_checkout = FluentLocalization(["en_US"])
+en_checkout.add_resource("en_US", "checkout = Checkout")
+value, errors = en_checkout.format_value("checkout")
+assert errors == ()
+assert value == "Checkout"
+```
+
 ## Bidi Isolation
 
 `use_isolating=True` is the default on bundle and localization classes. It wraps placeables with Unicode bidi isolation marks so interpolated values do not corrupt surrounding RTL/LTR text. Keep it enabled for UI output unless you know the output will stay LTR-only and you need plain strings for logging or snapshot assertions.

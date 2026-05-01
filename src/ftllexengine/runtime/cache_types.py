@@ -209,6 +209,7 @@ class WriteLogEntry:
     key_hash: str
     timestamp: float
     sequence: int
+    cache_sequence: int
     checksum_hex: str
     wall_time_unix: float
 

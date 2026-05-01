@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# @lint-plugin: PISync
 """Validate that src/ftllexengine/__init__.pyi is in sync with __init__.py.
 
 Enforces two invariants:
@@ -11,10 +10,9 @@ Rationale:
     __init__.pyi is the type-authoritative interface for external callers when
     py.typed is present. Mypy uses the stub exclusively — any symbol in __init__.py
     that is absent from the stub is invisible to typed callers and causes mypy errors.
-    More critically: CI lint plugins run `import ftllexengine` in a subprocess whose
-    venv may diverge from the local pre-built venv; when stub/__all__ diverge the
-    install metadata becomes inconsistent and the VersionSync plugin reports
-    "Package not installed or import failed".
+    More critically: any stub/__all__ divergence makes the installed package
+    contract inconsistent for typed callers, so the repository's static gate
+    must fail immediately instead of letting the mismatch leak to users.
 
     This plugin is a dead-man's switch: any __all__ change that is not reflected in
     __init__.pyi breaks the build immediately at the lint stage.

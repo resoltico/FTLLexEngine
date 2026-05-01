@@ -167,6 +167,7 @@ route:
 | `SourceSpan` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `SourceSpan` |
 | `scripts/validate_docs.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate_docs.py` |
 | `scripts/validate_version.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate_version.py` |
+| `scripts/validate-devcontainer.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate-devcontainer.sh` |
 | `scripts/run_examples.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/run_examples.py` |
 | `check.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `check.sh` |
 | `scripts/lint.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/lint.sh` |
@@ -180,6 +181,7 @@ route:
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 - [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md)
 - [DATA_INTEGRITY_ARCHITECTURE.md](DATA_INTEGRITY_ARCHITECTURE.md)
+- [DEVELOPER_DEVCONTAINER.md](DEVELOPER_DEVCONTAINER.md)
 - [FUZZING_GUIDE.md](FUZZING_GUIDE.md)
 - [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md)
 - [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md)

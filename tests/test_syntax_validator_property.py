@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 from ftllexengine.diagnostics import ValidationResult
 from ftllexengine.diagnostics.codes import DiagnosticCode
 from ftllexengine.syntax.ast import (
+    Annotation,
     Identifier,
     Message,
     Pattern,
@@ -90,7 +91,7 @@ class TestDeepNestingValidation:
     Targets missing coverage in nested validation logic.
     """
 
-    @given(ftl_deeply_nested_selects(max_depth=10))
+    @given(select_expr=ftl_deeply_nested_selects(max_depth=10))
     @settings(max_examples=100)
     def test_validator_handles_deep_nesting(self, select_expr):
         """STRESS: Deep nesting doesn't crash validator."""
@@ -106,7 +107,7 @@ class TestDeepNestingValidation:
         event(f"outcome={'valid' if result.is_valid else 'invalid'}")
         assert isinstance(result, ValidationResult)
 
-    @given(ftl_deeply_nested_selects(max_depth=5))
+    @given(select_expr=ftl_deeply_nested_selects(max_depth=5))
     @settings(max_examples=100)
     def test_deeply_nested_selects_validate_correctly(self, select_expr):
         """PROPERTY: Deeply nested selects validate (may have errors)."""
@@ -242,7 +243,7 @@ class TestValidatorStateManagement:
     Targets lines 331, 361-362, 367, 395: State reset between validations.
     """
 
-    @given(st.lists(ftl_resources(), min_size=2, max_size=5))
+    @given(st.lists(semantic_validation_resources(), min_size=2, max_size=5))
     @settings(max_examples=100)
     def test_validator_state_resets_between_calls(self, resources):
         """PROPERTY: Validator state resets between validate() calls."""
@@ -254,7 +255,7 @@ class TestValidatorStateManagement:
         for result in results:
             assert isinstance(result, ValidationResult)
 
-    @given(ftl_resources(), ftl_resources())
+    @given(semantic_validation_resources(), semantic_validation_resources())
     @settings(max_examples=100)
     def test_validator_results_independent(self, resource1, resource2):
         """PROPERTY: Validating resource1 doesn't affect resource2."""
@@ -829,7 +830,7 @@ class TestAddErrorDefaultMessage:
         expected_msg = _VALIDATION_MESSAGES[code]
 
         validator = SemanticValidator()
-        errors: list = []
+        errors: list[Annotation] = []
         # pylint: disable=protected-access
         validator._add_error(errors, code)  # No message argument
 
@@ -843,7 +844,7 @@ class TestAddErrorDefaultMessage:
         )
 
         validator = SemanticValidator()
-        errors: list = []
+        errors: list[Annotation] = []
         custom_msg = "Custom validation error message"
         validator._add_error(  # pylint: disable=protected-access
             errors,
@@ -861,7 +862,7 @@ class TestAddErrorDefaultMessage:
         )
 
         validator = SemanticValidator()
-        errors: list = []
+        errors: list[Annotation] = []
         # Use a code NOT in _VALIDATION_MESSAGES
         validator._add_error(  # pylint: disable=protected-access
             errors,

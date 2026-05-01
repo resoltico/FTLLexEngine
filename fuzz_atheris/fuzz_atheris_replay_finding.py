@@ -5,7 +5,7 @@ Reads a finding source .ftl file (written by a fuzzer's _write_finding_artifact)
 runs the parse-serialize-reparse cycle using the production parser/serializer,
 and reports whether the finding reproduces WITHOUT Atheris instrumentation.
 
-This script runs in the main project venv (not .venv-atheris). If a finding
+This script runs in the main project venv, not the dedicated Atheris environment. If a finding
 reproduces here, it is a real parser/serializer bug. If it does NOT reproduce,
 it may be an Atheris str-hook instrumentation artifact.
 

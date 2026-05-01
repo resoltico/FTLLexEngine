@@ -118,6 +118,7 @@ class IntegrityCache(_CacheStatsMixin, _CacheAuditMixin, _CacheKeyMixin):
 
     __slots__ = (
         "_audit_log",
+        "_audit_sequence",
         "_cache",
         "_combined_weight_skips",
         "_corruption_detected",
@@ -189,6 +190,7 @@ class IntegrityCache(_CacheStatsMixin, _CacheAuditMixin, _CacheKeyMixin):
         self._audit_log: deque[WriteLogEntry] | None = (
             deque(maxlen=max_audit_entries) if enable_audit else None
         )
+        self._audit_sequence = 0
         self._max_audit_entries = max_audit_entries
 
         # Statistics

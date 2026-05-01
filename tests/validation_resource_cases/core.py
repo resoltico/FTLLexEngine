@@ -1,0 +1,581 @@
+# mypy: ignore-errors
+"""Split test cases from tests/test_validation_resource.py."""
+
+from tests.validation_resource_cases import *  # noqa: F403 - shared split test support
+
+
+class TestSyntaxErrorExtraction:
+    """Test extraction of syntax errors from Junk entries."""
+
+    def test_single_junk_entry_creates_validation_error(self) -> None:
+        """Test that Junk entry is converted to ValidationError."""
+        ftl = "invalid junk entry"
+        result = validate_resource(ftl)
+
+        # Should have syntax error
+        assert len(result.errors) > 0
+        assert any("parse" in err.code.name.lower() for err in result.errors)
+
+    def test_multiple_junk_entries_create_multiple_errors(self) -> None:
+        """Test multiple Junk entries create multiple errors."""
+        ftl = """
+invalid entry 1
+also bad = { broken
+another junk line
+"""
+        result = validate_resource(ftl)
+        # Should have multiple errors (exact count depends on parser)
+        assert len(result.errors) >= 1
+
+    def test_junk_with_span_information(self) -> None:
+        """Test that Junk errors include position information."""
+        ftl = "msg = { broken syntax }"
+        result = validate_resource(ftl)
+
+        # Should have error with position info
+        if len(result.errors) > 0:
+            error = result.errors[0]
+            # Line/column may be set
+            assert error.code is not None
+
+    @given(
+        st.text(min_size=1, max_size=50).filter(
+            lambda s: "=" not in s and "{" not in s and "}" not in s
+        )
+    )
+    def test_invalid_syntax_property(self, invalid_text: str) -> None:
+        """PROPERTY: Invalid FTL syntax produces validation errors.
+
+        Events emitted:
+        - has_errors={bool}: Whether validation produced errors
+        - has_whitespace={bool}: Whether input contains whitespace
+        """
+
+        result = validate_resource(invalid_text)
+
+        # Emit events for semantic coverage
+        event(f"has_errors={len(result.errors) > 0}")
+        event(f"has_whitespace={any(c.isspace() for c in invalid_text)}")
+
+        # Either parses as comment/junk or has errors
+        assert result is not None
+
+
+class TestDuplicateIdDetection:
+    """Test duplicate message and term ID detection."""
+
+    def test_duplicate_message_ids_produce_warning(self) -> None:
+        """Test duplicate message IDs create warnings."""
+        ftl = """
+msg = First value
+msg = Second value
+"""
+        result = validate_resource(ftl)
+
+        # Should have warning about duplicate
+        assert len(result.warnings) > 0
+        assert any(
+            "duplicate" in warn.message.lower() and "msg" in warn.message.lower()
+            for warn in result.warnings
+        )
+
+    def test_duplicate_term_ids_produce_warning(self) -> None:
+        """Test duplicate term IDs create warnings."""
+        ftl = """
+-term = First value
+-term = Second value
+"""
+        result = validate_resource(ftl)
+
+        # Should have warning
+        assert len(result.warnings) > 0
+        assert any("duplicate" in warn.message.lower() for warn in result.warnings)
+
+    def test_no_duplicate_warning_for_unique_ids(self) -> None:
+        """Test no duplicate warnings when IDs are unique."""
+        ftl = """
+msg1 = First
+msg2 = Second
+-term1 = Term one
+-term2 = Term two
+"""
+        result = validate_resource(ftl)
+
+        # Should not have duplicate warnings
+        duplicate_warnings = [
+            w for w in result.warnings if "duplicate" in w.message.lower()
+        ]
+        assert len(duplicate_warnings) == 0
+
+    @given(
+        st.lists(
+            st.from_regex(r"[a-z]+", fullmatch=True),
+            min_size=2,
+            max_size=5,
+        )
+    )
+    def test_multiple_duplicates_property(self, ids: list[str]) -> None:
+        """PROPERTY: Multiple duplicate IDs all produce warnings.
+
+        Events emitted:
+        - duplicate_count={n}: Number of duplicate entries (len - 1)
+        """
+
+        # Create FTL with all same ID
+        ftl_lines = [f"{ids[0]} = Value {i}" for i in range(len(ids))]
+        ftl = "\n".join(ftl_lines)
+
+        # Emit event for duplicate count
+        event(f"duplicate_count={len(ids) - 1}")
+
+        result = validate_resource(ftl)
+        # Should have warnings (at least len(ids) - 1 duplicates)
+        if len(ids) > 1:
+            assert len(result.warnings) >= 1
+
+
+class TestMessageWithoutValue:
+    """Test validation of messages without values (only attributes)."""
+
+    def test_message_with_only_attributes_produces_warning(self) -> None:
+        """Test message with no value but attributes gets warning."""
+        ftl = """
+msg =
+    .attr1 = Value 1
+    .attr2 = Value 2
+"""
+        result = validate_resource(ftl)
+
+        # Per FTL spec, message can have only attributes (valid)
+        # But implementation may warn about this pattern
+        # Check it doesn't crash
+        assert result is not None
+
+    def test_message_with_value_and_attributes_no_warning(self) -> None:
+        """Test message with both value and attributes is valid."""
+        ftl = """
+msg = Value
+    .attr = Attribute
+"""
+        result = validate_resource(ftl)
+
+        # Should be valid - no warnings about structure
+        assert result is not None
+        assert result.is_valid
+
+
+class TestUndefinedReferenceDetection:
+    """Test detection of undefined message and term references."""
+
+    def test_undefined_message_reference_produces_warning(self) -> None:
+        """Test reference to undefined message produces warning."""
+        ftl = """
+msg = { other }
+"""
+        result = validate_resource(ftl)
+
+        # Should warn about undefined reference
+        assert len(result.warnings) > 0
+        assert any(
+            "undefined" in warn.message.lower() or "reference" in warn.message.lower()
+            for warn in result.warnings
+        )
+
+    def test_undefined_term_reference_produces_warning(self) -> None:
+        """Test reference to undefined term produces warning."""
+        ftl = """
+msg = { -undefined }
+"""
+        result = validate_resource(ftl)
+
+        # Should warn about undefined term
+        assert len(result.warnings) > 0
+        assert any("undefined" in warn.message.lower() for warn in result.warnings)
+
+    def test_defined_message_reference_no_warning(self) -> None:
+        """Test reference to defined message produces no warning."""
+        ftl = """
+other = Other message
+msg = { other }
+"""
+        result = validate_resource(ftl)
+
+        # Should not warn about this reference
+        undefined_warnings = [
+            w for w in result.warnings if "undefined" in w.message.lower()
+        ]
+        assert len(undefined_warnings) == 0
+
+    def test_defined_term_reference_no_warning(self) -> None:
+        """Test reference to defined term produces no warning."""
+        ftl = """
+-brand = Firefox
+msg = { -brand }
+"""
+        result = validate_resource(ftl)
+
+        undefined_warnings = [
+            w for w in result.warnings if "undefined" in w.message.lower()
+        ]
+        assert len(undefined_warnings) == 0
+
+    def test_term_referencing_undefined_message(self) -> None:
+        """Test term that references undefined message."""
+        ftl = """
+-term = { undefined }
+"""
+        result = validate_resource(ftl)
+
+        # Should warn
+        assert any("undefined" in w.message.lower() for w in result.warnings)
+
+    def test_term_referencing_undefined_term(self) -> None:
+        """Test term that references undefined term."""
+        ftl = """
+-term1 = { -term2 }
+"""
+        result = validate_resource(ftl)
+
+        # Should warn
+        assert any("undefined" in w.message.lower() for w in result.warnings)
+
+
+class TestCircularReferenceDetection:
+    """Test detection of circular dependencies."""
+
+    def test_direct_message_self_reference(self) -> None:
+        """Test message referencing itself."""
+        ftl = """
+msg = { msg }
+"""
+        result = validate_resource(ftl)
+
+        # Should detect cycle
+        assert any("circular" in w.message.lower() for w in result.warnings)
+
+    def test_indirect_message_cycle(self) -> None:
+        """Test indirect message cycle (A -> B -> A)."""
+        ftl = """
+a = { b }
+b = { a }
+"""
+        result = validate_resource(ftl)
+
+        # Should detect cycle
+        assert any("circular" in w.message.lower() for w in result.warnings)
+
+    def test_three_way_message_cycle(self) -> None:
+        """Test three-way message cycle (A -> B -> C -> A)."""
+        ftl = """
+a = { b }
+b = { c }
+c = { a }
+"""
+        result = validate_resource(ftl)
+
+        # Should detect cycle
+        assert any("circular" in w.message.lower() for w in result.warnings)
+
+    def test_direct_term_self_reference(self) -> None:
+        """Test term referencing itself."""
+        ftl = """
+-term = { -term }
+"""
+        result = validate_resource(ftl)
+
+        # Should detect cycle
+        assert any("circular" in w.message.lower() for w in result.warnings)
+
+    def test_indirect_term_cycle(self) -> None:
+        """Test indirect term cycle."""
+        ftl = """
+-a = { -b }
+-b = { -a }
+"""
+        result = validate_resource(ftl)
+
+        # Should detect cycle
+        assert any("circular" in w.message.lower() for w in result.warnings)
+
+    def test_no_cycle_in_tree_structure(self) -> None:
+        """Test tree structure (no cycles) produces no warnings."""
+        ftl = """
+base = Base
+a = { base }
+b = { base }
+c = { a }
+"""
+        result = validate_resource(ftl)
+
+        # Should not warn about cycles
+        circular_warnings = [
+            w for w in result.warnings if "circular" in w.message.lower()
+        ]
+        assert len(circular_warnings) == 0
+
+
+class TestValidationResultStructure:
+    """Test ValidationResult structure and properties."""
+
+    def test_valid_ftl_has_no_errors(self) -> None:
+        """Test valid FTL produces is_valid=True."""
+        ftl = """
+msg = Hello
+-term = World
+"""
+        result = validate_resource(ftl)
+
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_parse_error_sets_is_valid_false(self) -> None:
+        """Test parse errors set is_valid=False."""
+        ftl = "invalid junk"
+        result = validate_resource(ftl)
+
+        # Should have errors and be invalid
+        # (unless parser treats it as comment)
+        if len(result.errors) > 0:
+            assert not result.is_valid
+
+    def test_warnings_dont_affect_is_valid(self) -> None:
+        """Test warnings don't set is_valid=False."""
+        ftl = """
+msg = { undefined }
+"""
+        result = validate_resource(ftl)
+
+        # May have warnings but no errors
+        if len(result.errors) == 0:
+            assert result.is_valid
+
+    def test_validation_result_has_all_fields(self) -> None:
+        """Test ValidationResult has all expected fields."""
+        ftl = "msg = Test"
+        result = validate_resource(ftl)
+
+        assert hasattr(result, "errors")
+        assert hasattr(result, "warnings")
+        assert hasattr(result, "annotations")
+        assert hasattr(result, "is_valid")
+
+        assert isinstance(result.errors, tuple)
+        assert isinstance(result.warnings, tuple)
+        assert isinstance(result.annotations, tuple)
+
+
+class TestCustomParserInstance:
+    """Test validate_resource with custom parser."""
+
+    def test_validate_with_custom_parser(self) -> None:
+        """Test validate_resource accepts custom parser."""
+        from ftllexengine.syntax.parser import FluentParserV1
+
+        parser = FluentParserV1()
+        ftl = "msg = Test"
+
+        result = validate_resource(ftl, parser=parser)
+        assert result is not None
+        assert result.is_valid
+
+    def test_validate_creates_default_parser_if_none(self) -> None:
+        """Test validate_resource creates parser if not provided."""
+        ftl = "msg = Test"
+        result = validate_resource(ftl)
+
+        assert result is not None
+
+
+class TestEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    def test_empty_resource(self) -> None:
+        """Test validation of empty resource."""
+        ftl = ""
+        result = validate_resource(ftl)
+
+        assert result is not None
+        # Empty resource is valid
+        assert result.is_valid
+
+    def test_only_comments(self) -> None:
+        """Test resource with only comments."""
+        ftl = """
+# Comment 1
+## Comment 2
+### Comment 3
+"""
+        result = validate_resource(ftl)
+
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+    def test_comments_and_valid_entries(self) -> None:
+        """Test mixed comments and entries."""
+        ftl = """
+# Header comment
+msg = Value
+
+## Section
+-term = Term value
+"""
+        result = validate_resource(ftl)
+
+        assert result.is_valid
+
+    def test_whitespace_only(self) -> None:
+        """Test resource with only whitespace."""
+        ftl = "   \n\n      \n"  # Spaces only, no tabs (tabs can be invalid FTL)
+        result = validate_resource(ftl)
+
+        # Should be valid or may have parse errors depending on tab handling
+        assert result is not None
+
+    @given(
+        st.text(
+            alphabet=st.sampled_from(" \n\r"),  # Only safe whitespace chars
+            min_size=0,
+            max_size=100,
+        )
+    )
+    def test_whitespace_property(self, whitespace: str) -> None:
+        """PROPERTY: Whitespace-only resources don't crash validation.
+
+        Events emitted:
+        - length_category={bucket}: Length bucket (empty, short, medium, long)
+        - has_newlines={bool}: Whether input contains newlines
+        """
+
+        # Emit events for semantic coverage
+        length = len(whitespace)
+        if length == 0:
+            event("length_category=empty")
+        elif length < 10:
+            event("length_category=short")
+        elif length < 50:
+            event("length_category=medium")
+        else:
+            event("length_category=long")
+
+        event(f"has_newlines={'\n' in whitespace}")
+
+        result = validate_resource(whitespace)
+        # Should not crash (may have errors, but completes)
+        assert result is not None
+
+
+class TestComplexScenarios:
+    """Test complex validation scenarios."""
+
+    def test_large_resource_with_multiple_issues(self) -> None:
+        """Test resource with multiple types of issues."""
+        ftl = """
+# Valid comment
+msg1 = Value
+
+# Duplicate ID
+msg1 = Second value
+
+# Undefined reference
+msg2 = { undefined }
+
+# Circular reference
+a = { b }
+b = { a }
+
+# Invalid syntax
+invalid junk
+
+# Valid term
+-term = Term
+"""
+        result = validate_resource(ftl)
+
+        # Should collect all issues
+        assert len(result.errors) + len(result.warnings) > 0
+
+    def test_deeply_nested_references(self) -> None:
+        """Test chain of references without cycles."""
+        ftl = """
+msg1 = Value
+msg2 = { msg1 }
+msg3 = { msg2 }
+msg4 = { msg3 }
+msg5 = { msg4 }
+"""
+        result = validate_resource(ftl)
+
+        # Should be valid (no cycles)
+        circular_warnings = [
+            w for w in result.warnings if "circular" in w.message.lower()
+        ]
+        assert len(circular_warnings) == 0
+
+    def test_message_and_term_with_same_base_name(self) -> None:
+        """Test message and term can have same name (different namespaces)."""
+        ftl = """
+brand = Message
+-brand = Term
+msg = { brand } and { -brand }
+"""
+        result = validate_resource(ftl)
+
+        # Should be valid - different namespaces
+        undefined_warnings = [
+            w for w in result.warnings if "undefined" in w.message.lower()
+        ]
+        assert len(undefined_warnings) == 0
+
+
+class TestValidationIntegration:
+    """Integration tests combining multiple validation passes."""
+
+    def test_all_validation_passes_execute(self) -> None:
+        """Test all validation passes execute in sequence."""
+        ftl = """
+# Syntax error
+invalid
+
+# Duplicate
+msg = First
+msg = Second
+
+# Undefined reference
+ref = { missing }
+
+# Circular reference
+c1 = { c2 }
+c2 = { c1 }
+"""
+        result = validate_resource(ftl)
+
+        # Should have collected issues from all passes
+        total_issues = len(result.errors) + len(result.warnings)
+        assert total_issues > 0
+
+    @given(
+        st.lists(
+            st.from_regex(r"[a-z]+", fullmatch=True),
+            min_size=1,
+            max_size=10,
+            unique=True,
+        )
+    )
+    def test_valid_messages_property(self, identifiers: list[str]) -> None:
+        """PROPERTY: Valid messages with unique IDs validate successfully.
+
+        Events emitted:
+        - message_count={n}: Number of messages in resource
+        """
+
+        ftl_lines = [f"{id_} = Value for {id_}" for id_ in identifiers]
+        ftl = "\n".join(ftl_lines)
+
+        # Emit event for message count
+        event(f"message_count={len(identifiers)}")
+
+        result = validate_resource(ftl)
+
+        # Should be valid
+        assert result.is_valid
+        assert len(result.errors) == 0

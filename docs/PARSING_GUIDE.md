@@ -34,6 +34,35 @@ assert errors == ()
 assert delivery_date.isoformat() == "2026-03-15"
 ```
 
+The parsing boundary also normalizes invisible bidi control marks and locale-native
+digit sets. Strings copied from RTL UI output, including Arabic-Indic digits or
+Fluent isolation marks, can be parsed directly without pre-cleaning.
+
+## Ambiguous Currency Symbols
+
+Some currency symbols map to multiple ISO codes. `"$4.25"` is not enough information by
+itself because `$` is used by several currencies. FTLLexEngine returns a structured parse
+error instead of guessing.
+
+```python
+from decimal import Decimal
+from ftllexengine.parsing import parse_currency
+
+money, errors = parse_currency("$4.25", "en_US")
+assert money is None
+assert errors
+
+money, errors = parse_currency("$4.25", "en_US", infer_from_locale=True)
+assert errors == ()
+assert money == (Decimal("4.25"), "USD")
+```
+
+For user-entered form fields, choose one rule and apply it consistently:
+
+- If the request locale is authoritative, use `infer_from_locale=True`.
+- If the field contract is fixed, pass `default_currency="USD"` or another ISO code.
+- If users can submit mixed currencies, require ISO codes like `USD 4.25` or `4,25 EUR`.
+
 ## FluentNumber Parsing
 
 `parse_fluent_number()` returns a `FluentNumber`, preserving both the numeric value and the localized display string.

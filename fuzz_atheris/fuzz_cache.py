@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: cache - High-pressure Cache Race & Concurrency
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """High-Pressure Cache Race and Integrity Fuzzer (Atheris).
 
 Targets: ftllexengine.runtime.cache (via FluentBundle public API)
@@ -261,8 +256,9 @@ def _validate_cache_audit_entry(
     entry: WriteLogEntry,
     *,
     last_timestamp: float,
-) -> float:
-    """Validate one audit-log entry and return its timestamp."""
+    last_sequence: int,
+) -> tuple[float, int]:
+    """Validate one audit-log entry and return timestamp plus audit sequence."""
     if entry.operation not in _VALID_AUDIT_OPERATIONS:
         msg = f"Unexpected audit operation {entry.operation!r}"
         raise CacheFuzzError(msg)
@@ -273,6 +269,12 @@ def _validate_cache_audit_entry(
         msg = (
             "Audit log timestamps must be non-decreasing: "
             f"{last_timestamp} -> {entry.timestamp}"
+        )
+        raise CacheFuzzError(msg)
+    if entry.sequence <= last_sequence:
+        msg = (
+            "Audit log sequences must be strictly increasing: "
+            f"{last_sequence} -> {entry.sequence}"
         )
         raise CacheFuzzError(msg)
     # wall_time_unix is a Unix timestamp (time.time()); must be a positive float.
@@ -288,18 +290,21 @@ def _validate_cache_audit_entry(
         raise CacheFuzzError(msg)
 
     if entry.operation == "MISS":
-        if entry.sequence != 0 or entry.checksum_hex != "":
-            msg = "MISS audit entries must have sequence=0 and empty checksum"
+        if entry.checksum_hex != "" or entry.cache_sequence < 0:
+            msg = (
+                "MISS audit entries must have empty checksum and "
+                "non-negative cache_sequence"
+            )
             raise CacheFuzzError(msg)
-        return entry.timestamp
+        return entry.timestamp, entry.sequence
 
-    if entry.sequence <= 0 or entry.checksum_hex == "":
+    if entry.checksum_hex == "" or entry.cache_sequence <= 0:
         msg = (
-            f"{entry.operation} audit entries must carry a positive sequence "
+            f"{entry.operation} audit entries must carry a positive cache_sequence "
             "and non-empty checksum"
         )
         raise CacheFuzzError(msg)
-    return entry.timestamp
+    return entry.timestamp, entry.sequence
 
 
 def _collect_cache_observability(
@@ -354,13 +359,15 @@ def _collect_cache_observability(
         return
 
     last_timestamp = float("-inf")
+    last_sequence = 0
     for entry in audit_log:
         if not isinstance(entry, WriteLogEntry):
             msg = "get_cache_audit_log() returned non-WriteLogEntry entries"
             raise CacheFuzzError(msg)
-        last_timestamp = _validate_cache_audit_entry(
+        last_timestamp, last_sequence = _validate_cache_audit_entry(
             entry,
             last_timestamp=last_timestamp,
+            last_sequence=last_sequence,
         )
 
 

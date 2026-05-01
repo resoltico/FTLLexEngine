@@ -33,6 +33,13 @@ python_exec_globs = [
     "docs/VALIDATION_GUIDE.md",
     "docs/WORKFLOW_TOUR.md",
 ]
+# Markdown files whose bash/sh fences are the canonical quick-start shell workflows.
+shell_exec_globs = [
+    "docs/FUZZING_GUIDE.md",
+    "docs/FUZZING_GUIDE_ATHERIS.md",
+    "docs/FUZZING_GUIDE_HYPOFUZZ.md",
+    "fuzz_atheris/README.md",
+]
 # Substrings that trigger skipping a specific FTL code block
 skip_markers = [
     "# ←",
@@ -50,6 +57,7 @@ skip_markers = [
 ]
 # Path to the parser class used for validation
 parser_path = "ftllexengine.syntax.parser:FluentParserV1"
+shell_exec_timeout_seconds = 180
 
 [project]
 name = "ftllexengine"
@@ -122,15 +130,16 @@ dev = [
     "Babel>=2.18.0,<3.0.0",  # Required for tests (locale formatting, parsing)
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.152.1",
+    "hypothesis>=6.152.4",
     "mypy>=1.20.2",
-    "ruff>=0.15.11",
+    "ruff>=0.15.12",
     "pytest-benchmark>=5.2.3",
     "psutil>=7.2.2",
     "types-psutil>=7.2.2.20260408",
 ]
 
 fuzz = [
+    "hypothesis[cli]>=6.152.4",
     "hypofuzz>=25.11.1",
 ]
 
@@ -139,7 +148,7 @@ atheris = [
 ]
 
 release = [
-    "build>=1.4.3",
+    "build>=1.5.0",
     "twine>=6.2.0",
 ]
 
@@ -475,6 +484,12 @@ ignore = [
 "tests/test_integration_coverage.py" = ["N802", "PLC0415"]
 "tests/test_syntax_validator.py" = ["PLC0415"]
 "tests/test_validation_resource.py" = ["PLC0415"]
+"tests/*_cases/*.py" = ["F405", "PLC0415"]
+"tests/parsing_dates_cases/*.py" = ["DTZ001", "F405", "PLC0415"]
+"tests/syntax_visitor_cases/*.py" = ["F405", "N802"]
+"tests/syntax_visitor_transformer_cases/*.py" = ["F405", "N802", "ARG002"]
+"tests/syntax_visitor_cases/__init__.py" = ["N802"]
+"tests/syntax_visitor_transformer_cases/__init__.py" = ["N802"]
 # Fuzzing: pytestmark precedes later imports for file-level marker application
 "tests/fuzz/test_syntax_parser_grammar.py" = ["E402"]
 "tests/fuzz/test_syntax_parser_whitespace.py" = ["E402"]

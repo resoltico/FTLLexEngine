@@ -1,12 +1,19 @@
 # SQLite3 Multiple Ciphers 2.3.3 / SQLite 3.53.0 Agent Protocol
 
-This protocol governs agent work on projects that build, vendor, link, wrap, configure, distribute, test, or operate **SQLite3 Multiple Ciphers 2.3.3**, based on **SQLite 3.53.0**.
+**Version:** 2.0.0
+**Updated:** 2026-04-27
+**Inherits:** [.codex/UNIVERSAL_ENGINEERING_CONTRACT.md](./UNIVERSAL_ENGINEERING_CONTRACT.md) v2.0.0+
+**Scope:** projects that build, vendor, link, wrap, configure, distribute, test, or operate **SQLite3 Multiple Ciphers 2.3.3**, based on **SQLite 3.53.0**. Includes C and C++ integrations, amalgamation builds, static or shared library packaging, embedded applications, CLIs, services, language bindings, JNI/JNA, Python/Rust/Node/.NET/Java/Kotlin wrappers, SQL migrations, encrypted database files, PRAGMA/URI configuration, key and rekey flows, backups, WAL/journal behavior, build flags, and cross-platform distribution.
 
-Scope: C and C++ integrations, amalgamation builds, static or shared library packaging, embedded applications, CLIs, services, language bindings, JNI/JNA, Python/Rust/Node/.NET/Java/Kotlin wrappers, SQL migrations, encrypted database files, PRAGMA/URI configuration, key and rekey flows, backups, WAL/journal behavior, build flags, and cross-platform distribution.
+## 0. Scope and inheritance
 
-Primary objective: preserve data integrity, encryption correctness, key safety, SQLite compatibility, build reproducibility, and clear ownership of database/file-format contracts.
+This protocol inherits the Universal Engineering Contract. The universal contract defines the meta-questions every change must answer — Truth, Evidence, Consequence, Invariant, Justification, Re-cueing — and frames the agent as a *transient theory-holder*. Apply the universal contract before any rule below; do not restate it here. When SQLite3MC is used from Java, Kotlin, Python, Rust, C, C++, or another runtime, apply this protocol in addition to the relevant language protocol.
 
-Optimize in this order:
+This protocol adds SQLite3MC- and SQLite-specific content for which the universal contract is intentionally silent: cipher and key lifecycle, file-format state, native-library identity across compile and runtime, SQL/SQLite version compatibility, FFI safety, and the at-rest encryption boundary.
+
+**Primary objective:** preserve data integrity, encryption correctness, key safety, SQLite compatibility, build reproducibility, and clear ownership of database/file-format contracts.
+
+**Optimization order:**
 
 ```text
 data integrity → key safety → cipher/file-format compatibility → source-of-truth clarity → portability → observability without leakage → performance where measured → terseness
@@ -14,7 +21,20 @@ data integrity → key safety → cipher/file-format compatibility → source-of
 
 Convenience loses to data safety. Local build success loses to runtime link correctness. Encryption that is not tested as encryption is not verified. A wrapper API that hides key ownership, cipher selection, or migration behavior is not finished.
 
-This protocol inherits `.codex/UNIVERSAL_ENGINEERING_CONTRACT.md`. Apply the universal Truth / Evidence / Consequence / Invariant / Preservation map before all SQLite3MC-specific rules. When SQLite3MC is used from Java, Kotlin, Python, Rust, C, C++, or another runtime, apply this protocol in addition to the relevant language protocol.
+### 0.1 SQLite3MC + SQLite 3.53 tacit gaps
+
+Per the Naurian frame, some theory the agent typically does not bring in cold and must surface rather than paper over. Watch especially for:
+
+- Whether the headers at compile time, the static or shared library linked at build time, and the dynamic library actually loaded at runtime are the same SQLite3MC version. A single file will not answer this; the agent must verify across phases.
+- Whether the application actually loads SQLite3MC at runtime, or quietly resolves to a system SQLite. "Drop-in replacement" is a code property, not a runtime guarantee.
+- Whether encrypted-database test fixtures reflect production cipher, KDF, page size, and reserve-byte settings — or were created with default settings and so prove nothing about the deployed format.
+- Whether keys ever appear in URIs, `ATTACH ... KEY` statements, `PRAGMA key`/`rekey`, debug captures, query logs, crash reports, shell history, or process listings. Every one of these is a real production leak class.
+- Whether `TEMP` tables, in-memory databases, or bytes 16–23 of the database file are inside or outside the threat model. The encryption boundary is non-obvious and easy to assume away.
+- Whether old SQLCipher, sqleet, or SQLite Encryption Extension conventions still inform the codebase. SQLite3MC is API-compatible in many places but is not identical, and copy-pasted SQLCipher recipes can silently drift.
+- Whether SQLite 3.52.0 (withdrawn upstream) is still pinned anywhere as a fallback baseline.
+- Whether the secure cipher-state nullification path that distinguishes SQLite3MC 2.3.3 from older releases is still intact. It looks redundant; removing it is a security regression.
+
+Where the answer is not derivable from code, history, or conversation, surface the gap explicitly; do not assume the convenient answer.
 
 ---
 
@@ -35,7 +55,8 @@ Inspect the relevant subset of:
 - database lifecycle: initial creation, open, authentication/keying, migration, attach/detach, backup, restore, VACUUM, WAL checkpointing, rekeying, decryption, compaction, corruption handling, and deletion;
 - file-format assumptions: cipher scheme, page size, reserve bytes, plaintext header policy, KDF settings, legacy compatibility, `user_version`, schema migrations, and database compatibility fixtures;
 - journaling and temp behavior: rollback journal, WAL, shared memory files, temporary tables, in-memory databases, temp-store configuration, and file-permission policy;
-- tests and evidence: encrypted fixture files, wrong-key tests, rekey tests, migration tests, cross-platform CI, sanitizer runs, Valgrind, fuzzers, SQL logic tests, and production observability.
+- tests and evidence: encrypted fixture files, wrong-key tests, rekey tests, migration tests, cross-platform CI, sanitizer runs, Valgrind, fuzzers, SQL logic tests, and production observability;
+- the universal contract's six concerns (truth, evidence, consequence, invariant, justification, re-cueing) for the touched surface.
 
 Classify the touched surface before designing the change:
 
@@ -54,35 +75,20 @@ Do not infer SQLite3MC behavior from ordinary SQLite alone. SQLite3MC is intenti
 
 ### 2.1 Minimum system map
 
-For every non-trivial SQLite3MC change, identify:
+For every non-trivial SQLite3MC change, apply the universal contract §1 system map (Truth / Evidence / Consequence / Invariant / Justification / Re-cueing) to the touched surface. SQLite3MC-specific anchors for each concern:
 
-```text
-Truth:
-- Canonical owner of SQLite3MC version, SQLite source version, compile options, default cipher, legacy flags, and binding/runtime package version:
-- Source of truth for key material and key lifecycle:
-- Source of truth for database schema, migrations, cipher configuration, page format, and fixtures:
-- Derived/generated copies: amalgamation, headers, wrappers, package metadata, docs, CI images, lock files:
-
-Evidence:
-- Checks proving native build correctness, runtime link correctness, encryption roundtrip, wrong-key failure, rekey, migration, backup/restore, and language binding behavior:
-- Missing feedback worth adding:
-
-Consequence:
-- Direct dependencies: callers, wrappers, SQL scripts, migrations, bindings, tests, packaging, CLI tools, deployment images:
-- Indirect dependencies: stored database files, backups, restore tools, support workflows, monitoring, user data, compliance, release process:
-
-Invariant:
-- Data, encryption, file-format, key-safety, ABI/API, migration, or compatibility rule that must remain true:
-
-Preservation:
-- Where learned theory belongs: build manifest, test fixture, migration note, wrapper API, safety comment, runbook, AFAD-managed doc, release checklist, CI assertion:
-```
+- **Truth:** canonical owner of SQLite3MC version, SQLite source version, compile options, default cipher, legacy flags, binding/runtime package version; canonical owner of key material and key lifecycle; canonical owner of database schema, migrations, cipher configuration, page format, and fixtures; derived/generated copies (amalgamation, headers, wrappers, package metadata, docs, CI images, lock files).
+- **Evidence:** native build correctness, runtime link correctness, encryption roundtrip, wrong-key failure, rekey, migration, backup/restore, language binding behavior; missing feedback worth adding.
+- **Consequence:** direct (callers, wrappers, SQL scripts, migrations, bindings, tests, packaging, CLI tools, deployment images); indirect (stored database files, backups, restore tools, support workflows, monitoring, user data, compliance, release process).
+- **Invariant:** data, encryption, file-format, key-safety, ABI/API, migration, or compatibility rule that must remain true.
+- **Justification:** why each cipher / page-size / KDF / legacy-mode choice is the way it is, and which are inherited rather than deliberately chosen. If the answer is not available, surface that gap.
+- **Re-cueing:** where the learned theory belongs — build manifest, test fixture, migration note, wrapper API, safety comment, runbook, AFAD-managed doc, release checklist, CI assertion. Flag the parts of the theory that cannot be written down, and who currently holds them.
 
 Keep this lightweight for low-risk edits. Do not skip it for changes that affect encryption, persisted files, build flags, runtime linking, migrations, or key handling.
 
 ### 2.2 Red → Green → Refactor
 
-For new behavior or bug fixes, start with the smallest failing proof:
+Per universal contract §2. SQLite3MC-typical "smallest failing proofs":
 
 - encrypted open/read/write roundtrip;
 - wrong-key rejection;
@@ -100,25 +106,22 @@ Then make the smallest coherent implementation and immediately refactor until th
 
 ### 2.3 Narrow-to-wide verification
 
-Work in small increments:
-
-1. make one coherent change;
-2. run the narrowest relevant check, such as a native build target, one integration test, a single binding test, or one fixture migration;
-3. inspect the first real failure;
-4. fix the root cause;
-5. rerun the narrow check;
-6. widen to repository-required verification before completion.
-
-For SQLite3MC, widening usually means verifying both compile-time and runtime facts: the code compiled against the intended headers and also loaded the intended library at runtime.
+Per universal contract §2 and §7 (Feedback must match risk). For SQLite3MC, widening usually means verifying both compile-time and runtime facts: the code compiled against the intended headers and also loaded the intended library at runtime. The two are independent; a green compile-time check does not prove the runtime answer.
 
 ### 2.4 Root-cause fixes only
 
-When verification fails:
+Per universal contract §0 ("the agent must not paper over what it does not have") and §2 (read the actual failure). When verification fails, distinguish among SQLite3MC-specific root causes:
 
-- read the actual SQLite error code, extended error code, native build diagnostic, linker output, sanitizer report, migration diff, or fixture mismatch;
-- determine whether the root is key timing, wrong cipher configuration, stale generated source, mixed headers/library, runtime library shadowing, unsupported SQL, file permissions, WAL/journal mode, platform target, or actual corruption;
-- fix that cause;
-- preserve the failing proof if it guards real data safety or compatibility.
+- key timing,
+- wrong cipher configuration,
+- stale generated source,
+- mixed headers/library,
+- runtime library shadowing,
+- unsupported SQL,
+- file permissions,
+- WAL/journal mode,
+- platform target,
+- actual corruption.
 
 Do not:
 
@@ -145,9 +148,9 @@ Underlying SQLite:        3.53.0
 
 Use the repository's pinned version when it is more specific. Do not upgrade or downgrade SQLite3MC without a compatibility judgment, migration-risk assessment, and verification plan.
 
-SQLite3MC 2.3.3 includes the upstream SQLite 3.53.0 baseline and fixes secure nullification of cipher data structures on freeing. Treat any edit around cipher state cleanup as security-sensitive. Do not remove zeroization, nullification, or cleanup paths because they look redundant.
+SQLite3MC 2.3.3 includes the upstream SQLite 3.53.0 baseline and fixes secure nullification of cipher data structures on freeing. Treat any edit around cipher state cleanup as security-sensitive. Do not remove zeroization, nullification, or cleanup paths because they look redundant — this is exactly the kind of code where Naur's "amorphous additions" warning bites in reverse.
 
-SQLite 3.53.0 includes a fix for the WAL-reset database corruption bug. Do not downgrade to a pre-fix SQLite baseline without explicitly accepting the risk and preserving a reason.
+SQLite 3.53.0 includes a fix for the WAL-reset database corruption bug. Do not downgrade to a pre-fix SQLite baseline without explicitly accepting the risk and recording the justification (per universal contract §1.5).
 
 ### 3.2 SQLite 3.53.0 feature posture
 
@@ -168,7 +171,7 @@ Do not write code or migrations that silently require 3.53.0 if production, test
 
 ### 3.3 SQLite 3.52 warning
 
-SQLite 3.52.0 was withdrawn upstream. Do not select SQLite3MC 2.3.0 / SQLite 3.52.0 as a fallback baseline. If a repository already contains that version, surface the issue and prefer moving to SQLite3MC 2.3.3 or a project-approved fixed baseline.
+SQLite 3.52.0 was withdrawn upstream. Do not select SQLite3MC 2.3.0 / SQLite 3.52.0 as a fallback baseline. If a repository already contains that version (see §0.1), surface the issue and prefer moving to SQLite3MC 2.3.3 or a project-approved fixed baseline.
 
 ---
 
@@ -176,7 +179,7 @@ SQLite 3.52.0 was withdrawn upstream. Do not select SQLite3MC 2.3.0 / SQLite 3.5
 
 ### 4.1 One owner for version and build facts
 
-SQLite3MC version, SQLite source version, release tag, commit hash, checksums, compile flags, enabled extensions, default cipher, legacy options, and platform artifact versions must have one canonical owner.
+Per universal contract §5 (canonical ownership of contract facts). For SQLite3MC, the contract facts that need a single owner include: SQLite3MC version, SQLite source version, release tag, commit hash, checksums, compile flags, enabled extensions, default cipher, legacy options, and platform artifact versions.
 
 Acceptable owners include:
 
@@ -214,7 +217,7 @@ The following must agree unless the repository has an explicit compatibility shi
 - compile-option observations such as `PRAGMA compile_options` or `sqlite3_compileoption_get()`;
 - language-binding reported versions.
 
-A common failure mode is compiling against the intended SQLite3MC headers while loading a system SQLite library at runtime. Always verify runtime identity when touching packaging, dynamic linking, containers, or language bindings.
+A common failure mode — and the headline tacit gap from §0.1 — is compiling against the intended SQLite3MC headers while loading a system SQLite library at runtime. Always verify runtime identity when touching packaging, dynamic linking, containers, or language bindings.
 
 ---
 
@@ -332,6 +335,8 @@ SQLite3MC supports multiple cipher schemes, including:
 For new development, do not choose AES-CBC-without-HMAC or RC4 unless the task is explicitly legacy compatibility. Treat legacy modes as migration targets, not modern defaults.
 
 Cipher configuration is file-format state. Changing cipher scheme, KDF parameters, page size, reserve bytes, plaintext header behavior, or legacy mode requires migration tests using real fixtures.
+
+Per universal contract §1.5 (Justification), record *why* the cipher, KDF, and page-format choice is the way it is — threat model, performance budget, legacy compatibility, regulatory constraint, or inherited default. A choice without a recorded reason cannot be safely re-evaluated by the next reader.
 
 ### 6.4 Rekey and cipher migration
 
@@ -619,7 +624,7 @@ SQLite3MC protects database contents at rest under defined assumptions. It does 
 - keys stored beside the database;
 - compromised application users or compromised hosts.
 
-State the real threat model when changing encryption behavior.
+State the real threat model when changing encryption behavior. The threat model is itself theory in Naur's sense — usually held by a security stakeholder, often not in the diff. Where the agent is acting without it, surface the gap (per universal contract §0).
 
 ### 11.2 Secret redaction
 
@@ -688,9 +693,7 @@ Do not log full SQL statements if they can include keys or sensitive data. If qu
 
 ## 13. Deletion and blast-radius rules
 
-Before deleting or replacing any SQLite3MC component, prove the blast radius.
-
-Check:
+Per universal contract §8 (deletion and simplification require proof). SQLite3MC-specific blast-radius surfaces beyond the universal list:
 
 - native source files and generated amalgamation paths;
 - headers and exported symbols;
@@ -702,15 +705,15 @@ Check:
 - docs, examples, runbooks, and release checklists;
 - production data files and backups that may require legacy cipher support.
 
-Removing a cipher, compile option, wrapper method, or legacy compatibility flag can strand existing encrypted databases. Treat such deletion as a data-migration decision, not cleanup.
+Removing a cipher, compile option, wrapper method, or legacy compatibility flag can strand existing encrypted databases. Treat such deletion as a data-migration decision, not cleanup. Naur's "amorphous additions" warning applies in reverse here: a deletion made without the cipher/file-format theory destroys structure that *looks* redundant but is in fact load-bearing for some existing on-disk file the agent has never seen.
 
 ---
 
-## 14. Documentation and preservation
+## 14. Documentation and re-cueing
 
 Use `.codex/PROTOCOL_AFAD.md` for docs that describe SQLite3MC integration, public APIs, migrations, operational procedures, or code/documentation synchronization.
 
-Preserve system theory in the smallest durable place:
+Per universal contract §1.6 (re-cueing), preserve the cues that let the next reader rebuild the relevant slice of theory. SQLite3MC-specific homes for those cues:
 
 - version/build facts in the canonical dependency manifest;
 - cipher choices and migration rationale in migration notes or AFAD-managed docs;
@@ -720,24 +723,26 @@ Preserve system theory in the smallest durable place:
 - compatibility fixtures in tests;
 - operational recovery in runbooks.
 
+Theory the agent could not write down — production threat model nuance, why a particular legacy fixture exists, who chose the current KDF settings, what historical incident led to a defensive zeroization path — should be flagged as a known re-cueing gap so the next reader knows where to ask. Do not pretend an artifact transfers a theory it can only re-cue.
+
 The repository root `README.md` remains a storefront. It may mention that the project supports encrypted SQLite, but detailed cipher configuration, key management, and migration mechanics belong in deeper docs.
 
 ---
 
 ## 15. Completion checklist
 
-Before declaring a SQLite3MC-related change complete, answer:
+The universal contract §10 (stop conditions) covers the cross-language stops, and §9 defines the agent output template. The checks below are SQLite3MC-specific additions; do not duplicate the universal output template here.
 
 ```text
 Baseline:
-- Did I verify the intended SQLite3MC and SQLite versions at build time and runtime?
+- Did I verify the intended SQLite3MC and SQLite versions at build time AND runtime?
 
 Truth:
 - Did I preserve one canonical owner for version, compile options, cipher defaults, key lifecycle, and migration state?
 
 Evidence:
-- Did I run the narrow and required broad checks?
 - For encryption changes, did I prove correct-key success, wrong-key failure, and absence of obvious plaintext leakage?
+- Did I verify against real encrypted fixtures, not only freshly created scratch databases?
 
 Consequence:
 - Did I trace packaging, linking, language bindings, stored files, backups, and support tools?
@@ -745,8 +750,12 @@ Consequence:
 Invariant:
 - Did data integrity, key safety, cipher compatibility, ABI/API compatibility, and migration safety remain intact?
 
-Preservation:
+Justification:
+- Can I explain why each touched cipher, page-size, KDF, or legacy-mode choice is the way it is — or have I surfaced that as a known gap rather than silently changing it?
+
+Re-cueing:
 - Did I update tests, fixtures, build assertions, docs, runbooks, or comments where the learned theory belongs?
+- Did I flag what could not be written down, and who currently holds it?
 
 Leakage:
 - Did I avoid logging, committing, or documenting real secrets or key-bearing commands?

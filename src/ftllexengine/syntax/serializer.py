@@ -27,32 +27,24 @@ from .ast import (
     CallArguments,
     Comment,
     Expression,
-    FunctionReference,
-    Identifier,
     Junk,
     Message,
-    MessageReference,
-    NamedArgument,
-    NumberLiteral,
     Pattern,
-    Placeable,
     Resource,
     SelectExpression,
-    StringLiteral,
     Term,
-    TermReference,
-    TextElement,
-    VariableReference,
 )
-from .serializer_lines import (
-    _ATTR_INDENT,
-    _CHAR_PLACEABLE,
-    _CONT_INDENT,
-    _VARIANT_INDENT,
-    _classify_line,
-    _escape_text,
-    _LineKind,
+from .serializer_engine import emit_classified_line as _emit_classified_line_impl
+from .serializer_engine import (
+    pattern_needs_separate_line as _pattern_needs_separate_line_impl,
 )
+from .serializer_engine import serialize_call_arguments as _serialize_call_arguments_impl
+from .serializer_engine import serialize_expression as _serialize_expression_impl
+from .serializer_engine import serialize_pattern as _serialize_pattern_impl
+from .serializer_engine import (
+    serialize_select_expression as _serialize_select_expression_impl,
+)
+from .serializer_lines import _ATTR_INDENT
 from .serializer_validation import (
     SerializationDepthError,
     SerializationValidationError,
@@ -179,8 +171,7 @@ class FluentSerializer(ASTVisitor):
                         and isinstance(entry, Comment)
                         and prev_entry.type == entry.type
                     ) or (
-                        isinstance(prev_entry, Comment)
-                        and isinstance(entry, (Message, Term))
+                        isinstance(prev_entry, Comment) and isinstance(entry, (Message, Term))
                         # Standalone Comment followed by Message/Term needs extra blank
                         # to prevent the comment from becoming attached on re-parse
                     )
@@ -199,9 +190,7 @@ class FluentSerializer(ASTVisitor):
                         # (Junk's own line-end "\n" + one blank-line "\n").
                         # Adding an unconditional "\n" would grow the blank count
                         # by one on every parse/serialize cycle.
-                        trailing_n = len(prev_entry.content) - len(
-                            prev_entry.content.rstrip("\n")
-                        )
+                        trailing_n = len(prev_entry.content) - len(prev_entry.content.rstrip("\n"))
                         if trailing_n < 2:
                             output.append("\n" * (2 - trailing_n))
                     else:
@@ -229,9 +218,7 @@ class FluentSerializer(ASTVisitor):
             case _ as unreachable:  # pragma: no cover
                 assert_never(unreachable)
 
-    def _serialize_message(
-        self, node: Message, output: list[str], depth_guard: DepthGuard
-    ) -> None:
+    def _serialize_message(self, node: Message, output: list[str], depth_guard: DepthGuard) -> None:
         """Serialize Message."""
         # Comment if present (attached comment, no blank line before message)
         # Per Fluent spec, attached comments (#) should immediately precede their entry
@@ -253,9 +240,7 @@ class FluentSerializer(ASTVisitor):
 
         output.append("\n")
 
-    def _serialize_term(
-        self, node: Term, output: list[str], depth_guard: DepthGuard
-    ) -> None:
+    def _serialize_term(self, node: Term, output: list[str], depth_guard: DepthGuard) -> None:
         """Serialize Term."""
         # Comment if present (attached comment, no blank line before term)
         # Per Fluent spec, attached comments (#) should immediately precede their entry
@@ -316,261 +301,50 @@ class FluentSerializer(ASTVisitor):
             output.append("\n")
 
     def _pattern_needs_separate_line(self, pattern: Pattern) -> bool:
-        """Check if pattern needs separate-line serialization for roundtrip correctness.
+        """Return True when a pattern requires separate-line mode."""
+        return _pattern_needs_separate_line_impl(pattern)
 
-        Returns True when a continuation line with NORMAL content has leading
-        whitespace that would be consumed as structural indent during re-parse.
-        Two triggers:
-
-        1. Cross-element: A TextElement starting with whitespace is preceded by
-           an element ending with newline, AND its first line classifies as
-           NORMAL. WHITESPACE_ONLY and SYNTAX_LEADING lines are handled by
-           per-line wrapping in _emit_classified_line and do not need
-           separate-line mode.
-
-        2. Intra-element: A single TextElement contains an embedded newline
-           followed by whitespace on a NORMAL line (not WHITESPACE_ONLY or
-           SYNTAX_LEADING, which are handled by per-line wrapping).
-
-        Both triggers use _classify_line to determine if separate-line mode is
-        actually needed.  Per-line wrapping converts TextElements into Placeables,
-        changing the AST structure on re-parse; triggering separate-line mode for
-        content that wrapping already handles makes the mode decision unstable
-        across roundtrips.
-        """
-        prev_ends_newline = False
-        for elem in pattern.elements:
-            if isinstance(elem, TextElement):
-                if prev_ends_newline and elem.value and elem.value[0] == " ":
-                    first_nl = elem.value.find("\n")
-                    first_line = (
-                        elem.value[:first_nl] if first_nl != -1
-                        else elem.value
-                    )
-                    kind, _ = _classify_line(first_line)
-                    if kind is _LineKind.NORMAL:
-                        return True
-                # Check for embedded newlines followed by whitespace within
-                # a single TextElement. Only NORMAL lines trigger separate-line
-                # mode; WHITESPACE_ONLY and SYNTAX_LEADING are handled by
-                # per-line wrapping in _serialize_pattern.
-                value = elem.value
-                idx = value.find("\n")
-                while idx != -1 and idx + 1 < len(value):
-                    if value[idx + 1] == " ":
-                        next_nl = value.find("\n", idx + 1)
-                        line = value[idx + 1 : next_nl] if next_nl != -1 else value[idx + 1 :]
-                        kind, _ = _classify_line(line)
-                        if kind is _LineKind.NORMAL:
-                            return True
-                    idx = value.find("\n", idx + 1)
-                prev_ends_newline = value.endswith("\n")
-            else:
-                prev_ends_newline = False
-        return False
-
-    def _serialize_pattern(  # noqa: PLR0912  # Branches required by FTL pattern grammar
+    def _serialize_pattern(  # Branches required by FTL pattern grammar
         self, pattern: Pattern, output: list[str], depth_guard: DepthGuard
     ) -> None:
-        """Serialize Pattern elements.
-
-        Handles three concerns in strict order:
-        1. Pattern-level: separate-line mode, leading whitespace preservation
-        2. Line-level: classify each continuation line via _classify_line,
-           dispatch to the appropriate wrapping strategy via match/case
-        3. Character-level: escape braces via _escape_text
-
-        Per Fluent Spec 1.0: Backslash has no escaping power in TextElements.
-        Literal braces MUST be expressed as StringLiterals within Placeables.
-        """
-        # Pattern-level: determine separate-line serialization.
-        needs_separate_line = self._pattern_needs_separate_line(pattern)
-        if needs_separate_line:
-            output.append("\n" + _CONT_INDENT)
-
-        # Pattern-level: handle leading whitespace in the first TextElement.
-        # In FTL, whitespace after '=' is syntactic. A TextElement starting
-        # with spaces at pattern start loses its whitespace during re-parse.
-        leading_ws_len = 0
-        if (
-            pattern.elements
-            and isinstance(pattern.elements[0], TextElement)
-            and pattern.elements[0].value
-            and pattern.elements[0].value[0] == " "
-        ):
-            first_value = pattern.elements[0].value
-            stripped = first_value.lstrip(" ")
-            leading_ws_len = len(first_value) - len(stripped)
-            output.append('{ "')
-            output.append(" " * leading_ws_len)
-            output.append('" }')
-
-        # Track continuation line state for text elements.
-        at_line_start = needs_separate_line
-
-        for element in pattern.elements:
-            if isinstance(element, TextElement):
-                text = element.value
-
-                # Skip already-emitted leading whitespace on first element.
-                if leading_ws_len > 0:
-                    text = text[leading_ws_len:]
-                    leading_ws_len = 0
-                    if not text:
-                        at_line_start = False
-                        continue
-
-                if "\n" in text:
-                    lines = text.split("\n")
-                    # First line segment: classify if at line start,
-                    # otherwise just escape braces.
-                    if at_line_start:
-                        self._emit_classified_line(lines[0], output)
-                    else:
-                        _escape_text(lines[0], output)
-                    # Continuation lines: classify-then-dispatch.
-                    for line in lines[1:]:
-                        output.append("\n    ")
-                        self._emit_classified_line(line, output)
-                    # Track state: empty last line means text ended with \n.
-                    at_line_start = not lines[-1]
-                else:
-                    if at_line_start:
-                        self._emit_classified_line(text, output)
-                    else:
-                        _escape_text(text, output)
-                    at_line_start = False
-
-            else:
-                output.append("{ ")
-                with depth_guard:
-                    self._serialize_expression(element.expression, output, depth_guard)
-                output.append(" }")
-                at_line_start = False
+        """Serialize Pattern elements."""
+        _serialize_pattern_impl(
+            pattern,
+            output,
+            depth_guard,
+            pattern_needs_separate_line_fn=self._pattern_needs_separate_line,
+            emit_classified_line_fn=self._emit_classified_line,
+            serialize_expression_fn=self._serialize_expression,
+        )
 
     @staticmethod
     def _emit_classified_line(line: str, output: list[str]) -> None:
-        """Classify a line and emit with appropriate wrapping.
+        """Emit one continuation line after ambiguity classification."""
+        _emit_classified_line_impl(line, output)
 
-        Single dispatch point for all continuation line ambiguity classes.
-        Each _LineKind maps to exactly one emission strategy.
-        """
-        kind, ws_len = _classify_line(line)
-        match kind:
-            case _LineKind.EMPTY:
-                pass
-            case _LineKind.WHITESPACE_ONLY:
-                output.append('{ "')
-                output.append(line)
-                output.append('" }')
-            case _LineKind.SYNTAX_LEADING:
-                # Invariant: ALL content whitespace preceding the first
-                # non-whitespace character on a continuation line must be
-                # placeable-wrapped. Raw spaces here become indistinguishable
-                # from structural indent during common-indent stripping.
-                if ws_len:
-                    output.append('{ "')
-                    output.append(line[:ws_len])
-                    output.append('" }')
-                output.append(_CHAR_PLACEABLE[line[ws_len]])
-                remaining = line[ws_len + 1 :]
-                if remaining:
-                    _escape_text(remaining, output)
-            case _LineKind.NORMAL:
-                _escape_text(line, output)
-            case _ as unreachable:  # pragma: no cover
-                assert_never(unreachable)
-
-    def _serialize_expression(  # noqa: PLR0912  # Branches required by Expression union type
+    def _serialize_expression(  # Branches required by Expression union type
         self, expr: Expression, output: list[str], depth_guard: DepthGuard
     ) -> None:
-        """Serialize Expression nodes using structural pattern matching.
-
-        Handles all Expression types including nested Placeables (valid per FTL spec).
-        """
-        match expr:
-            case StringLiteral(value=value):
-                # Escape special characters per FTL spec.
-                # Uses \uHHHH for ALL control characters (< 0x20 and 0x7F)
-                # to produce robust output that works in all editors and parsers.
-                result: list[str] = []
-                for char in value:
-                    code = ord(char)
-                    if char == "\\":
-                        result.append("\\\\")
-                    elif char == '"':
-                        result.append('\\"')
-                    elif code < 0x20 or code == 0x7F:
-                        result.append(f"\\u{code:04X}")
-                    else:
-                        result.append(char)
-                output.append(f'"{"".join(result)}"')
-
-            case NumberLiteral(raw=raw):
-                output.append(raw)
-
-            case VariableReference(id=Identifier(name=name)):
-                output.append(f"${name}")
-
-            case MessageReference(id=Identifier(name=name), attribute=attr):
-                output.append(name)
-                if attr:
-                    output.append(f".{attr.name}")
-
-            case TermReference(
-                id=Identifier(name=name), attribute=attr, arguments=args
-            ):
-                output.append(f"-{name}")
-                if attr:
-                    output.append(f".{attr.name}")
-                if args:
-                    self._serialize_call_arguments(args, output, depth_guard)
-
-            case FunctionReference(id=Identifier(name=name), arguments=args):
-                output.append(name)
-                self._serialize_call_arguments(args, output, depth_guard)
-
-            case Placeable(expression=inner):
-                # Nested Placeable: { { $var } } is valid per FTL spec
-                output.append("{ ")
-                with depth_guard:
-                    self._serialize_expression(inner, output, depth_guard)
-                output.append(" }")
-
-            case SelectExpression():
-                self._serialize_select_expression(expr, output, depth_guard)
-
-            case _ as unreachable:  # pragma: no cover
-                assert_never(unreachable)
+        """Serialize Expression nodes using structural pattern matching."""
+        _serialize_expression_impl(
+            expr,
+            output,
+            depth_guard,
+            serialize_call_arguments_fn=self._serialize_call_arguments,
+            serialize_expression_fn=self._serialize_expression,
+            serialize_select_expression_fn=self._serialize_select_expression,
+        )
 
     def _serialize_call_arguments(
         self, args: CallArguments, output: list[str], depth_guard: DepthGuard
     ) -> None:
-        """Serialize CallArguments.
-
-        Security: Argument expressions are wrapped in depth_guard to prevent
-        deeply nested term/function arguments from bypassing depth limits.
-        Without this, -term(arg: -term(arg: ...)) could cause stack overflow.
-        """
-        output.append("(")
-
-        # Positional arguments - protected by depth_guard to enforce depth limits
-        for i, arg in enumerate(args.positional):
-            if i > 0:
-                output.append(", ")
-            with depth_guard:
-                self._serialize_expression(arg, output, depth_guard)
-
-        # Named arguments - protected by depth_guard to enforce depth limits
-        named_arg: NamedArgument
-        for i, named_arg in enumerate(args.named):
-            if i > 0 or args.positional:
-                output.append(", ")
-            output.append(f"{named_arg.name.name}: ")
-            with depth_guard:
-                self._serialize_expression(named_arg.value, output, depth_guard)
-
-        output.append(")")
+        """Serialize CallArguments."""
+        _serialize_call_arguments_impl(
+            args,
+            output,
+            depth_guard,
+            serialize_expression_fn=self._serialize_expression,
+        )
 
     def _serialize_select_expression(
         self,
@@ -579,31 +353,13 @@ class FluentSerializer(ASTVisitor):
         depth_guard: DepthGuard,
     ) -> None:
         """Serialize SelectExpression."""
-        # Wrap selector serialization in depth_guard to track depth for DoS protection.
-        # Without this, a deeply nested selector could bypass depth limits.
-        with depth_guard:
-            self._serialize_expression(expr.selector, output, depth_guard)
-        output.append(" ->")
-
-        for variant in expr.variants:
-            output.append(_VARIANT_INDENT)
-            if variant.default:
-                output.append("*")
-            output.append("[")
-
-            # Variant key: explicit destructuring for exhaustiveness
-            match variant.key:
-                case Identifier(name=name):
-                    output.append(name)
-                case NumberLiteral(raw=raw):
-                    output.append(raw)
-                case _ as unreachable:  # pragma: no cover
-                    assert_never(unreachable)
-
-            output.append("] ")
-            self._serialize_pattern(variant.value, output, depth_guard)
-
-        output.append("\n")
+        _serialize_select_expression_impl(
+            expr,
+            output,
+            depth_guard,
+            serialize_expression_fn=self._serialize_expression,
+            serialize_pattern_fn=self._serialize_pattern,
+        )
 
 
 def serialize(

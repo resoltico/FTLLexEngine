@@ -194,6 +194,8 @@ class TestCacheAuditLogging:
         assert audit_log is not None
         assert isinstance(audit_log, tuple)
         assert [entry.operation for entry in audit_log] == ["MISS", "PUT", "HIT"]
+        assert [entry.sequence for entry in audit_log] == [1, 2, 3]
+        assert [entry.cache_sequence for entry in audit_log] == [0, 1, 1]
         assert all(isinstance(entry, WriteLogEntry) for entry in audit_log)
 
     def test_audit_logging_records_operations(self) -> None:

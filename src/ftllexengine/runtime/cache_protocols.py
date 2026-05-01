@@ -15,6 +15,7 @@ class CacheStateProtocol(Protocol):
     """Structural contract implemented by IntegrityCache."""
 
     _audit_log: deque[WriteLogEntry] | None
+    _audit_sequence: int
     _cache: OrderedDict[_CacheKey, IntegrityCacheEntry]
     _combined_weight_skips: int
     _corruption_detected: int

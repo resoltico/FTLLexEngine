@@ -2,7 +2,7 @@
 afad: "4.0"
 version: "0.165.0"
 domain: RELEASE
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [release, gh, github release, pypi, tag, assets, publish, verify, worktree, main]
   questions: ["how do I cut a release?", "how do I publish GitHub assets?", "how do I verify a release handoff?", "how do I rerun publish for an existing tag?"]
@@ -11,7 +11,7 @@ route:
 # Release Protocol
 
 **Purpose**: Publish a tagged FTLLexEngine release through GitHub CLI and verify the GitHub Release and PyPI handoff.
-**Prerequisites**: `gh` installed and authenticated, `uv` installed, the target release version chosen, and a checkout topology that can produce a clean release payload.
+**Prerequisites**: `gh` installed and authenticated, `uv` installed, Docker plus either the Dev Containers IDE integration or `npx --yes @devcontainers/cli`, the target release version chosen, and a checkout topology that can produce a clean release payload.
 
 ## Overview
 
@@ -109,13 +109,17 @@ Run the local gates first:
 ```bash
 gh pr list --state open \
   --json number,title,url,headRefName,mergeStateStatus,isDraft,author,statusCheckRollup
-bash -n scripts/*.sh
-./check.sh
-PY_VERSION=3.14 ./scripts/lint.sh
-PY_VERSION=3.14 ./scripts/test.sh
-uv run python scripts/validate_docs.py
-uv run python scripts/validate_version.py
-uv build
+npx --yes @devcontainers/cli up --workspace-folder .
+npx --yes @devcontainers/cli exec --workspace-folder . bash -lc 'bash -n check.sh scripts/*.sh'
+npx --yes @devcontainers/cli exec --workspace-folder . ./check.sh
+npx --yes @devcontainers/cli exec --workspace-folder . bash -lc '
+  set -euo pipefail
+  PY_VERSION=3.14 ./scripts/lint.sh
+  PY_VERSION=3.14 ./scripts/test.sh
+  uv run --group dev --python 3.14 python scripts/validate_docs.py
+  uv run --group dev --python 3.14 python scripts/validate_version.py
+  uv build
+'
 tar -tzf "dist/ftllexengine-X.Y.Z.tar.gz" | rg '(^|/)AGENTS\\.md$|(^|/)\\.codex/' || true
 python - <<'PY'
 import zipfile

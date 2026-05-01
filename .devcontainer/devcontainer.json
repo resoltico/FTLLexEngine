@@ -1,0 +1,37 @@
+{
+  "name": "FTLLexEngine Contributor",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "workspaceFolder": "/workspaces/ftllexengine",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/ftllexengine,type=bind",
+  "mounts": [
+    "source=ftllexengine-cache,target=/home/vscode/.cache,type=volume"
+  ],
+  "containerEnv": {
+    "FTLLEXENGINE_DEVCONTAINER": "1",
+    "CLANG_BIN": "/usr/local/bin/clang",
+    "UV_LINK_MODE": "copy"
+  },
+  "postStartCommand": "./scripts/devcontainer-prepare-user-home.sh",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.terminal.activateEnvironment": false
+      },
+      "extensions": [
+        "EditorConfig.EditorConfig",
+        "ms-python.python",
+        "ms-python.mypy-type-checker",
+        "charliermarsh.ruff"
+      ]
+    }
+  }
+}

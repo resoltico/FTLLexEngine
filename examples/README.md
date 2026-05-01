@@ -2,16 +2,16 @@
 afad: "4.0"
 version: "0.165.0"
 domain: EXAMPLES
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
-  keywords: [examples, quickstart, parser-only, localization, custom functions, thread safety, benchmarks]
-  questions: ["what examples are available?", "how do I run the examples?", "which example should I start with?"]
+  keywords: [examples, quickstart, parser-only, localization, custom functions, thread safety, streaming, benchmarks]
+  questions: ["what examples are available?", "how do I run the examples?", "which example should I start with?", "which example covers streaming or parsing?"]
 ---
 
 # FTLLexEngine Examples
 
 **Purpose**: Show which runnable example scripts ship with the repository and what each one demonstrates.
-**Prerequisites**: Development environment synced with `uv sync --group dev`.
+**Prerequisites**: Development environment synced with `uv sync --group dev`, or the contributor devcontainer.
 
 ## Overview
 

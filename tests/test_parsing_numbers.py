@@ -48,6 +48,15 @@ class TestParseDecimal:
         assert not errors
         assert result == Decimal("0.01")
 
+    def test_parse_decimal_ar_eg_native_digits(self) -> None:
+        """Parse Arabic-Indic digits for locales with non-Latin defaults."""
+        result, errors = parse_decimal(
+            "\u0661\u0662\u066c\u0663\u0664\u0665\u066b\u0666\u0667",
+            "ar_EG",
+        )
+        assert not errors
+        assert result == Decimal("12345.67")
+
     def test_parse_decimal_financial_precision(self) -> None:
         """Decimal preserves financial precision."""
         amount, errors = parse_decimal("100,50", "lv_LV")
@@ -108,6 +117,79 @@ class TestParseDecimal:
         assert len(errors) > 0
         assert result is None
         assert errors[0].parse_type == "decimal"
+
+    def test_parse_decimal_type_error_returns_error(self) -> None:
+        """Non-string input returns error in tuple; function never raises."""
+        result, errors = parse_decimal(1234, "en_US")  # type: ignore[arg-type]
+        assert len(errors) > 0
+        assert result is None
+        assert errors[0].parse_type == "decimal"
+
+    def test_parse_decimal_falls_back_when_numbering_system_kw_rejected(self) -> None:
+        """Fallback call works when Babel parser does not accept numbering_system."""
+
+        def fake_parse_decimal(raw: str, *, locale: object, **kwargs: object) -> Decimal:
+            assert raw == "123.45"
+            assert locale is mock_locale
+            if "numbering_system" in kwargs:
+                msg = "numbering_system unsupported"
+                raise TypeError(msg)
+            return Decimal("123.45")
+
+        mock_locale = MagicMock()
+        mock_locale.default_numbering_system = "arab"
+        mock_locale.number_symbols = {
+            "arab": {"group": "\u066c", "decimal": "\u066b"},
+        }
+        decimal_format = MagicMock()
+        decimal_format.grouping = (3, 3)
+        mock_locale.decimal_formats = {None: decimal_format}
+        mock_cls = MagicMock()
+        mock_cls.parse.return_value = mock_locale
+
+        with patch(
+            "ftllexengine.parsing.numbers.get_locale_class", return_value=mock_cls,
+        ), patch(
+            "ftllexengine.parsing.numbers.get_parse_decimal_func",
+            return_value=fake_parse_decimal,
+        ):
+            result, errors = parse_decimal("123.45", "en_US")
+
+        assert not errors
+        assert result == Decimal("123.45")
+
+    def test_parse_decimal_reuses_grouping_failure_reason_across_numbering_systems(
+        self,
+    ) -> None:
+        """Repeated invalid grouping across numbering systems returns one parse error."""
+
+        def fake_parse_decimal(raw: str, *, _locale: object, **kwargs: object) -> Decimal:
+            msg = f"unexpected parse attempt for {raw!r} with {kwargs!r}"
+            raise AssertionError(msg)
+
+        mock_locale = MagicMock()
+        mock_locale.default_numbering_system = "arab"
+        mock_locale.number_symbols = {
+            "arab": {"group": ",", "decimal": "."},
+            "latn": {"group": ",", "decimal": "."},
+        }
+        decimal_format = MagicMock()
+        decimal_format.grouping = (3, 3)
+        mock_locale.decimal_formats = {None: decimal_format}
+        mock_cls = MagicMock()
+        mock_cls.parse.return_value = mock_locale
+
+        with patch(
+            "ftllexengine.parsing.numbers.get_locale_class", return_value=mock_cls,
+        ), patch(
+            "ftllexengine.parsing.numbers.get_parse_decimal_func",
+            return_value=fake_parse_decimal,
+        ):
+            result, errors = parse_decimal("1,2,3", "en_US")
+
+        assert result is None
+        assert len(errors) == 1
+        assert "group separators not at standard digit-boundary positions" in errors[0].message
 
     def test_parse_decimal_empty_returns_error(self) -> None:
         """Empty input returns error in tuple."""
@@ -182,6 +264,24 @@ class TestRoundtrip:
         parsed, errors = parse_decimal(str(formatted), "lv_LV")
         assert not errors
         assert parsed == original
+
+    def test_roundtrip_decimal_ar_eg_with_rtl_marks(self) -> None:
+        """RTL locale output roundtrips through parse_decimal()."""
+        from ftllexengine.runtime.functions import number_format
+
+        original = Decimal("1234.56")
+        formatted = number_format(
+            original, "ar-EG", minimum_fraction_digits=2, use_grouping=True
+        )
+        parsed, errors = parse_decimal(str(formatted), "ar_EG")
+        assert not errors
+        assert parsed == original
+
+    def test_parse_decimal_ignores_bidi_isolation_marks(self) -> None:
+        """Invisible bidi controls are ignored at the parsing boundary."""
+        parsed, errors = parse_decimal("\u2068123.45\u2069", "en_US")
+        assert not errors
+        assert parsed == Decimal("123.45")
 
 
 class TestValidateGroupPositions:

@@ -13,6 +13,7 @@ from ftllexengine.core.babel_compat import (
     is_babel_available,
 )
 from ftllexengine.core.locale_utils import normalize_locale
+from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
 ISO_CURRENCY_CODE_LENGTH: int = 3
 
@@ -321,7 +322,9 @@ def _build_symbol_mappings(
     for currency_code in all_currencies:
         for locale in symbol_lookup_locales:
             try:
-                symbol = get_currency_symbol(currency_code, locale=locale)
+                symbol = strip_bidi_format_chars(
+                    get_currency_symbol(currency_code, locale=locale)
+                )
                 is_iso_format = (
                     len(symbol) == ISO_CURRENCY_CODE_LENGTH
                     and symbol.isupper()

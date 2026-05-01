@@ -46,6 +46,13 @@ class TestLocaleValidationDoSPrevention:
         with pytest.raises(ValueError, match="Unknown locale identifier"):
             FluentBundle(boundary_locale)
 
+    def test_whitespace_wrapped_boundary_locale_reaches_unknown_locale_validation(self) -> None:
+        """Boundary-length locales are trimmed, then rejected as unknown locales."""
+        boundary_locale = "a" + ("b" * (MAX_LOCALE_LENGTH_HARD_LIMIT - 2)) + "c"
+
+        with pytest.raises(ValueError, match="Unknown locale identifier"):
+            FluentBundle(f"  {boundary_locale}  ")
+
     def test_locale_one_over_hard_limit_rejected(self) -> None:
         """Locale at MAX_LOCALE_LENGTH_HARD_LIMIT + 1 is rejected."""
         # Create locale exceeding by exactly 1 character
