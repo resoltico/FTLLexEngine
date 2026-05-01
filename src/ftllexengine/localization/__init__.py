@@ -59,18 +59,25 @@ _BABEL_OPTIONAL_NAMES = babel_optional_attr_tuple(__name__)
 
 def __getattr__(name: str) -> object:
     """Raise a targeted missing-symbol error for Babel-backed localization symbols."""
-    if _BABEL_AVAILABLE and name in _BABEL_OPTIONAL_ATTRS:
-        value = load_babel_optional_export(__name__, name)
+    if name in _BABEL_OPTIONAL_ATTRS:
+        if _BABEL_AVAILABLE:
+            value = load_babel_optional_export(__name__, name)
+        else:
+            value = raise_missing_babel_symbol(
+                module_name=__name__,
+                name=name,
+                optional_attrs=_BABEL_OPTIONAL_ATTRS,
+                parser_only_hint=(
+                    "Parser-only usage still supports ResourceLoader, PathResourceLoader, "
+                    "FallbackInfo, ResourceLoadResult, LoadSummary, and CacheAuditLogEntry."
+                ),
+            )
         globals()[name] = value
         return value
     return raise_missing_babel_symbol(
         module_name=__name__,
         name=name,
         optional_attrs=_BABEL_OPTIONAL_ATTRS,
-        parser_only_hint=(
-            "Parser-only usage still supports ResourceLoader, PathResourceLoader, "
-            "FallbackInfo, ResourceLoadResult, LoadSummary, and CacheAuditLogEntry."
-        ),
     )
 
 

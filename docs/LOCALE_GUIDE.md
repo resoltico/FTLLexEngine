@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: LOCALE
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [locale, NUMBER, DATETIME, CURRENCY, normalize_locale, get_system_locale, use_isolating]
   questions: ["why did my number not format?", "what locale string should I use?", "what does use_isolating do?"]
@@ -52,6 +52,29 @@ else:
 detected = get_system_locale()
 assert isinstance(detected, str)
 assert detected
+```
+
+## Localization Instances Own Their Fallback Chains
+
+`FluentLocalization` is not a per-call locale switch. Each instance owns one immutable
+fallback chain, so a multi-user app typically caches one instance per supported chain and
+selects the instance by request locale.
+
+```python
+from ftllexengine import FluentLocalization
+
+de_checkout = FluentLocalization(["de_DE", "en_US"])
+de_checkout.add_resource("en_US", "checkout = Checkout")
+de_checkout.add_resource("de_DE", "checkout = Kasse")
+value, errors = de_checkout.format_value("checkout")
+assert errors == ()
+assert value == "Kasse"
+
+en_checkout = FluentLocalization(["en_US"])
+en_checkout.add_resource("en_US", "checkout = Checkout")
+value, errors = en_checkout.format_value("checkout")
+assert errors == ()
+assert value == "Checkout"
 ```
 
 ## Bidi Isolation

@@ -443,6 +443,7 @@ if audit_log is not None:
         latest_entry = audit_log[-1]
         print(f"  latest_audit_operation: {latest_entry.operation}")
         print(f"  latest_audit_sequence: {latest_entry.sequence}")
+        print(f"  latest_cache_sequence: {latest_entry.cache_sequence}")
 
 print("\n" + "=" * 50)
 print("[SUCCESS] All examples completed successfully!")

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: parse_currency - Locale-aware currency parsing and symbol resolution
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """Locale-aware currency parsing fuzzer (Atheris).
 
 Targets:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# @lint-plugin: DocValidator
 """Validate code examples in documentation files against project parsers.
 
 Ensures that documentation never "lies" by verifying that every code block
@@ -35,6 +34,7 @@ import importlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -59,6 +59,8 @@ class CheckConfig:
     parser_path: str
     language: str = "ftl"
     python_exec_globs: list[str] = field(default_factory=list)
+    shell_exec_globs: list[str] = field(default_factory=list)
+    shell_exec_timeout_seconds: int = 180
 
     @classmethod
     def from_pyproject(cls, root: Path) -> Self:
@@ -85,6 +87,8 @@ class CheckConfig:
             parser_path=config.get("parser_path", ""),
             language=config.get("language", "ftl"),
             python_exec_globs=config.get("python_exec_globs", []),
+            shell_exec_globs=config.get("shell_exec_globs", []),
+            shell_exec_timeout_seconds=config.get("shell_exec_timeout_seconds", 180),
         )
 
 
@@ -157,7 +161,52 @@ def _python_env(root: Path) -> dict[str, str]:
     del root
     env = dict(**os.environ)
     env.pop("PYTHONPATH", None)
+    env.setdefault("NO_COLOR", "1")
     return env
+
+
+def _resolve_shell_runner() -> tuple[str, str]:
+    """Return the shell executable and preamble used for shell snippet checks.
+
+    Prefer the PATH-resolved Bash installation over the inherited ``BASH``
+    environment variable. macOS login shells often export ``BASH=/bin/bash``
+    even when a newer Bash is available on ``PATH``; using the PATH-resolved
+    interpreter matches how repository scripts execute via their shebangs.
+    """
+    shell = (
+        shutil.which("bash")
+        or shutil.which("zsh")
+        or os.environ.get("SHELL")
+        or "/bin/sh"
+    )
+    shell_name = Path(shell).name
+    preamble = "set -euo pipefail" if shell_name in {"bash", "zsh", "ksh", "mksh"} else "set -eu"
+    return shell, preamble
+
+
+def _normalize_shell_code_for_runtime(code: str) -> str:
+    """Normalize shell docs for the current runtime context.
+
+    When validation already runs inside the contributor devcontainer, host-side
+    devcontainer wrapper commands are semantically redundant. Rewrite the
+    documented wrapper invocations to the inner command so the same published
+    quick-start remains verifiable both from the host and from inside the
+    container-owned `./check.sh` flow.
+    """
+    if os.environ.get("FTLLEXENGINE_DEVCONTAINER") != "1":
+        return code
+
+    normalized_lines: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        if stripped == "npx --yes @devcontainers/cli up --workspace-folder .":
+            continue
+        prefix = "npx --yes @devcontainers/cli exec --workspace-folder . "
+        if stripped.startswith(prefix):
+            normalized_lines.append(stripped.removeprefix(prefix))
+            continue
+        normalized_lines.append(line)
+    return "\n".join(normalized_lines)
 
 
 def validate_python_code(code: str, root: Path) -> str | None:
@@ -170,6 +219,33 @@ def validate_python_code(code: str, root: Path) -> str | None:
             text=True,
             capture_output=True,
             timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return f"TimeoutExpired: {exc!s}"
+
+    if result.returncode == 0:
+        return None
+
+    stderr = result.stderr.strip()
+    stdout = result.stdout.strip()
+    return stderr or stdout or f"process exited with code {result.returncode}"
+
+
+def validate_shell_code(code: str, root: Path, timeout_seconds: int) -> str | None:
+    """Execute a shell documentation block in isolation."""
+    env = _python_env(root)
+    shell, preamble = _resolve_shell_runner()
+    normalized_code = _normalize_shell_code_for_runtime(code)
+
+    try:
+        result = subprocess.run(
+            [shell, "-c", f"{preamble}\n{normalized_code}"],
+            cwd=root,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
@@ -235,6 +311,7 @@ def process_file(
     report.files_checked += 1
     rel_path = str(md_file.relative_to(root))
     python_enabled = any(md_file.match(pattern) for pattern in config.python_exec_globs)
+    shell_enabled = any(md_file.match(pattern) for pattern in config.shell_exec_globs)
 
     for match in pattern.finditer(content):
         indent = match.group(1)
@@ -243,7 +320,8 @@ def process_file(
 
         should_validate_ftl = language == config.language
         should_validate_python = python_enabled and language == "python"
-        if not should_validate_ftl and not should_validate_python:
+        should_validate_shell = shell_enabled and language in {"bash", "sh", "shell"}
+        if not should_validate_ftl and not should_validate_python and not should_validate_shell:
             continue
 
         report.examples_validated += 1
@@ -262,6 +340,10 @@ def process_file(
             error = validate_python_code(code_block, root)
             error_type = "PythonRuntimeError"
             failure_language = "python"
+        elif should_validate_shell:
+            error = validate_shell_code(code_block, root, config.shell_exec_timeout_seconds)
+            error_type = "ShellRuntimeError"
+            failure_language = language
         else:
             error = validate_code(code_block, parser)
             error_type = "SyntaxError"

@@ -12,6 +12,11 @@ downloads/
 eggs/
 .eggs/
 lib/
+!/scripts/lib/
+!/scripts/lib/fuzz_hypofuzz/
+!/scripts/lib/fuzz_hypofuzz/*.sh
+!/scripts/lib/fuzz_atheris/
+!/scripts/lib/fuzz_atheris/*.sh
 lib64/
 parts/
 sdist/

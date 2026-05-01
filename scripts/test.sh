@@ -40,24 +40,34 @@ shopt -s inherit_errexit
 
 # [SECTION: ENVIRONMENT_ISOLATION]
 PY_VERSION="${PY_VERSION:-3.13}"
-TARGET_VENV=".venv-${PY_VERSION}"
-
-if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
-    if [[ "${TEST_ALREADY_PIVOTED:-}" == "1" ]]; then
-        echo "Error: Detected re-execution loop. Aborting." >&2
-        exit 1
-    fi
-    echo -e "\033[34m[INFO]\033[0m Pivoting to isolated environment: ${TARGET_VENV}"
-    export UV_PROJECT_ENVIRONMENT="$TARGET_VENV"
-    export TEST_ALREADY_PIVOTED=1
-    unset VIRTUAL_ENV
-    exec uv run --python "$PY_VERSION" "${BASH:-bash}" "$0" "$@"
+if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
+    TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
 else
-    unset TEST_ALREADY_PIVOTED
+    TARGET_VENV=".venv-${PY_VERSION}"
+fi
+if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" && -z "${UV_LINK_MODE:-}" ]]; then
+    export UV_LINK_MODE="copy"
 fi
 
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
+    echo -e "\033[34m[INFO]\033[0m Preparing isolated environment: ${TARGET_VENV}"
+fi
+export UV_PROJECT_ENVIRONMENT="$TARGET_VENV"
+unset VIRTUAL_ENV
+
+resolve_env_python() {
+    uv run --python "$PY_VERSION" python - <<'PYEOF'
+import sys
+print(sys.executable)
+PYEOF
+}
+
+ENV_PYTHON="$(resolve_env_python)"
+
 # [SECTION: SETUP]
-DEFAULT_COV_LIMIT=100
 QUICK_MODE=false
 CI_MODE=false
 CLEAN_CACHE=true
@@ -79,7 +89,7 @@ fi
 # psutil availability: cached once for heartbeat CPU/memory stats.
 # psutil is a dev dependency — available in the test venv.
 HAS_PSUTIL=false
-python -c "import psutil" 2>/dev/null && HAS_PSUTIL=true || true
+"$ENV_PYTHON" -c "import psutil" 2>/dev/null && HAS_PSUTIL=true || true
 
 log_group_start() { [[ "$IS_GHA" == "true" ]] && echo "::group::$1"; echo -e "\n${BOLD}${CYAN}=== $1 ===${RESET}"; }
 log_group_end() { [[ "$IS_GHA" == "true" ]] && echo "::endgroup::"; return 0; }
@@ -139,7 +149,7 @@ _heartbeat_daemon() {
         fi
         if [[ "$HAS_PSUTIL" == "true" ]]; then
             local stats
-            stats=$(python -c "
+            stats=$("$ENV_PYTHON" -c "
 import psutil
 try:
     p = psutil.Process(${watched_pid})
@@ -274,10 +284,10 @@ pre_flight_diagnostics() {
     else
        echo "[ INFO ] Environment          : System/User ($VIRTUAL_ENV)"
     fi
-    echo "[ INFO ] Python               : $(python --version)"
+    echo "[ INFO ] Python               : $("$ENV_PYTHON" --version)"
     echo "[ INFO ] Import Mode          : Installed package (PYTHONPATH unset)"
-    
-    if ! command -v pytest >/dev/null 2>&1; then
+
+    if ! uv run --python "$PY_VERSION" python -c "import pytest" >/dev/null 2>&1; then
         echo "[ FAIL ] Tooling             : Pytest missing (uv sync required)"
         exit 1
     fi
@@ -287,11 +297,21 @@ pre_flight_diagnostics() {
 pre_flight_diagnostics
 
 # Navigation
-PROJECT_ROOT="$PWD"
-while [[ "$PROJECT_ROOT" != "/" && ! -f "$PROJECT_ROOT/pyproject.toml" ]]; do
-    PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
-done
-cd "$PROJECT_ROOT"
+PYPROJECT_CONFIG="$PROJECT_ROOT/pyproject.toml"
+
+read_coverage_threshold() {
+    "$ENV_PYTHON" - "$PYPROJECT_CONFIG" <<'PYEOF'
+import sys
+import tomllib
+from pathlib import Path
+
+data = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+threshold = data["tool"]["coverage"]["report"]["fail_under"]
+print(int(threshold))
+PYEOF
+}
+
+DEFAULT_COV_LIMIT="$(read_coverage_threshold)"
 
 # Clean Caches
 if [[ "$CLEAN_CACHE" == "true" ]]; then
@@ -318,7 +338,7 @@ if [[ "$QUICK_MODE" == "false" && -d "src" ]]; then
     done
 fi
 
-declare -a CMD=("pytest")
+declare -a CMD=("uv" "run" "--python" "$PY_VERSION" "pytest")
 
 # forced agent-friendly defaults handled via env vars where possible
 export NO_COLOR=1
@@ -366,7 +386,7 @@ EXIT_CODE=$?
 set -e
 
 END_TIME="${EPOCHREALTIME}"
-DURATION=$(printf "%.3f" "$(echo "$END_TIME - $START_TIME" | bc)")
+DURATION=$(awk -v start="$START_TIME" -v end="$END_TIME" 'BEGIN { printf "%.3f", end - start }')
 
 # [SECTION: ANALYSIS]
 HYPOTHESIS_FAILURE="false"
@@ -485,7 +505,7 @@ for item in "${FAILED_TEST_LIST[@]}"; do
     echo "$item" >> "$FAILED_TESTS_FILE"
 done
 
-python -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE" "$SCRIPT_NAME" "$SCRIPT_VERSION"
+"$ENV_PYTHON" -c "$PYTHON_JSON_SCRIPT" "$FAILED_TESTS_FILE" "$EXIT_CODE" "$DURATION" "$TESTS_PASSED" "$TESTS_FAILED" "$TESTS_SKIPPED" "$SKIPPED_FUZZ" "$SKIPPED_OTHER" "$COVERAGE_PCT" "$HYPOTHESIS_FAILURE" "$SCRIPT_NAME" "$SCRIPT_VERSION"
 rm -f "$FAILED_TESTS_FILE"
 echo "[SUMMARY-JSON-END]"
 
@@ -493,7 +513,7 @@ echo "[SUMMARY-JSON-END]"
 if [[ $EXIT_CODE -ne 0 && ${#FAILED_TEST_LIST[@]} -gt 0 ]]; then
     echo -e "\n${YELLOW}[DEBUG-SUGGESTION]${RESET}"
     echo "The following tests failed. Run this command to debug the first failure:"
-    echo "  uv run --python \"$PY_VERSION\" pytest ${FAILED_TEST_LIST[0]} --pdb"
+    echo "  UV_PROJECT_ENVIRONMENT=\"$TARGET_VENV\" uv run --python \"$PY_VERSION\" pytest ${FAILED_TEST_LIST[0]} --pdb"
 fi
 
 if [[ $EXIT_CODE -ne 0 ]]; then

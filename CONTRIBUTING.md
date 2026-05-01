@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: CONTRIBUTING
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [contributing, development, uv, lint, test, fuzz, benchmark, release, virtualenv]
   questions: ["how do I set up development?", "how do I run lint and tests?", "how do I work on fuzzing?", "how do I prepare a release?"]
@@ -11,38 +11,39 @@ route:
 # Contributing to FTLLexEngine
 
 **Purpose**: Set up a working development environment and run the same validation paths the repo expects.
-**Prerequisites**: `uv`, Bash 5+, Python 3.13 available locally. Python 3.14 is recommended for forward-compat checks.
+**Prerequisites**: Docker plus either the Dev Containers IDE integration or `npx --yes @devcontainers/cli`. Direct host `uv` use is optional; direct host execution of the repository shell gates also requires a Bash 5.0+ `bash` on `PATH`.
 
 ## Overview
 
-This repository uses `uv` for dependency management and self-isolating shell scripts for the main quality gates. The root `.venv` is the manual development environment; the scripted gates pivot into versioned environments such as `.venv-3.13`, `.venv-3.14`, and `.venv-atheris` as needed.
+This repository uses a committed contributor devcontainer for the canonical engineering workflow. Repository shell gates continue to use `uv`-managed environments internally, but the supported path for full verification and native Atheris work is the devcontainer described in [docs/DEVELOPER_DEVCONTAINER.md](docs/DEVELOPER_DEVCONTAINER.md).
 
 The shortest reliable workflow is:
 
 ```bash
-uv sync --group dev --group release
-./check.sh
+npx --yes @devcontainers/cli up --workspace-folder .
+npx --yes @devcontainers/cli exec --workspace-folder . ./check.sh
 ```
 
-The default test gate enforces **100% line coverage and 100% branch coverage** for `src/ftllexengine`.
+The default test gate enforces the repository coverage floor declared in `pyproject.toml`.
 
 ## Setup
 
 ```bash
 git clone https://github.com/resoltico/FTLLexEngine.git
 cd FTLLexEngine
-uv sync --group dev --group release
-uv sync --group fuzz
+npx --yes @devcontainers/cli up --workspace-folder .
 ```
 
-Optional environments:
+Optional direct host setup:
 
-- `PY_VERSION=3.14 ./scripts/lint.sh` and `PY_VERSION=3.14 ./scripts/test.sh` create or reuse `.venv-3.14`.
-- `./scripts/fuzz_atheris.sh --help` bootstraps `.venv-atheris` on demand and requires Python 3.13.
+- `uv sync --group dev --group release`
+- `uv sync --group fuzz`
+- Host shell gates create or reuse `.venv-3.13` and `.venv-3.14`; the devcontainer uses `.venv-devcontainer-*` names to avoid cross-platform contamination of the bind-mounted workspace.
+- Stock macOS `/bin/bash` 3.2 is not sufficient for the repo shell entrypoints. Use the devcontainer path or install a Bash 5.0+ `bash` before invoking `./scripts/*.sh` directly from the host.
 
 ## Daily Workflow
 
-Run the repo gates directly; the scripts manage their own interpreter pivots.
+Run the repo gates inside the devcontainer. If you are already in a devcontainer terminal, use the script directly; from the host, use `devcontainers exec`.
 
 ```bash
 ./check.sh
@@ -56,8 +57,8 @@ Useful variants:
 - `./scripts/benchmark.sh`
 - `./scripts/fuzz_hypofuzz.sh`
 - `./scripts/fuzz_hypofuzz.sh --deep --time 300`
-- `./scripts/fuzz_atheris.sh numbers --time 60`
-- `./scripts/fuzz_atheris.sh --list` to inspect stored crashes and finding artifacts
+- Inside a devcontainer terminal: `./scripts/fuzz_atheris.sh graph --time 60`
+- Inside a devcontainer terminal: `./scripts/fuzz_atheris.sh --list` to inspect stored crashes and finding artifacts
 
 ## Documentation Work
 
@@ -72,6 +73,7 @@ uv run python scripts/run_examples.py
 Expectations:
 
 - README and guide Python snippets should run as written.
+- Canonical shell quick-start blocks in the fuzzing guides should execute as written from the documented host-with-devcontainer-wrapper context.
 - `examples/*.py` should execute cleanly under the dev environment.
 - Source-code docstring transcripts are illustrative API notes, not an executable test suite. Keep runnable examples in Markdown or `examples/`, and mark any source `>>>` transcript with `# doctest: +SKIP`.
 - Reference docs should describe current symbols, not removed or internal machinery.
@@ -89,10 +91,11 @@ uv run mypy --config-file examples/mypy.ini examples
 Two fuzzing surfaces are maintained:
 
 - `./scripts/fuzz_hypofuzz.sh` for Hypothesis and HypoFuzz.
-- `./scripts/fuzz_atheris.sh` for native Atheris/libFuzzer targets.
+- `./scripts/fuzz_atheris.sh` for native Atheris/libFuzzer targets inside the contributor devcontainer.
 
 See:
 
+- [docs/DEVELOPER_DEVCONTAINER.md](docs/DEVELOPER_DEVCONTAINER.md)
 - [docs/FUZZING_GUIDE.md](docs/FUZZING_GUIDE.md)
 - [docs/FUZZING_GUIDE_HYPOFUZZ.md](docs/FUZZING_GUIDE_HYPOFUZZ.md)
 - [docs/FUZZING_GUIDE_ATHERIS.md](docs/FUZZING_GUIDE_ATHERIS.md)
@@ -126,7 +129,7 @@ Before opening a PR, make sure the baseline gates pass:
 ./check.sh
 ```
 
-`./scripts/test.sh` is expected to fail on any coverage regression below the repository's 100% line-and-branch baseline.
+`./scripts/test.sh` is expected to fail on any coverage regression below the repository policy declared in `pyproject.toml`.
 
 When the change touches runtime behavior or supported Python versions, also run the forward-compat pass:
 

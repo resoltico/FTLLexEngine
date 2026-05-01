@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from babel.numbers import format_decimal
 from hypothesis import event, given, settings
 from hypothesis import strategies as st
 
@@ -249,11 +250,13 @@ class TestParseCurrencyHypothesis:
         locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "ja_JP", "lv_LV", "pl_PL"]),
     )
     @settings(max_examples=50)
-    def test_parse_currency_locale_independence(self, locale: str) -> None:
-        """Currency parsing should work across locales."""
+    def test_parse_currency_locale_formatted_iso_code(self, locale: str) -> None:
+        """ISO-coded money parses when the numeric portion matches the locale."""
         event(f"locale={locale}")
-        # Use ISO code (universal)
-        currency_str = "EUR 1234.56"
+        formatted_amount = str(
+            format_decimal(Decimal("1234.56"), locale=locale, decimal_quantization=False)
+        )
+        currency_str = f"EUR {formatted_amount}"
 
         result, errors = parse_currency(currency_str, locale)
         assert not errors
@@ -262,9 +265,13 @@ class TestParseCurrencyHypothesis:
         parsed_amount, currency_code = result
 
         assert currency_code == "EUR"
-        # Note: Babel parsing may interpret differently based on locale
-        # Main check: doesn't crash and returns valid Decimal
-        assert isinstance(parsed_amount, Decimal)
+        assert parsed_amount == Decimal("1234.56")
+
+    def test_parse_currency_rejects_de_dot_grouping_mismatch(self) -> None:
+        """de_DE rejects dot-decimal money input because dot means grouping."""
+        result, errors = parse_currency("EUR 1234.56", "de_DE")
+        assert len(errors) > 0
+        assert result is None
 
     @given(
         value=st.text(

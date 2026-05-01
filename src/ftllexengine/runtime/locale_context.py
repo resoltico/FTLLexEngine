@@ -54,6 +54,13 @@ from ftllexengine.runtime.locale_formatting import (
     format_number_for_locale,
     get_iso_code_pattern_for_locale,
 )
+from ftllexengine.runtime.locale_resolution import (
+    UNKNOWN_LOCALE_WARNING_LIMIT,
+    get_fallback_babel_locale,
+    is_definitely_unknown_locale,
+    log_fallback_warning,
+    reset_locale_resolution_state,
+)
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -66,6 +73,8 @@ if TYPE_CHECKING:
 __all__ = ["LocaleContext"]
 
 logger = logging.getLogger(__name__)
+
+_UNKNOWN_LOCALE_WARNING_LIMIT = UNKNOWN_LOCALE_WARNING_LIMIT
 
 # Sentinel for factory method authorization.
 # Only create() and create_or_raise() pass this token to __init__.
@@ -99,7 +108,7 @@ class LocaleContext:
         >>> ctx.format_number(Decimal('1234.5'), use_grouping=True)  # doctest: +SKIP
         '1 234,5'
 
-        Unknown locales fall back to `en_US` formatting rules with a warning:
+        Unknown locales fall back to `en_US` formatting rules with bounded warnings:
         >>> ctx = LocaleContext.create('xx-UNKNOWN')  # doctest: +SKIP
         >>> ctx.locale_code  # doctest: +SKIP
         'xx_unknown'
@@ -121,7 +130,6 @@ class LocaleContext:
     # Note: ClassVar is excluded from dataclass fields
     _cache: ClassVar[OrderedDict[str, LocaleContext]] = OrderedDict()
     _cache_lock: ClassVar[Lock] = Lock()
-
     locale_code: LocaleCode
     _babel_locale: Locale
     is_fallback: bool = False
@@ -143,6 +151,8 @@ class LocaleContext:
         """Clear the locale context cache.
 
         Use this method to free memory or reset state in tests.
+        Locale metadata and fallback-warning state are reset alongside
+        cached instances so repeated test runs stay deterministic.
         Thread-safe via Lock.
 
         Example:
@@ -155,6 +165,7 @@ class LocaleContext:
         """
         with cls._cache_lock:
             cls._cache.clear()
+        reset_locale_resolution_state()
 
     @classmethod
     def cache_size(cls) -> int:
@@ -202,8 +213,9 @@ class LocaleContext:
 
         Factory method that validates and canonicalizes the locale boundary before
         construction. Structurally invalid boundary values are rejected immediately.
-        Unknown but structurally valid locales log a warning and fall back to en_US
-        formatting rules. Use create_or_raise() if unknown locales must fail fast.
+        Unknown but structurally valid locales log bounded warnings and fall
+        back to en_US formatting rules. Use create_or_raise() if unknown locales
+        must fail fast.
 
         Thread Safety:
             Uses OrderedDict with Lock for thread-safe LRU caching.
@@ -225,12 +237,13 @@ class LocaleContext:
             >>> ctx = LocaleContext.create('xx_UNKNOWN')  # Unknown locale  # doctest: +SKIP
             >>> ctx.locale_code  # doctest: +SKIP
             'xx_unknown'
-            Formatting still uses `en_US` rules, with a warning logged:
+            Formatting uses `en_US` rules, with a warning logged:
         """
         normalized_locale = require_locale_code(locale_code, "locale_code")
+        exceeds_typical_length = len(normalized_locale) > MAX_LOCALE_CODE_LENGTH
 
         # Warn for locale codes exceeding typical BCP 47 limit
-        if len(normalized_locale) > MAX_LOCALE_CODE_LENGTH:
+        if exceeds_typical_length:
             logger.warning(
                 "Locale code exceeds typical BCP 47 length of %d characters: "
                 "'%s...' (%d characters). Attempting Babel validation.",
@@ -252,59 +265,42 @@ class LocaleContext:
 
         # Create new instance (Locale.parse is thread-safe)
         used_fallback = False
-        try:
-            babel_locale = locale_class.parse(normalized_locale)
-        except unknown_locale_error_class as e:
-            if len(normalized_locale) > MAX_LOCALE_CODE_LENGTH:
-                logger.warning(
-                    "Unknown locale '%s' (exceeds %d chars): %s. Falling back to en_US",
-                    normalized_locale,
-                    MAX_LOCALE_CODE_LENGTH,
-                    e,
-                )
-            else:
-                logger.warning(
-                    "Unknown locale '%s': %s. Falling back to en_US",
-                    normalized_locale,
-                    e,
-                )
-            babel_locale = locale_class.parse("en_US")
+        if is_definitely_unknown_locale(normalized_locale):
+            log_fallback_warning(
+                normalized_locale=normalized_locale,
+                exceeds_typical_length=exceeds_typical_length,
+                detail="not present in Babel locale data",
+                kind="unknown",
+            )
+            babel_locale = get_fallback_babel_locale(locale_class)
             used_fallback = True
-        except ValueError as e:
-            if len(normalized_locale) > MAX_LOCALE_CODE_LENGTH:
-                logger.warning(
-                    "Invalid locale format '%s' (exceeds %d chars): %s. Falling back to en_US",
-                    normalized_locale,
-                    MAX_LOCALE_CODE_LENGTH,
-                    e,
+        else:
+            try:
+                babel_locale = locale_class.parse(normalized_locale)
+            except unknown_locale_error_class as e:
+                log_fallback_warning(
+                    normalized_locale=normalized_locale,
+                    exceeds_typical_length=exceeds_typical_length,
+                    detail=str(e),
+                    kind="unknown",
                 )
-            else:
-                logger.warning(
-                    "Invalid locale format '%s': %s. Falling back to en_US",
-                    normalized_locale,
-                    e,
+                babel_locale = get_fallback_babel_locale(locale_class)
+                used_fallback = True
+            except ValueError as e:
+                log_fallback_warning(
+                    normalized_locale=normalized_locale,
+                    exceeds_typical_length=exceeds_typical_length,
+                    detail=str(e),
+                    kind="invalid",
                 )
-            babel_locale = locale_class.parse("en_US")
-            used_fallback = True
+                babel_locale = get_fallback_babel_locale(locale_class)
+                used_fallback = True
 
-        ctx = cls(
-            locale_code=normalized_locale,
-            _babel_locale=babel_locale,
-            is_fallback=used_fallback,
-            _factory_token=_FACTORY_TOKEN,
+        return cls._cache_context(
+            normalized_locale=normalized_locale,
+            babel_locale=babel_locale,
+            used_fallback=used_fallback,
         )
-
-        # Add to cache with lock (double-check pattern for thread safety)
-        with cls._cache_lock:
-            if normalized_locale in cls._cache:
-                return cls._cache[normalized_locale]
-
-            # Evict LRU if cache is full
-            if len(cls._cache) >= MAX_LOCALE_CACHE_SIZE:
-                cls._cache.popitem(last=False)
-
-            cls._cache[normalized_locale] = ctx
-            return ctx
 
     @classmethod
     def create_or_raise(cls, locale_code: str) -> LocaleContext:
@@ -313,11 +309,12 @@ class LocaleContext:
         Strict validation method that raises ValueError for invalid locales.
         Use this in tests or when silent fallback is not acceptable.
 
-        Validates the locale code strictly via Babel, then delegates to
-        ``create()`` for cache lookup and population. This ensures that:
+        Validates the locale code strictly via Babel, then caches the verified
+        locale instance. This ensures that:
         - Invalid locales raise ValueError immediately (no silent fallback).
         - Valid locales are cached and reused, matching ``create()`` semantics.
-        - Subsequent ``create()`` calls for the same locale hit the cache.
+        - Subsequent ``create()`` or ``create_or_raise()`` calls for the same
+          locale hit the cache.
 
         Args:
             locale_code: Locale identifier (e.g., 'en-US', 'lv-LV', 'de-DE')
@@ -341,34 +338,60 @@ class LocaleContext:
             ValueError: Unknown locale identifier 'invalid-locale'
         """
         require_babel("LocaleContext.create_or_raise")
+        normalized_locale = require_locale_code(locale_code, "locale_code")
+        with cls._cache_lock:
+            cached = cls._cache.get(normalized_locale)
+            if cached is not None and not cached.is_fallback:
+                cls._cache.move_to_end(normalized_locale)
+                return cached
+
+        if is_definitely_unknown_locale(normalized_locale):
+            msg = f"Unknown locale identifier '{normalized_locale}'"
+            raise ValueError(msg) from None
+
         locale_class = get_locale_class()
         unknown_locale_error_class = get_unknown_locale_error_class()
 
-        # Validate strictly — raises on unknown or malformed locale.
-        # locale_class.parse() is called only for validation here; create()
-        # will use the cache or re-parse as needed. On the first call for a
-        # locale, parse() executes twice (once here, once inside create() on
-        # cache miss). On subsequent calls, create() returns the cached
-        # instance without re-parsing, making this effectively O(1) after
-        # the first invocation. This is the correct trade-off: correctness
-        # and cache coherence take precedence over avoiding one extra parse
-        # on first use.
-        normalized_locale = require_locale_code(locale_code, "locale_code")
-
         try:
-            locale_class.parse(normalized_locale)
-        except unknown_locale_error_class as e:
-            msg = f"Unknown locale identifier '{normalized_locale}': {e}"
+            babel_locale = locale_class.parse(normalized_locale)
+        except unknown_locale_error_class:
+            msg = f"Unknown locale identifier '{normalized_locale}'"
             raise ValueError(msg) from None
         except ValueError as e:
             msg = f"Invalid locale format '{normalized_locale}': {e}"
             raise ValueError(msg) from None
 
-        # Locale is valid — delegate to create() for proper cache management.
-        # create() will find the key in cache (populated by the parse above
-        # if another thread raced) or re-parse and insert. Either way the
-        # result is identical to create(locale_code) for a valid locale.
-        return cls.create(normalized_locale)
+        return cls._cache_context(
+            normalized_locale=normalized_locale,
+            babel_locale=babel_locale,
+            used_fallback=False,
+        )
+
+    @classmethod
+    def _cache_context(
+        cls,
+        *,
+        normalized_locale: str,
+        babel_locale: Locale,
+        used_fallback: bool,
+    ) -> LocaleContext:
+        """Insert or reuse a LocaleContext in the shared LRU cache."""
+        ctx = cls(
+            locale_code=normalized_locale,
+            _babel_locale=babel_locale,
+            is_fallback=used_fallback,
+            _factory_token=_FACTORY_TOKEN,
+        )
+
+        with cls._cache_lock:
+            if normalized_locale in cls._cache:
+                return cls._cache[normalized_locale]
+
+            if len(cls._cache) >= MAX_LOCALE_CACHE_SIZE:
+                cls._cache.popitem(last=False)
+
+            cls._cache[normalized_locale] = ctx
+            return ctx
 
     @property
     def babel_locale(self) -> Locale:

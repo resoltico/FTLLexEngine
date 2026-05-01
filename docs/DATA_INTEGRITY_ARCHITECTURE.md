@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: ARCHITECTURE
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCheckFailedError, cache audit, boot validation]
   questions: ["how does strict mode relate to integrity?", "what audit evidence does the runtime expose?", "what is boot validation for?"]

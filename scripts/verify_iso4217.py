@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# @lint-plugin: ISO4217
 """Verify ISO 4217 decimal digits and active-code freshness against Babel CLDR.
 
 Compares ``ISO_4217_DECIMAL_DIGITS`` and ``ISO_4217_VALID_CODES`` against

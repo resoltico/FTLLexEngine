@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: dates - Date/Datetime Locale-aware Parsing
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """Date and Datetime Locale-aware Parsing Fuzzer (Atheris).
 
 Targets: ftllexengine.parsing.dates (parse_date, parse_datetime)

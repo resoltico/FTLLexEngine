@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: CHANGELOG
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
   questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
@@ -14,6 +14,72 @@ Notable changes to this project are documented in this file. The format is based
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.166.0] - 2026-05-01
+
+### Changed
+
+- **Locale fallback creation now rejects obvious invalid-language floods earlier and bounds repeated warning volume.**
+  `LocaleContext.create()` now fast-rejects locale codes whose primary language
+  tag is absent from Babel's locale and language-alias metadata, reuses one
+  cached `en_US` fallback locale instead of reparsing it on every fallback, and
+  suppresses additional fallback warnings after the initial burst so hostile or
+  misconfigured locale traffic does not turn runtime formatting into a log
+  amplifier. `LocaleContext.create_or_raise()` now shares the same metadata fast
+  path while preserving strict rejection semantics for cached fallback entries.
+- **The contributor devcontainer bind mount now favors correctness over stale-read caching.**
+  `.devcontainer/devcontainer.json` no longer declares `consistency=cached` on the repository
+  workspace bind mount, `scripts/validate-devcontainer.sh` now rejects that stale-read mode, and
+  `docs/DEVELOPER_DEVCONTAINER.md` now states that in-progress host edits must be visible
+  immediately inside the contributor container. This fixes a live workflow defect where
+  `./check.sh` inside the devcontainer could read older copies of recently edited files than the
+  host workspace and therefore disagree with host-side verification during the same session.
+- **The contributor devcontainer now declares `UV_LINK_MODE=copy` for bind-mounted installs.**
+  The canonical container workflow no longer emits `uv` hardlink fallback warnings every time a
+  repository shell gate installs the local package into a devcontainer-owned virtual environment.
+  `devcontainer.json`, the devcontainer validator, and the contributor workflow guide now agree on
+  that deterministic bind-mount install mode.
+- **Locale-aware parsing now accepts copied RTL display text and locale-native digits, and parser-only optional imports fail with actionable Babel guidance on first use.**
+  The parsing boundary now strips invisible bidi control marks, retries locale-default numbering systems such as Arabic-Indic digits before falling back to Latin digits, and keeps currency parsing on the same numeric parsing core. CLDR currency symbol discovery now normalizes formatting-only RTL marks before caching symbols, so locale-native Arabic symbols such as `ج.م.` roundtrip through `parse_currency()`. Parser-only installs now let explicit optional imports succeed up front while raising `BabelImportError` with install guidance the first time a Babel-backed class or formatter is actually used.
+- **The public docs now teach request-flow locale and currency constraints more explicitly.**
+  README, quick-reference, parsing, locale, and workflow guides now explain that
+  ambiguous symbols such as `"$4.25"` require either `infer_from_locale=True` or an
+  explicit ISO code, and that each `FluentLocalization` instance owns a fixed fallback
+  chain.
+- **Verification now has one canonical contract and the workflow tour examples execute as published.**
+  `./check.sh` is the documented full-repo verification entry point, `./scripts/lint.sh`
+  declares its validator surface explicitly instead of discovering scripts by comment
+  headers, `./scripts/test.sh` reads its coverage floor from `pyproject.toml`, and the
+  runnable Python fences in `docs/WORKFLOW_TOUR.md` are now self-contained so the docs
+  validator and copy-paste users execute the same examples.
+- **Validation and serializer internals are now split across focused helper modules, and the HypoFuzz runner is decomposed into sourced mode libraries.**
+  Resource validation now separates syntax extraction and entry/reference passes from the
+  orchestration entry point, serializer recursion helpers live in a dedicated engine module,
+  and `scripts/fuzz_hypofuzz.sh` now delegates large operational modes to focused shell
+  libraries so the public script remains a thin dispatcher rather than a monolith.
+- **Contributor verification now has a committed devcontainer contract, and Atheris native fuzzing is container-owned.**
+  The repository now ships `.devcontainer/` plus `./scripts/validate-devcontainer.sh`, `./check.sh`
+  requires the contributor container, and the contributor docs point to the devcontainer as the
+  canonical engineering workflow instead of relying on host-specific native setup.
+- **Native fuzzing workflows now provision their real toolchain contracts instead of assuming ambient packages.**
+  `./scripts/fuzz_hypofuzz.sh --deep` now runs through the dedicated `fuzz` dependency group that owns
+  `hypofuzz` and the Hypothesis CLI extra, while the contributor devcontainer now ships LLVM 19,
+  compiler-rt/libFuzzer, and `CLANG_BIN` so `./scripts/fuzz_atheris.sh --setup` can build Atheris
+  reproducibly on Linux contributor machines.
+- **Containerized shell gates now use devcontainer-scoped uv environments instead of reusing host `.venv-*` names.**
+  The lint, test, benchmark, HypoFuzz, `./check.sh`, and Atheris entrypoints now pivot into
+  `.venv-devcontainer-*` paths inside the bind-mounted workspace so Linux container environments
+  cannot overwrite or corrupt host macOS virtual environments.
+- **The Atheris runner now uses one explicit target manifest and split launcher libraries.**
+  `./scripts/fuzz_atheris.sh` now loads target names from `fuzz_atheris/targets.tsv`, delegates its
+  operations to focused shell helpers, and the large runtime and localization targets now expose thin
+  wrapper entrypoints over extracted support modules instead of keeping those owners monolithic.
+- **Cache audit records now expose predictable event ordering under read-heavy and concurrent workloads.**
+  `WriteLogEntry.sequence` now tracks monotonic audit-event order across misses, hits, puts, evictions,
+  and corruption records, while the new `cache_sequence` field preserves the cache-entry sequence that
+  was current for the logged event. The runtime reference and quickstart example now reflect that
+  distinction, so cache-history consumers no longer see misleading `sequence=0` miss records in normal
+  production traffic.
 
 ## [0.165.0] - 2026-04-24
 ### Changed
@@ -204,9 +270,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Documentation validation, example execution, lint, tests, and Atheris corpus health all clear
   `PYTHONPATH`/`sys.path` overrides so quality gates exercise the same import contract users get.
 - **Atheris corpus health now bootstraps its dedicated environment on demand.** The
-  `./scripts/fuzz_atheris.sh --corpus` path now creates `.venv-atheris` before invoking the
-  health checker, so fresh machines and `./check.sh` no longer depend on a pre-existing
-  Atheris venv.
+  `./scripts/fuzz_atheris.sh --corpus` path now creates the dedicated Atheris environment before
+  invoking the health checker, so fresh machines and `./check.sh` no longer depend on a
+  pre-existing native fuzzing venv.
 - **Public examples and parser-focused tests now describe current behavior instead of stale cleanup notes or old line coordinates.**
   The shipped transformer example no longer embeds inline `TODO` markers, parser coverage tests
   now describe behavior rather than historical line numbers from the pre-split parser, and the
@@ -7022,7 +7088,8 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0
-[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.165.0...HEAD
+[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.166.0...HEAD
+[0.166.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.165.0...v0.166.0
 [0.165.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...v0.164.0
 [0.163.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.162.0...v0.163.0

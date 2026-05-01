@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: scope - Variable Shadowing & Scoping Invariants
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """Variable Scope & Resolution Context Fuzzer (Atheris).
 
 Targets: ftllexengine.runtime.resolver (FluentResolver, ResolutionContext,

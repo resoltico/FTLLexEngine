@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: structured - Structure-aware fuzzing (Deep AST)
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """Structure-Aware Fuzzer (Atheris).
 
 Generates syntactically plausible FTL using grammar-aware construction,

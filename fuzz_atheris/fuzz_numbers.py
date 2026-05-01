@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-# FUZZ_PLUGIN_HEADER_START
-# FUZZ_PLUGIN: numbers - NUMBER Function Runtime Formatting (Oracle)
-# Intentional: This header is intentionally placed for dynamic plugin discovery.
-# CRITICAL: DO NOT REMOVE THIS HEADER - REQUIRED FOR FUZZ_ATHERIS.SH
-# FUZZ_PLUGIN_HEADER_END
 """NUMBER Function Runtime Formatting Oracle Fuzzer (Atheris).
 
 Targets: ftllexengine.runtime.functions.number_format

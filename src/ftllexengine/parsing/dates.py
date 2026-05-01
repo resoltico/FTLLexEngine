@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, cast
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
 from ftllexengine.diagnostics.templates import ErrorTemplate
+from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
 from .date_patterns import (
     _BABEL_TOKEN_MAP,
@@ -167,9 +168,11 @@ def parse_date(
         errors.append(error)
         return (None, tuple(errors))
 
+    normalized_value = strip_bidi_format_chars(value)
+
     # Try ISO 8601 first (fastest path)
     try:
-        return (datetime.fromisoformat(value).date(), tuple(errors))
+        return (datetime.fromisoformat(normalized_value).date(), tuple(errors))
     except ValueError:
         pass
 
@@ -192,7 +195,9 @@ def parse_date(
     for pattern, has_era in patterns:
         try:
             # Preprocess for era tokens before strptime (with localized era names)
-            parse_value = _preprocess_datetime_input(value, locale_code, has_era=has_era)
+            parse_value = _preprocess_datetime_input(
+                normalized_value, locale_code, has_era=has_era
+            )
             return (datetime.strptime(parse_value, pattern).date(), tuple(errors))
         except ValueError:
             continue
@@ -284,9 +289,11 @@ def parse_datetime(
         errors.append(error)
         return (None, tuple(errors))
 
+    normalized_value = strip_bidi_format_chars(value)
+
     # Try ISO 8601 first (fastest path)
     try:
-        parsed = datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(normalized_value)
         if tzinfo is not None and parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=tzinfo)
         return (parsed, tuple(errors))
@@ -312,7 +319,9 @@ def parse_datetime(
     for pattern, has_era in patterns:
         try:
             # Preprocess for era tokens before strptime (with localized era names)
-            parse_value = _preprocess_datetime_input(value, locale_code, has_era=has_era)
+            parse_value = _preprocess_datetime_input(
+                normalized_value, locale_code, has_era=has_era
+            )
             parsed = datetime.strptime(parse_value, pattern)
             if tzinfo is not None and parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=tzinfo)

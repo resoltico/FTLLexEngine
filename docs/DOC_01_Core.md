@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: CORE
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [FluentBundle, AsyncFluentBundle, FluentLocalization, LocalizationBootConfig, PathResourceLoader, LoadSummary, ResourceLoadResult, LocalizationCacheStats, require_clean, get_load_summary]
   questions: ["how do I format messages?", "how do I load multiple locales?", "how do I inspect localization load results?", "how do I boot localization safely?"]

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: INDEX
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection, detect_cycles, entry_dependency_set]
   questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing, introspection, and analysis APIs?", "where are syntax, parsing, diagnostics, and dependency-graph references?"]
@@ -167,6 +167,7 @@ route:
 | `SourceSpan` | [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | `SourceSpan` |
 | `scripts/validate_docs.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate_docs.py` |
 | `scripts/validate_version.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate_version.py` |
+| `scripts/validate-devcontainer.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/validate-devcontainer.sh` |
 | `scripts/run_examples.py` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/run_examples.py` |
 | `check.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `check.sh` |
 | `scripts/lint.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/lint.sh` |
@@ -180,6 +181,7 @@ route:
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 - [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md)
 - [DATA_INTEGRITY_ARCHITECTURE.md](DATA_INTEGRITY_ARCHITECTURE.md)
+- [DEVELOPER_DEVCONTAINER.md](DEVELOPER_DEVCONTAINER.md)
 - [FUZZING_GUIDE.md](FUZZING_GUIDE.md)
 - [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md)
 - [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md)

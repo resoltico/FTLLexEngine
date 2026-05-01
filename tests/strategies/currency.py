@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from babel.numbers import format_decimal
 from hypothesis import event
 from hypothesis import strategies as st
 from hypothesis.strategies import composite
@@ -85,6 +86,11 @@ _FORMATTING_LOCALES: list[str] = [
 ]
 
 
+def _format_amount_for_locale(amount: Decimal, locale: str) -> str:
+    """Format one Decimal using the locale's decimal separators."""
+    return str(format_decimal(amount, locale=locale, decimal_quantization=False))
+
+
 @composite
 def currency_amounts(draw: st.DrawFn) -> Decimal:
     """Generate realistic currency amounts.
@@ -148,16 +154,17 @@ def unambiguous_currency_inputs(
     fmt = draw(st.sampled_from([
         "prefix", "suffix", "iso_prefix", "iso_suffix",
     ]))
+    formatted_amount = _format_amount_for_locale(amount, locale)
 
     match fmt:
         case "prefix":
-            value = f"{symbol}{amount}"
+            value = f"{symbol}{formatted_amount}"
         case "suffix":
-            value = f"{amount} {symbol}"
+            value = f"{formatted_amount} {symbol}"
         case "iso_prefix":
-            value = f"{code} {amount}"
+            value = f"{code} {formatted_amount}"
         case _:  # iso_suffix
-            value = f"{amount} {code}"
+            value = f"{formatted_amount} {code}"
 
     event("currency_input_type=unambiguous_symbol")
     event(f"currency_input_format={fmt}")
@@ -217,12 +224,13 @@ def iso_code_currency_inputs(
     locale = draw(st.sampled_from(_FORMATTING_LOCALES))
     amount = draw(currency_amounts())
     position = draw(st.sampled_from(["prefix", "suffix"]))
+    formatted_amount = _format_amount_for_locale(amount, locale)
 
     match position:
         case "prefix":
-            value = f"{code} {amount}"
+            value = f"{code} {formatted_amount}"
         case _:
-            value = f"{amount} {code}"
+            value = f"{formatted_amount} {code}"
 
     event("currency_input_type=iso_code")
     event(f"currency_iso_position={position}")

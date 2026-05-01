@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: ERRORS
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [FrozenFluentError, ErrorCategory, FrozenErrorContext, DataIntegrityError, BabelImportError, ErrorTemplate]
   questions: ["what errors does FTLLexEngine expose?", "how do parse and format failures surface?", "what integrity exceptions exist?", "how does missing Babel surface?"]
@@ -116,7 +116,7 @@ class BabelImportError(ImportError):
 ### Constraints
 - Import: `from ftllexengine.introspection import BabelImportError`
 - Purpose: consistent optional-dependency failure for CLDR-backed features
-- Trigger: only for genuinely missing Babel in parser-only installs
+- Trigger: only for genuinely missing Babel in parser-only installs; explicit optional runtime imports raise it on first use
 - Broken-install path: internal Babel import failures bubble their original `ImportError`
 - Message: instructs callers to install `ftllexengine[babel]`
 

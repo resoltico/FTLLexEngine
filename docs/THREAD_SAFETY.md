@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: ARCHITECTURE
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [thread safety, concurrency, FluentBundle, FluentLocalization, AsyncFluentBundle, shared bundle]
   questions: ["is FluentBundle thread-safe?", "can I share a localization object across threads?", "what does AsyncFluentBundle do?"]

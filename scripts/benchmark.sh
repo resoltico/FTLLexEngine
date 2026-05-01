@@ -73,7 +73,14 @@ shopt -s inherit_errexit
 
 # [SECTION: ENVIRONMENT_ISOLATION]
 PY_VERSION="${PY_VERSION:-3.13}"
-TARGET_VENV=".venv-${PY_VERSION}"
+if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
+    TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
+else
+    TARGET_VENV=".venv-${PY_VERSION}"
+fi
+if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" && -z "${UV_LINK_MODE:-}" ]]; then
+    export UV_LINK_MODE="copy"
+fi
 
 if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then
     if [[ "${BENCHMARK_ALREADY_PIVOTED:-}" == "1" ]]; then
@@ -252,7 +259,7 @@ fi
 set -e
 
 END_TIME="${EPOCHREALTIME}"
-DURATION=$(printf "%.3f" "$(echo "$END_TIME - $START_TIME" | bc)")
+DURATION=$(awk -v start="$START_TIME" -v end="$END_TIME" 'BEGIN { printf "%.3f", end - start }')
 log_group_end
 
 # [SECTION: ANALYSIS]

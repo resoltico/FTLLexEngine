@@ -32,6 +32,7 @@ class _CacheAuditMixin:
         if self._audit_log is None:
             return
 
+        self._audit_sequence += 1
         key_hash = hashlib.blake2b(
             str(key).encode("utf-8", errors="surrogatepass"),
             digest_size=8,
@@ -41,7 +42,8 @@ class _CacheAuditMixin:
             operation=operation,
             key_hash=key_hash,
             timestamp=time.monotonic(),
-            sequence=entry.sequence if entry is not None else 0,
+            sequence=self._audit_sequence,
+            cache_sequence=entry.sequence if entry is not None else self._sequence,
             checksum_hex=entry.checksum.hex() if entry is not None else "",
             wall_time_unix=time.time(),
         )

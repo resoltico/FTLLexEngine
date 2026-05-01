@@ -20,10 +20,11 @@ def test_pyproject_enforces_full_line_and_branch_coverage() -> None:
     assert coverage_report["fail_under"] == 100.0
 
 
-def test_scripts_test_sh_uses_same_coverage_threshold() -> None:
-    """The main test script should match the pyproject coverage policy."""
+def test_scripts_test_sh_reads_coverage_threshold_from_pyproject() -> None:
+    """The main test script should derive its coverage threshold from pyproject."""
     content = (REPO_ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
 
-    match = re.search(r"^DEFAULT_COV_LIMIT=(\d+)$", content, re.MULTILINE)
-    assert match is not None
-    assert int(match.group(1)) == 100
+    assert "read_coverage_threshold()" in content
+    assert 'data["tool"]["coverage"]["report"]["fail_under"]' in content
+    assert 'DEFAULT_COV_LIMIT="$(read_coverage_threshold)"' in content
+    assert re.search(r"^DEFAULT_COV_LIMIT=100$", content, re.MULTILINE) is None

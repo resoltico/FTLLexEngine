@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: SYNTAX_EXPRESSIONS
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [TextElement, Placeable, SelectExpression, VariableReference, FunctionReference, Entry, Expression]
   questions: ["which AST node types model Fluent expressions and references?", "what public syntax union aliases exist?", "where are placeables and selectors documented?"]

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# @lint-plugin: VersionSync
 """Validate version consistency across all project artifacts.
 
 Ensures pyproject.toml is the single source of truth for version information,

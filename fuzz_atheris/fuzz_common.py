@@ -4,8 +4,8 @@ Provides common observability, metrics, seed corpus management, and reporting
 used by all fuzz targets. Each fuzzer imports from this module and composes
 domain-specific state alongside BaseFuzzerState.
 
-Not a fuzz target itself -- no FUZZ_PLUGIN header, not discoverable by
-fuzz_atheris.sh.
+Not a fuzz target itself. Discoverable targets are owned by
+fuzz_atheris/targets.tsv and loaded by scripts/fuzz_atheris.sh.
 """
 
 from __future__ import annotations

@@ -129,6 +129,21 @@ class TestParseDecimalHypothesis:
         assert result is None
 
     @given(
+        value=st.one_of(
+            st.integers(),
+            st.decimals(allow_nan=False, allow_infinity=False),
+            st.lists(st.integers()),
+            st.dictionaries(st.text(), st.integers()),
+        ),
+    )
+    def test_parse_decimal_type_error_returns_error(self, value: object) -> None:
+        """Non-string inputs return errors in tuple form instead of raising."""
+        result, errors = parse_decimal(value, "en_US")
+        event(f"input_type={type(value).__name__}")
+        assert len(errors) > 0
+        assert result is None
+
+    @given(
         locale=st.sampled_from(["en_US", "de_DE", "fr_FR", "lv_LV", "pl_PL", "ja_JP"]),
         value=st.decimals(
             min_value=Decimal("100.00"),

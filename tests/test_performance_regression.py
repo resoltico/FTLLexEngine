@@ -28,6 +28,7 @@ References:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 import pytest
 from hypothesis import event, given, settings
@@ -61,29 +62,63 @@ MIN_RESOLUTION_PER_SECOND = 500
 # ==============================================================================
 
 
-def measure_parse_time(ftl: str) -> float:
-    """Measure time to parse FTL string (in seconds)."""
+def _measure_best_time(
+    func: Callable[[], object], *, warmup_runs: int = 0, timed_runs: int = 1
+) -> float:
+    """Return the fastest observed runtime for one callable.
+
+    Warmup runs reduce first-call effects, and multiple timed runs prevent
+    single-shot scheduler noise from masquerading as a regression.
+    """
+    for _ in range(warmup_runs):
+        func()
+
+    best = float("inf")
+    for _ in range(timed_runs):
+        start = time.perf_counter()
+        func()
+        best = min(best, time.perf_counter() - start)
+
+    return best
+
+
+def measure_parse_time(ftl: str, *, warmup_runs: int = 0, timed_runs: int = 1) -> float:
+    """Measure stable time to parse FTL string (in seconds)."""
     parser = FluentParserV1()
-    start = time.perf_counter()
-    _ = parser.parse(ftl)
-    end = time.perf_counter()
-    return end - start
+
+    def parse_resource() -> object:
+        return parser.parse(ftl)
+
+    return _measure_best_time(parse_resource, warmup_runs=warmup_runs, timed_runs=timed_runs)
 
 
-def measure_serialize_time(resource: Resource) -> float:
-    """Measure time to serialize resource (in seconds)."""
-    start = time.perf_counter()
-    _ = serialize(resource)
-    end = time.perf_counter()
-    return end - start
+def measure_serialize_time(
+    resource: Resource, *, warmup_runs: int = 0, timed_runs: int = 1
+) -> float:
+    """Measure stable time to serialize resource (in seconds)."""
+
+    def serialize_resource() -> object:
+        return serialize(resource)
+
+    return _measure_best_time(
+        serialize_resource, warmup_runs=warmup_runs, timed_runs=timed_runs
+    )
 
 
-def measure_resolution_time(bundle: FluentBundle, msg_id: str, args: dict[str, object]) -> float:
-    """Measure time to resolve message (in seconds)."""
-    start = time.perf_counter()
-    _ = bundle.format_pattern(msg_id, args)  # type: ignore[arg-type]
-    end = time.perf_counter()
-    return end - start
+def measure_resolution_time(
+    bundle: FluentBundle,
+    msg_id: str,
+    args: dict[str, object],
+    *,
+    warmup_runs: int = 0,
+    timed_runs: int = 1,
+) -> float:
+    """Measure stable time to resolve a message (in seconds)."""
+
+    def resolve() -> object:
+        return bundle.format_pattern(msg_id, args)  # type: ignore[arg-type]
+
+    return _measure_best_time(resolve, warmup_runs=warmup_runs, timed_runs=timed_runs)
 
 
 # ==============================================================================
@@ -112,12 +147,7 @@ class TestParserPerformanceScaling:
             messages = [f"msg{i} = Value {i}\n" for i in range(size)]
             ftl = "".join(messages)
 
-            # Warmup run to stabilize JIT/cache
-            _ = measure_parse_time(ftl)
-
-            # Take minimum of 3 runs (more stable than mean/median)
-            time_measurements = [measure_parse_time(ftl) for _ in range(3)]
-            times.append(min(time_measurements))
+            times.append(measure_parse_time(ftl, warmup_runs=1, timed_runs=3))
 
         # Calculate normalized complexity ratios
         # For O(n): these should be close to 1.0
@@ -147,7 +177,7 @@ class TestParserPerformanceScaling:
         messages = [f"msg{i} = Value {i}\n" for i in range(message_count)]
         ftl = "".join(messages)
 
-        parse_time = measure_parse_time(ftl)
+        parse_time = measure_parse_time(ftl, warmup_runs=1, timed_runs=5)
 
         # Calculate messages per second
         messages_per_sec = message_count / parse_time if parse_time > 0 else float("inf")
@@ -165,7 +195,7 @@ class TestParserPerformanceScaling:
         long_pattern = "x" * 1000
         ftl = f"msg = {long_pattern}\n"
 
-        parse_time = measure_parse_time(ftl)
+        parse_time = measure_parse_time(ftl, warmup_runs=1, timed_runs=5)
 
         # Should parse in < 10ms
         assert parse_time < 0.01, f"Parser too slow for long patterns: {parse_time:.4f}s"
@@ -200,12 +230,7 @@ class TestSerializerPerformanceScaling:
             messages = [f"msg{i} = Value {i}\n" for i in range(size)]
             resource = parser.parse("".join(messages))
 
-            # Warmup run
-            _ = measure_serialize_time(resource)
-
-            # Take minimum of 3 runs
-            time_measurements = [measure_serialize_time(resource) for _ in range(3)]
-            times.append(min(time_measurements))
+            times.append(measure_serialize_time(resource, warmup_runs=1, timed_runs=3))
 
         # Calculate normalized complexity ratios
         ratio_1_to_2 = (times[1] / times[0]) / (sizes[1] / sizes[0])
@@ -232,7 +257,7 @@ class TestSerializerPerformanceScaling:
         messages = [f"msg{i} = Value {i}\n" for i in range(200)]
         resource = parser.parse("".join(messages))
 
-        serialize_time = measure_serialize_time(resource)
+        serialize_time = measure_serialize_time(resource, warmup_runs=1, timed_runs=5)
 
         # Calculate messages per second
         messages_per_sec = 200 / serialize_time if serialize_time > 0 else float("inf")
@@ -368,7 +393,7 @@ class TestPerformanceStress:
         ftl = f"msg = {nested}"
 
         # Should parse in reasonable time (< 100ms)
-        parse_time = measure_parse_time(ftl)
+        parse_time = measure_parse_time(ftl, warmup_runs=1, timed_runs=5)
         assert parse_time < 0.1, f"Parser too slow for nested selects: {parse_time:.4f}s"
 
     def test_very_large_resource(self):
@@ -381,7 +406,7 @@ class TestPerformanceStress:
         ftl = "".join(messages)
 
         # Should parse in < 1 second
-        parse_time = measure_parse_time(ftl)
+        parse_time = measure_parse_time(ftl, warmup_runs=1, timed_runs=5)
         assert parse_time < 1.0, f"Parser too slow for 1000 messages: {parse_time:.4f}s"
 
         # Should use reasonable memory (parse shouldn't copy excessively)
@@ -394,7 +419,7 @@ class TestPerformanceStress:
         # Create message with very large number
         ftl = f"msg = {{ {10**100} }}"
 
-        parse_time = measure_parse_time(ftl)
+        parse_time = measure_parse_time(ftl, warmup_runs=1, timed_runs=5)
         assert parse_time < 0.01, f"Parser too slow for large numbers: {parse_time:.4f}s"
 
     @given(st.lists(ftl_simple_messages(), min_size=10, max_size=50))
@@ -431,7 +456,7 @@ class TestPerformanceRegression:
         # Use repetitive pattern that could trigger backtracking
         ftl = "msg = " + "a" * 50 + "x"
 
-        parse_time = measure_parse_time(ftl)
+        parse_time = measure_parse_time(ftl, warmup_runs=1, timed_runs=5)
         assert parse_time < 0.01, f"Possible catastrophic backtracking: {parse_time:.4f}s"
 
     def test_no_quadratic_string_concatenation(self):
@@ -447,7 +472,7 @@ class TestPerformanceRegression:
         resource = parser.parse("".join(messages))
 
         # Serialize (should use efficient string building)
-        serialize_time = measure_serialize_time(resource)
+        serialize_time = measure_serialize_time(resource, warmup_runs=1, timed_runs=5)
 
         # Should be fast even for 500 messages (< 100ms)
         assert serialize_time < 0.1, (

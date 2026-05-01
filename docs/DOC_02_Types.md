@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: TYPES
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [FluentNumber, FluentValue, ParseResult, LocaleCode, CurrencyCode, TerritoryInfo, MessageIntrospection]
   questions: ["what public types does FTLLexEngine expose?", "what value types can formatting accept?", "which semantic aliases and lookup-result types exist?", "what introspection result types exist?"]

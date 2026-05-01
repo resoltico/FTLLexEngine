@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: RUNTIME_UTILITIES
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [normalize_locale, get_system_locale, require_locale_code, __version__, require_date, require_datetime, require_fluent_number]
   questions: ["where are root-level runtime utility exports documented?", "what package metadata constants are public?", "which boundary validators and locale helpers are exported from the root package?"]

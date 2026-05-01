@@ -35,7 +35,10 @@ LIVE_NETWORK_TEST_PATTERNS = (
     re.compile(r"raw\.githubusercontent\.com"),
 )
 
-VERSION_PROVENANCE_PATTERN = re.compile(r"\b(?:Added|Pre|Post|Prior to)\s+v\d+\.\d+\.\d+\b|v\d+\.\d+\.\d+\+")
+VERSION_PROVENANCE_PATTERN = re.compile(
+    r"\b(?:Added|Pre|Post|Prior to)\s+v\d+\.\d+\.\d+\b|v\d+\.\d+\.\d+\+"
+)
+LARGE_OWNER_BUDGET_THRESHOLD = 1000
 
 FILE_LINE_BUDGETS = {
     "src/ftllexengine/runtime/bundle.py": 120,
@@ -56,24 +59,154 @@ FILE_LINE_BUDGETS = {
     "src/ftllexengine/localization/orchestrator.py": 400,
     "src/ftllexengine/parsing/currency.py": 650,
     "src/ftllexengine/parsing/dates.py": 350,
-    "src/ftllexengine/syntax/serializer.py": 700,
+    "src/ftllexengine/syntax/serializer.py": 450,
+    "src/ftllexengine/syntax/serializer_engine.py": 350,
     "src/ftllexengine/diagnostics/templates.py": 80,
     "src/ftllexengine/diagnostics/template_reference.py": 220,
     "src/ftllexengine/diagnostics/template_runtime.py": 190,
     "src/ftllexengine/diagnostics/template_parsing.py": 150,
+    "src/ftllexengine/validation/resource.py": 240,
+    "src/ftllexengine/validation/resource_common.py": 60,
+    "src/ftllexengine/validation/resource_entries.py": 260,
+    "src/ftllexengine/validation/resource_syntax.py": 100,
     "src/ftllexengine/syntax/visitor.py": 750,
     "src/ftllexengine/syntax/cursor.py": 700,
     "tests/test_runtime_bundle_property_core.py": 800,
     "tests/test_runtime_bundle_property_references.py": 900,
     "tests/test_runtime_bundle_property_advanced.py": 1000,
     "tests/test_runtime_bundle_property_state.py": 750,
-    "tests/test_syntax_serializer.py": 3100,
-    "tests/test_syntax_parser_property.py": 2850,
-    "tests/strategies/ftl.py": 2700,
-    "fuzz_atheris/fuzz_localization.py": 2300,
-    "fuzz_atheris/fuzz_runtime.py": 1500,
-    "scripts/fuzz_hypofuzz.sh": 1300,
-    "scripts/fuzz_atheris.sh": 1100,
+    "tests/test_introspection_iso.py": 20,
+    "tests/introspection_iso_cases/lookup.py": 560,
+    "tests/introspection_iso_cases/cache_and_babel.py": 640,
+    "tests/introspection_iso_cases/error_paths.py": 320,
+    "tests/introspection_iso_cases/defensive_branches.py": 560,
+    "tests/introspection_iso_cases/requirements.py": 360,
+    "tests/test_runtime_cache_integrity.py": 20,
+    "tests/runtime_cache_integrity_cases/checksums.py": 320,
+    "tests/runtime_cache_integrity_cases/write_once_audit.py": 460,
+    "tests/runtime_cache_integrity_cases/idempotence_and_hashes.py": 400,
+    "tests/runtime_cache_integrity_cases/integrity_edges.py": 620,
+    "tests/runtime_cache_integrity_cases/limits_and_timing.py": 320,
+    "tests/test_introspection_message.py": 20,
+    "tests/introspection_message_cases/extraction_and_references.py": 580,
+    "tests/introspection_message_cases/contracts_and_spans.py": 540,
+    "tests/introspection_message_cases/properties_and_branches.py": 520,
+    "tests/introspection_message_cases/cache_and_validation.py": 360,
+    "tests/test_diagnostics_frozen_error.py": 20,
+    "tests/diagnostics_frozen_error_cases/core_behavior.py": 580,
+    "tests/diagnostics_frozen_error_cases/branch_coverage.py": 600,
+    "tests/diagnostics_frozen_error_cases/formatting_and_hashes.py": 620,
+    "tests/test_runtime_locale_context.py": 20,
+    "tests/runtime_locale_context_cases/construction_and_cache.py": 480,
+    "tests/runtime_locale_context_cases/number_formatting.py": 280,
+    "tests/runtime_locale_context_cases/datetime_and_currency.py": 440,
+    "tests/runtime_locale_context_cases/boundaries_and_extras.py": 500,
+    "tests/test_runtime_resolver_selection.py": 20,
+    "tests/runtime_resolver_selection_cases/pattern_resolution.py": 420,
+    "tests/runtime_resolver_selection_cases/numeric_matching.py": 480,
+    "tests/runtime_resolver_selection_cases/number_literal_edges.py": 460,
+    "tests/runtime_resolver_selection_cases/fallback_and_errors.py": 340,
+    "tests/test_localization_orchestration.py": 20,
+    "tests/localization_orchestration_cases/load_and_lookup.py": 420,
+    "tests/localization_orchestration_cases/strict_and_boot.py": 420,
+    "tests/localization_orchestration_cases/cache_and_properties.py": 420,
+    "tests/localization_orchestration_cases/ast_and_cleanup.py": 460,
+    "tests/test_localization.py": 20,
+    "tests/localization_cases/basics_and_fallback.py": 340,
+    "tests/localization_cases/loaders_and_cache.py": 360,
+    "tests/localization_cases/multilocale_and_callbacks.py": 560,
+    "tests/localization_cases/validation_and_streams.py": 480,
+    "tests/test_syntax_serializer_core.py": 950,
+    "tests/test_syntax_serializer_text_validation.py": 800,
+    "tests/test_syntax_serializer_patterns.py": 550,
+    "tests/test_syntax_serializer_helpers.py": 550,
+    "tests/test_syntax_serializer_branches.py": 700,
+    "tests/test_runtime_bundle.py": 20,
+    "tests/runtime_bundle_cases/__init__.py": 40,
+    "tests/runtime_bundle_cases/basic.py": 820,
+    "tests/runtime_bundle_cases/state.py": 820,
+    "tests/runtime_bundle_cases/introspection.py": 320,
+    "tests/runtime_bundle_cases/properties.py": 700,
+    "tests/test_syntax_validator.py": 20,
+    "tests/syntax_validator_cases/__init__.py": 60,
+    "tests/syntax_validator_cases/entries.py": 620,
+    "tests/syntax_validator_cases/results.py": 620,
+    "tests/syntax_validator_cases/high_level.py": 500,
+    "tests/syntax_validator_cases/regressions.py": 620,
+    "tests/test_syntax_parser_property.py": 20,
+    "tests/syntax_parser_property_cases/__init__.py": 60,
+    "tests/syntax_parser_property_cases/core.py": 700,
+    "tests/syntax_parser_property_cases/syntax_elements.py": 760,
+    "tests/syntax_parser_property_cases/grammar_boundaries.py": 780,
+    "tests/syntax_parser_property_cases/roundtrip_and_malformed.py": 700,
+    "tests/strategies/ftl.py": 20,
+    "tests/strategies/ftl_shared.py": 80,
+    "tests/strategies/ftl_strings.py": 620,
+    "tests/strategies/ftl_ast.py": 780,
+    "tests/strategies/ftl_structural.py": 500,
+    "tests/strategies/ftl_whitespace.py": 440,
+    "tests/strategies/ftl_negative.py": 500,
+    "tests/fuzz/test_syntax_serializer_property.py": 40,
+    "tests/test_syntax_parser_core.py": 40,
+    "tests/test_syntax_parser_expressions.py": 40,
+    "tests/test_syntax_parser_patterns.py": 40,
+    "tests/test_validation_resource.py": 40,
+    "tests/test_syntax_visitor_transformer.py": 40,
+    "tests/test_runtime_resolver_depth_cycles.py": 40,
+    "tests/test_parsing_currency.py": 40,
+    "tests/test_parsing_dates.py": 40,
+    "tests/test_runtime_cache_hashable.py": 40,
+    "tests/fuzz/test_runtime_resolver_state_machine.py": 40,
+    "tests/strategy_metrics.py": 1260,
+    "tests/fuzz/test_localization_property.py": 40,
+    "tests/test_runtime_cache_property.py": 40,
+    "tests/test_runtime_function_bridge.py": 40,
+    "tests/test_syntax_visitor.py": 40,
+    "tests/test_syntax_parser_error_recovery.py": 40,
+    "tests/test_runtime_plural_rules.py": 40,
+    "tests/test_integration_e2e.py": 40,
+    "tests/test_validation_resource_dependency_graph.py": 40,
+    "tests/test_syntax_cursor_property.py": 40,
+    "tests/test_syntax_serializer_roundtrip.py": 40,
+    "tests/test_syntax_cursor.py": 40,
+    "fuzz_atheris/fuzz_localization.py": 40,
+    "fuzz_atheris/fuzz_localization_entry.py": 200,
+    "fuzz_atheris/fuzz_localization_support.py": 380,
+    "fuzz_atheris/fuzz_localization_patterns_basic.py": 560,
+    "fuzz_atheris/fuzz_localization_patterns_validation.py": 380,
+    "fuzz_atheris/fuzz_localization_patterns_introspection.py": 420,
+    "fuzz_atheris/fuzz_localization_patterns_loader.py": 360,
+    "fuzz_atheris/fuzz_localization_patterns_boot.py": 280,
+    "fuzz_atheris/fuzz_runtime.py": 40,
+    "fuzz_atheris/fuzz_runtime_entry.py": 300,
+    "fuzz_atheris/fuzz_runtime_support.py": 420,
+    "fuzz_atheris/fuzz_runtime_builders.py": 420,
+    "fuzz_atheris/fuzz_runtime_scenarios.py": 460,
+    "fuzz_atheris/fuzz_bridge.py": 40,
+    "fuzz_atheris/fuzz_bridge_entry.py": 200,
+    "fuzz_atheris/fuzz_bridge_support.py": 420,
+    "fuzz_atheris/fuzz_bridge_patterns_registration.py": 260,
+    "fuzz_atheris/fuzz_bridge_patterns_numbers.py": 320,
+    "fuzz_atheris/fuzz_bridge_patterns_dispatch.py": 480,
+    "fuzz_atheris/fuzz_serializer.py": 40,
+    "fuzz_atheris/fuzz_serializer_entry.py": 200,
+    "fuzz_atheris/fuzz_serializer_support.py": 440,
+    "fuzz_atheris/fuzz_serializer_patterns_text.py": 320,
+    "fuzz_atheris/fuzz_serializer_patterns_transform.py": 240,
+    "fuzz_atheris/fuzz_serializer_mutators.py": 220,
+    "fuzz_atheris/fuzz_builtins.py": 40,
+    "fuzz_atheris/fuzz_builtins_entry.py": 180,
+    "fuzz_atheris/fuzz_builtins_support.py": 420,
+    "fuzz_atheris/fuzz_builtins_patterns_number.py": 220,
+    "fuzz_atheris/fuzz_builtins_patterns_datetime.py": 180,
+    "fuzz_atheris/fuzz_builtins_patterns_currency.py": 340,
+    "scripts/fuzz_hypofuzz.sh": 300,
+    "scripts/lib/fuzz_hypofuzz/common.sh": 220,
+    "scripts/lib/fuzz_hypofuzz/modes_check.sh": 320,
+    "scripts/lib/fuzz_hypofuzz/modes_fuzz.sh": 500,
+    "scripts/fuzz_atheris.sh": 220,
+    "scripts/lib/fuzz_atheris/common.sh": 180,
+    "scripts/lib/fuzz_atheris/commands.sh": 320,
 }
 
 
@@ -104,6 +237,26 @@ def _git_visible_repo_files() -> list[Path]:
     assert git is not None
     result = subprocess.run(
         [git, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        check=True,
+        capture_output=True,
+        cwd=REPO_ROOT,
+    )
+    files: list[Path] = []
+    for raw_path in result.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        path = REPO_ROOT / raw_path.decode("utf-8")
+        if path.is_file():
+            files.append(path)
+    return files
+
+
+def _git_tracked_repo_files() -> list[Path]:
+    """List files present in the git index for the current worktree state."""
+    git = shutil.which("git")
+    assert git is not None
+    result = subprocess.run(
+        [git, "ls-files", "--cached", "-z"],
         check=True,
         capture_output=True,
         cwd=REPO_ROOT,
@@ -278,3 +431,113 @@ def test_large_repo_files_stay_under_line_budgets() -> None:
             offenders.append(f"{relative_path}: {line_count} > {max_lines}")
 
     assert offenders == []
+
+
+def test_large_python_and_shell_owners_have_explicit_budgets() -> None:
+    """Any very large owner must opt into an explicit architecture budget."""
+    offenders: list[str] = []
+    scan_roots = (
+        REPO_ROOT / "src",
+        REPO_ROOT / "tests",
+        REPO_ROOT / "fuzz_atheris",
+        REPO_ROOT / "scripts",
+    )
+
+    for root in scan_roots:
+        for path in sorted(root.rglob("*")):
+            if path.suffix not in {".py", ".sh"} or path.name == "__init__.py":
+                continue
+            relative = path.relative_to(REPO_ROOT).as_posix()
+            line_count = len(path.read_text(encoding="utf-8").splitlines())
+            if (
+                line_count >= LARGE_OWNER_BUDGET_THRESHOLD
+                and relative not in FILE_LINE_BUDGETS
+            ):
+                offenders.append(f"{relative}: {line_count}")
+
+    assert offenders == []
+
+
+def test_hypofuzz_entrypoint_delegates_to_split_libraries() -> None:
+    """HypoFuzz entrypoint should stay a thin dispatcher over focused shell libs."""
+    entrypoint = (REPO_ROOT / "scripts" / "fuzz_hypofuzz.sh").read_text(encoding="utf-8")
+
+    expected_libraries = (
+        REPO_ROOT / "scripts" / "lib" / "fuzz_hypofuzz" / "common.sh",
+        REPO_ROOT / "scripts" / "lib" / "fuzz_hypofuzz" / "modes_check.sh",
+        REPO_ROOT / "scripts" / "lib" / "fuzz_hypofuzz" / "modes_fuzz.sh",
+    )
+
+    for lib_path in expected_libraries:
+        assert lib_path.exists()
+        assert f'source "$FUZZ_LIB_DIR/{lib_path.name}"' in entrypoint
+
+
+def test_hypofuzz_helper_libraries_are_git_tracked() -> None:
+    """Split HypoFuzz helper libraries must be part of tracked repository state."""
+    tracked_paths = {
+        path.relative_to(REPO_ROOT).as_posix() for path in _git_tracked_repo_files()
+    }
+    expected = {
+        "scripts/lib/fuzz_hypofuzz/common.sh",
+        "scripts/lib/fuzz_hypofuzz/modes_check.sh",
+        "scripts/lib/fuzz_hypofuzz/modes_fuzz.sh",
+    }
+
+    assert expected <= tracked_paths
+
+
+def test_atheris_entrypoint_delegates_to_split_libraries() -> None:
+    """Atheris entrypoint should stay a thin dispatcher over focused shell libs."""
+    entrypoint = (REPO_ROOT / "scripts" / "fuzz_atheris.sh").read_text(encoding="utf-8")
+
+    expected_libraries = (
+        REPO_ROOT / "scripts" / "lib" / "fuzz_atheris" / "common.sh",
+        REPO_ROOT / "scripts" / "lib" / "fuzz_atheris" / "commands.sh",
+    )
+
+    for lib_path in expected_libraries:
+        assert lib_path.exists()
+        assert f'source "$FUZZ_LIB_DIR/{lib_path.name}"' in entrypoint
+
+    assert "fuzz_atheris/targets.tsv" in (
+        REPO_ROOT / "scripts" / "lib" / "fuzz_atheris" / "common.sh"
+    ).read_text(encoding="utf-8")
+
+
+def test_canonical_split_surfaces_are_git_tracked() -> None:
+    """Canonical split surfaces and devcontainer workflow files must be tracked."""
+    tracked_paths = {
+        path.relative_to(REPO_ROOT).as_posix() for path in _git_tracked_repo_files()
+    }
+    expected: set[str] = set()
+    patterns = (
+        ".devcontainer/*",
+        "docs/DEVELOPER_DEVCONTAINER.md",
+        "scripts/devcontainer-prepare-user-home.sh",
+        "scripts/validate-devcontainer.sh",
+        "scripts/lib/fuzz_atheris/*.sh",
+        "scripts/lib/fuzz_hypofuzz/*.sh",
+        "fuzz_atheris/targets.tsv",
+        "fuzz_atheris/fuzz_*_entry.py",
+        "fuzz_atheris/fuzz_*_support.py",
+        "fuzz_atheris/fuzz_*_patterns*.py",
+        "fuzz_atheris/fuzz_*_builders.py",
+        "fuzz_atheris/fuzz_*_scenarios.py",
+        "fuzz_atheris/fuzz_*_mutators.py",
+        "tests/*_cases/__init__.py",
+        "tests/*_cases/*.py",
+        "src/ftllexengine/parsing/text_normalization.py",
+        "src/ftllexengine/runtime/locale_resolution.py",
+        "src/ftllexengine/validation/resource_*.py",
+        "src/ftllexengine/syntax/serializer_engine.py",
+    )
+
+    for pattern in patterns:
+        expected.update(
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in REPO_ROOT.glob(pattern)
+            if path.is_file()
+        )
+
+    assert expected <= tracked_paths

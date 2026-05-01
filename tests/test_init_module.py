@@ -14,10 +14,11 @@ Covers the full lifecycle of the package entry point:
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError
 from types import ModuleType
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -204,15 +205,29 @@ class TestParserOnlyFacadeBehavior:
     """Parser-only installs keep zero-dependency exports while gating Babel-backed facades."""
 
     def test_direct_optional_attribute_access_provides_install_guidance(self) -> None:
-        """Direct optional attribute access raises AttributeError with install guidance."""
-        with (
-            _fresh_ftl_import(block_babel=True) as ftllexengine,
-            pytest.raises(
-                AttributeError,
-                match=r"FluentBundle requires the full runtime install.*pip install ftllexengine\[babel\]",
-            ),
-        ):
-            _ = ftllexengine.FluentBundle
+        """Direct optional attribute access returns a stub that raises on first use."""
+        with _fresh_ftl_import(block_babel=True) as ftllexengine:
+            from ftllexengine.core.babel_compat import BabelImportError
+
+            fluent_bundle_cls = cast("Callable[..., object]", ftllexengine.FluentBundle)
+            with pytest.raises(
+                BabelImportError,
+                match=r"FluentBundle requires Babel.*pip install ftllexengine\[babel\]",
+            ):
+                fluent_bundle_cls("en_US")
+
+    def test_from_import_optional_symbol_provides_install_guidance(self) -> None:
+        """Explicit from-import keeps the actionable Babel guidance on first use."""
+        with _fresh_ftl_import(block_babel=True):
+            from ftllexengine.core.babel_compat import BabelImportError
+
+            module = __import__("ftllexengine", fromlist=["FluentBundle"])
+            fluent_bundle_cls = cast("Callable[..., object]", module.FluentBundle)
+            with pytest.raises(
+                BabelImportError,
+                match=r"FluentBundle requires Babel.*pip install ftllexengine\[babel\]",
+            ):
+                fluent_bundle_cls("en_US")
 
     def test_zero_dependency_root_symbols_remain_accessible_without_babel(self) -> None:
         """Parser-only installs still expose zero-dependency root helpers."""
@@ -250,30 +265,27 @@ class TestParserOnlyFacadeBehavior:
             assert "CacheAuditLogEntry" in localization.__all__
             assert localization.PathResourceLoader.__name__ == "PathResourceLoader"
 
-    def test_parser_only_feature_probing_treats_optional_names_as_absent(self) -> None:
-        """hasattr/getattr(default) treat Babel-backed names as absent in parser-only mode."""
+    def test_parser_only_feature_probing_uses_is_babel_available(self) -> None:
+        """Parser-only callers use is_babel_available() instead of hasattr on optional names."""
         with _fresh_ftl_import(block_babel=True) as ftllexengine:
             from ftllexengine import localization, runtime
 
-            assert hasattr(ftllexengine, "FluentBundle") is False
-            assert getattr(ftllexengine, "FluentBundle", None) is None
-
-            assert hasattr(runtime, "number_format") is False
-            assert getattr(runtime, "number_format", None) is None
-
-            assert hasattr(localization, "FluentLocalization") is False
-            assert getattr(localization, "FluentLocalization", None) is None
+            assert ftllexengine.is_babel_available() is False
+            assert callable(ftllexengine.FluentBundle)
+            assert callable(runtime.number_format)
+            assert callable(localization.FluentLocalization)
 
     def test_parser_only_runtime_formatter_access_still_gives_install_hint(self) -> None:
-        """Direct runtime formatter access raises AttributeError with install guidance."""
+        """Direct runtime formatter access returns a stub that raises on first call."""
         with _fresh_ftl_import(block_babel=True):
             from ftllexengine import runtime
+            from ftllexengine.core.babel_compat import BabelImportError
 
             with pytest.raises(
-                AttributeError,
-                match=r"number_format requires the full runtime install.*pip install ftllexengine\[babel\]",
+                BabelImportError,
+                match=r"number_format requires Babel.*pip install ftllexengine\[babel\]",
             ):
-                _ = runtime.number_format
+                runtime.number_format(1, "en_US")
 
     def test_internal_runtime_import_failure_is_not_masked_as_missing_babel(self) -> None:
         """A broken runtime import must surface its real error instead of a Babel hint."""
@@ -325,19 +337,23 @@ class TestUnknownAttributeError:
 class TestOptionalExportHelper:
     """Direct tests for the optional-export helper branches."""
 
-    def test_helper_without_parser_only_hint_raises_plain_attribute_error(self) -> None:
-        """Optional symbols raise AttributeError outside import machinery."""
+    def test_helper_without_parser_only_hint_returns_raising_placeholder(self) -> None:
+        """Optional symbols resolve to a placeholder that raises BabelImportError on use."""
         from ftllexengine._optional_exports import raise_missing_babel_symbol
+        from ftllexengine.core.babel_compat import BabelImportError
+
+        placeholder = raise_missing_babel_symbol(
+            module_name="ftllexengine.runtime",
+            name="FluentBundle",
+            optional_attrs=frozenset({"FluentBundle"}),
+        )
+        placeholder_cls = cast("Callable[..., object]", placeholder)
 
         with pytest.raises(
-            AttributeError,
-            match=r"FluentBundle requires the full runtime install.*pip install ftllexengine\[babel\]",
+            BabelImportError,
+            match=r"FluentBundle requires Babel.*pip install ftllexengine\[babel\]",
         ):
-            raise_missing_babel_symbol(
-                module_name="ftllexengine.runtime",
-                name="FluentBundle",
-                optional_attrs=frozenset({"FluentBundle"}),
-            )
+            placeholder_cls("en_US")
 
     def test_unknown_facade_contract_raises_key_error(self) -> None:
         """Unknown facade names fail fast instead of fabricating empty optional exports."""

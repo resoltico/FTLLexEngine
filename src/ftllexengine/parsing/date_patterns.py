@@ -13,6 +13,7 @@ from ftllexengine.core.babel_compat import (
     require_babel,
 )
 from ftllexengine.core.locale_utils import normalize_locale
+from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
 __all__ = [
     "_babel_to_strptime",
@@ -293,6 +294,7 @@ def _preprocess_datetime_input(
     value: str, locale_code: str | None = None, *, has_era: bool
 ) -> str:
     """Strip era text when a pattern requires era preprocessing."""
+    value = strip_bidi_format_chars(value)
     if has_era:
         return _strip_era(value, locale_code)
     return value

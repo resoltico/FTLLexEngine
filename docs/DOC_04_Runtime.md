@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.165.0"
+version: "0.166.0"
 domain: RUNTIME
-updated: "2026-04-24"
+updated: "2026-05-01"
 route:
   keywords: [CacheConfig, FunctionRegistry, fluent_function, number_format, currency_format, select_plural_category, clear_module_caches]
   questions: ["how do I configure runtime formatting?", "how do custom functions and registries work?", "where are cache config and write-log entry types documented?"]
@@ -15,7 +15,7 @@ Runtime-adjacent utilities, validators, and package metadata constants are docum
 
 Parser-only facade note:
 - `CacheConfig`, `FunctionRegistry`, `fluent_function`, `make_fluent_number`, `CacheAuditLogEntry`, `WriteLogEntry`, and `ValidationResult` remain importable in parser-only installs.
-- `create_default_registry`, `get_shared_registry`, `number_format`, `datetime_format`, `currency_format`, `select_plural_category`, `FluentBundle`, and `AsyncFluentBundle` require the full runtime install and are absent from `ftllexengine.runtime` in parser-only installs.
+- `create_default_registry`, `get_shared_registry`, `number_format`, `datetime_format`, `currency_format`, `select_plural_category`, `FluentBundle`, and `AsyncFluentBundle` require the full runtime install. In parser-only installs they resolve to lazy placeholders that raise `BabelImportError` on first use.
 - `clear_module_caches()` is a root-level helper that works in both parser-only and full-runtime installs.
 
 Facade ownership note:
@@ -103,7 +103,7 @@ def create_default_registry() -> FunctionRegistry:
 ### Constraints
 - Return: New mutable registry
 - State: Fresh object on each call
-- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
+- Availability: full-runtime only; parser-only installs expose a lazy placeholder that raises `BabelImportError` on first use
 
 ---
 
@@ -119,7 +119,7 @@ def get_shared_registry() -> FunctionRegistry:
 ### Constraints
 - Return: Shared frozen registry
 - State: Shared singleton-style object
-- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
+- Availability: full-runtime only; parser-only installs expose a lazy placeholder that raises `BabelImportError` on first use
 
 ---
 
@@ -146,7 +146,7 @@ def number_format(
 - Raises: Locale/value boundary errors
 - State: Pure
 - Thread: Safe
-- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
+- Availability: full-runtime only; parser-only installs expose a lazy placeholder that raises `BabelImportError` on first use
 
 ---
 
@@ -171,7 +171,7 @@ def datetime_format(
 - Raises: Locale/value boundary errors
 - State: Pure
 - Thread: Safe
-- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
+- Availability: full-runtime only; parser-only installs expose a lazy placeholder that raises `BabelImportError` on first use
 
 ---
 
@@ -199,7 +199,7 @@ def currency_format(
 - Raises: Locale/value boundary errors
 - State: Pure
 - Thread: Safe
-- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
+- Availability: full-runtime only; parser-only installs expose a lazy placeholder that raises `BabelImportError` on first use
 
 ---
 
@@ -222,7 +222,7 @@ def select_plural_category(
 - Return: CLDR plural category string
 - State: Pure
 - Thread: Safe
-- Availability: full-runtime only; absent from `ftllexengine.runtime` in parser-only installs
+- Availability: full-runtime only; parser-only installs expose a lazy placeholder that raises `BabelImportError` on first use
 
 ---
 
@@ -293,6 +293,7 @@ class WriteLogEntry:
     key_hash: str
     timestamp: float
     sequence: int
+    cache_sequence: int
     checksum_hex: str
     wall_time_unix: float
 ```
@@ -301,5 +302,7 @@ class WriteLogEntry:
 - Purpose: Underlying runtime cache dataclass behind the `CacheAuditLogEntry` public alias
 - State: Immutable
 - Thread: Safe
+- `sequence`: Monotonic audit-event order across all cache operations
+- `cache_sequence`: Cache-entry sequence observed at the time of the event
 
 ---
