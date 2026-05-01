@@ -541,3 +541,33 @@ def test_canonical_split_surfaces_are_git_tracked() -> None:
         )
 
     assert expected <= tracked_paths
+
+
+def test_release_workflows_do_not_depend_on_node20_compatibility_shims() -> None:
+    """Workflow pins must be natively Node 24-capable, not forced through overrides."""
+    publish_workflow = (REPO_ROOT / ".github" / "workflows" / "publish.yml").read_text(
+        encoding="utf-8"
+    )
+    test_workflow = (REPO_ROOT / ".github" / "workflows" / "test.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" not in publish_workflow
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" not in test_workflow
+
+    assert (
+        "codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe"
+        not in publish_workflow
+    )
+    assert (
+        "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        not in publish_workflow
+    )
+
+    assert (
+        "codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2"
+        in publish_workflow
+    )
+    assert publish_workflow.count(
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+    ) >= 3
