@@ -579,7 +579,11 @@ def test_publish_workflow_requires_annotated_tags_without_signature_verification
         encoding="utf-8"
     )
 
+    assert "Resolve immutable annotated release tag" in publish_workflow
+    assert "/git/ref/tags/" in publish_workflow
+    assert "/git/tags/" in publish_workflow
     assert "Release tags must be annotated tag objects" in publish_workflow
     assert 'ref_object.get("type") != "tag"' in publish_workflow
+    assert "Release tag must point to a commit object" in publish_workflow
     assert "Release tag signature is not verified by GitHub" not in publish_workflow
     assert 'verification = tag_object.get("verification")' not in publish_workflow
