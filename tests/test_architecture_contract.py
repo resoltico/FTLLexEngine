@@ -571,3 +571,15 @@ def test_release_workflows_do_not_depend_on_node20_compatibility_shims() -> None
     assert publish_workflow.count(
         "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
     ) >= 3
+
+
+def test_publish_workflow_requires_annotated_tags_without_signature_verification_gate() -> None:
+    """The publish workflow should require annotated tags but not an external signing setup."""
+    publish_workflow = (REPO_ROOT / ".github" / "workflows" / "publish.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Release tags must be annotated tag objects" in publish_workflow
+    assert 'ref_object.get("type") != "tag"' in publish_workflow
+    assert "Release tag signature is not verified by GitHub" not in publish_workflow
+    assert 'verification = tag_object.get("verification")' not in publish_workflow
