@@ -1,5 +1,5 @@
 """Tests for IntegrityCache hashable key construction, NaN normalization, and
-unhashable argument handling.
+fail-closed key-contract handling.
 
 Covers:
 - __init__ parameter validation
@@ -9,8 +9,8 @@ Covers:
 - _make_key integration and error recovery (RecursionError, TypeError)
 - NaN normalization (Decimal) to prevent cache pollution DoS vectors
 - Hashable conversion of list/dict/set/tuple args for full cache coverage
-- Unhashable argument graceful bypass (skips caching, increments counter)
-- Error bloat protection (max_entry_weight, max_errors_per_entry)
+- Unhashable argument fail-closed rejection with integrity evidence
+- Error bloat protection (max_entry_payload_bytes, max_errors_per_entry)
 - LRU eviction and move-to-end behavior
 - Property accessors (size, hits, misses, unhashable_skips, oversize_skips)
 """
@@ -27,6 +27,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.integrity import CacheKeySerializationError
 from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.runtime.function_bridge import FluentNumber, FluentValue
 
@@ -34,6 +35,7 @@ __all__ = [
     "MAX_DEPTH",
     "UTC",
     "Any",
+    "CacheKeySerializationError",
     "Decimal",
     "ErrorCategory",
     "FluentNumber",

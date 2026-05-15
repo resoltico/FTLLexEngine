@@ -71,8 +71,17 @@ set -o nounset
 set -o pipefail
 shopt -s inherit_errexit
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "$PROJECT_ROOT/scripts/lib/python_support_contract.sh"
+
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.13}"
+# Premise: benchmark defaults should match the minimum support floor so
+# performance evidence is anchored to a promised interpreter.
+# Reason: higher-version benchmarking remains available via PY_VERSION=...
+# overrides without duplicating the support contract.
+PY_VERSION="${PY_VERSION:-$FTLLEXENGINE_PYTHON_MIN}"
 if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
     TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
 else
@@ -150,7 +159,7 @@ while [[ $# -gt 0 ]]; do
             echo "  ./scripts/benchmark.sh --histogram --json benchmark_results.json"
             echo ""
             echo "Environment:"
-            echo "  PY_VERSION   Python version for the isolated venv (default: 3.13)"
+            echo "  PY_VERSION   Python version for the isolated venv (default: $FTLLEXENGINE_PYTHON_MIN)"
             echo "  NO_COLOR=1   Disable colored output"
             exit 0
             ;;

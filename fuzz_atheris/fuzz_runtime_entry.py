@@ -17,6 +17,7 @@ from fuzz_runtime_support import (
     TEST_LOCALES,
     CacheConfig,
     CacheCorruptionError,
+    CacheKeySerializationError,
     ComplexArgs,
     FluentBundle,
     FrozenFluentError,
@@ -52,7 +53,7 @@ def _perform_differential_testing(
     alt_strict = not bundle.strict if fdp.ConsumeBool() else bundle.strict
     alt_cache = not bundle.cache_enabled if fdp.ConsumeBool() else bundle.cache_enabled
 
-    try:
+    with contextlib.suppress(Exception):
         alt_bundle = FluentBundle(
             alt_locale,
             strict=alt_strict,
@@ -75,9 +76,6 @@ def _perform_differential_testing(
             with contextlib.suppress(Exception):
                 alt_bundle.format_pattern(msg_id, args)
 
-    except Exception:  # pylint: disable=broad-exception-caught
-        pass
-
 
 def _run_concurrent_test(
     fdp: atheris.FuzzedDataProvider,
@@ -91,18 +89,24 @@ def _run_concurrent_test(
     _domain.concurrent_tests += 1
 
     barrier = threading.Barrier(2)
+    worker_failures: list[BaseException] = []
+    failure_lock = threading.Lock()
 
     def worker() -> None:
         with contextlib.suppress(threading.BrokenBarrierError):
             barrier.wait(timeout=1.0)
         try:
             _execute_runtime_invariants(fdp, bundle, args, strict, enable_cache, cache_write_once)
-        except CacheCorruptionError:
-            # Expected from corruption simulation in strict mode
+        except (CacheCorruptionError, CacheKeySerializationError):
+            # These are fail-closed cache-integrity outcomes. They are valid regardless of
+            # formatting softness, and the concurrent harness must not lose them to stderr noise.
             pass
         except (RecursionError, MemoryError, FrozenFluentError):
             # FrozenFluentError: depth guard (MAX_DEPTH_EXCEEDED)
             pass
+        except BaseException as exc:
+            with failure_lock:
+                worker_failures.append(exc)
 
     threads = [threading.Thread(target=worker) for _ in range(2)]
     for t in threads:
@@ -112,6 +116,12 @@ def _run_concurrent_test(
         if t.is_alive():
             msg = "RWLock deadlock detected."
             raise RuntimeIntegrityError(msg)
+    if worker_failures:
+        first_failure = worker_failures[0]
+        if isinstance(first_failure, RuntimeIntegrityError):
+            raise first_failure
+        msg = f"Concurrent worker raised unexpected {type(first_failure).__name__}."
+        raise RuntimeIntegrityError(msg) from first_failure
 
 
 def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
@@ -186,11 +196,10 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
         else:
             _execute_runtime_invariants(fdp, bundle, args, strict, enable_cache, cache_write_once)
 
-    except CacheCorruptionError:
-        if strict:
-            return  # Expected
-        _state.findings += 1
-        raise
+    except (CacheCorruptionError, CacheKeySerializationError):
+        # Cache corruption and unencodable cache keys are expected fail-closed outcomes whenever
+        # the harness drives the bundle into those integrity boundaries.
+        return
 
     except RuntimeIntegrityError:
         _state.findings += 1

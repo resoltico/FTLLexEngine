@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: FUZZING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [atheris, libfuzzer, fuzz_atheris.sh, replay, minimize, corpus]
   questions: ["how do I run an Atheris target?", "how do I replay a finding?", "how does the Atheris environment get created?"]

@@ -5,7 +5,7 @@ Covers:
 - add_resource / add_resource_stream (async; offloads to thread pool)
 - format_pattern (async; offloads to thread pool)
 - add_function (async)
-- Sync read operations (has_message, has_attribute, get_message_ids,
+- Async read operations (has_message, has_attribute, get_message_ids,
   get_message, get_term, introspect_message)
 - Properties (locale, strict, use_isolating, cache_enabled, cache_config)
 - for_system_locale classmethod (patched to avoid env dependency)
@@ -16,7 +16,9 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import Future
 from decimal import Decimal
+from threading import Event
 from typing import Any
 from unittest.mock import patch
 
@@ -138,6 +140,75 @@ class TestProperties:
         bundle = AsyncFluentBundle("en_US")
         assert bundle.cache_config is None
 
+
+class TestAsyncAdmissionControl:
+    """Async admission control should release permits correctly on cancellation."""
+
+    def test_run_blocking_releases_permit_after_cancelled_task_finishes(self) -> None:
+        """Cancelled callers must not permanently consume the semaphore permit."""
+        started = Event()
+        release = Event()
+
+        async def run() -> None:
+            bundle = AsyncFluentBundle("en_US", max_pending_operations=1)
+
+            def blocking() -> str:
+                started.set()
+                release.wait(timeout=5)
+                return "done"
+
+            task = asyncio.create_task(bundle._run_blocking(blocking))
+            await asyncio.to_thread(started.wait, 5)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            release.set()
+            follow_up = await asyncio.wait_for(
+                bundle._run_blocking(lambda: "after"),
+                timeout=2,
+            )
+            assert follow_up == "after"
+
+        asyncio.run(run())
+
+    def test_run_blocking_release_guard_is_idempotent(self) -> None:
+        """The permit-release guard should tolerate duplicate callback delivery."""
+
+        class DuplicateCallbackFuture(Future[str]):
+            """Test future that invokes a done callback twice on registration."""
+
+            def add_done_callback(self, fn: Any) -> None:
+                fn(self)
+                fn(self)
+
+        async def run() -> None:
+            bundle = AsyncFluentBundle("en_US", max_pending_operations=1)
+            loop = asyncio.get_running_loop()
+            fake_future: Future[str] = DuplicateCallbackFuture()
+            fake_future.set_result("done")
+
+            async def cancelled_wrap_future(_future: Future[str]) -> str:
+                raise asyncio.CancelledError
+
+            with (
+                patch.object(loop, "run_in_executor", return_value=fake_future),
+                patch(
+                    "ftllexengine.runtime.async_bundle.asyncio.wrap_future",
+                    side_effect=cancelled_wrap_future,
+                ),
+                pytest.raises(asyncio.CancelledError),
+            ):
+                await bundle._run_blocking(lambda: "ignored")
+
+            follow_up = await asyncio.wait_for(
+                bundle._run_blocking(lambda: "after"),
+                timeout=2,
+            )
+            assert follow_up == "after"
+
+        asyncio.run(run())
+
     def test_cache_config_present(self) -> None:
         """cache_config returns the CacheConfig when provided."""
         cfg = CacheConfig()
@@ -168,7 +239,7 @@ class TestAddResource:
             bundle = AsyncFluentBundle("en_US")
             junk = await bundle.add_resource("greeting = Hello!")
             assert junk == ()
-            assert bundle.has_message("greeting")
+            assert await bundle.has_message("greeting")
 
         asyncio.run(run())
 
@@ -239,8 +310,8 @@ class TestAddResourceStream:
             bundle = AsyncFluentBundle("en_US")
             junk = await bundle.add_resource_stream(_MULTI_LINE_FTL)
             assert junk == ()
-            assert bundle.has_message("greeting")
-            assert bundle.has_message("farewell")
+            assert await bundle.has_message("greeting")
+            assert await bundle.has_message("farewell")
 
         asyncio.run(run())
 
@@ -402,12 +473,12 @@ class TestAddFunction:
 
 
 # ---------------------------------------------------------------------------
-# Sync read operations
+# Async read operations
 # ---------------------------------------------------------------------------
 
 
-class TestSyncReadOperations:
-    """Sync read methods (has_message, get_message, etc.) delegate to the bundle."""
+class TestAsyncReadOperations:
+    """Read methods stay off the event loop by using the owned executor."""
 
     def setup_method(self) -> None:
         """Load a shared bundle for read tests."""
@@ -427,50 +498,90 @@ class TestSyncReadOperations:
 
     def test_has_message_true(self) -> None:
         """has_message returns True for a registered message."""
-        assert self.bundle.has_message("greeting") is True
+
+        async def run() -> None:
+            assert await self.bundle.has_message("greeting") is True
+
+        asyncio.run(run())
 
     def test_has_message_false(self) -> None:
         """has_message returns False for an absent message."""
-        assert self.bundle.has_message("nonexistent") is False
+
+        async def run() -> None:
+            assert await self.bundle.has_message("nonexistent") is False
+
+        asyncio.run(run())
 
     def test_has_attribute_true(self) -> None:
         """has_attribute returns True for an existing attribute."""
-        assert self.bundle.has_attribute("button", "tooltip") is True
+
+        async def run() -> None:
+            assert await self.bundle.has_attribute("button", "tooltip") is True
+
+        asyncio.run(run())
 
     def test_has_attribute_false_missing_attr(self) -> None:
         """has_attribute returns False for a missing attribute."""
-        assert self.bundle.has_attribute("button", "missing") is False
+
+        async def run() -> None:
+            assert await self.bundle.has_attribute("button", "missing") is False
+
+        asyncio.run(run())
 
     def test_has_attribute_false_missing_message(self) -> None:
         """has_attribute returns False when the message itself is absent."""
-        assert self.bundle.has_attribute("nonexistent", "tooltip") is False
+
+        async def run() -> None:
+            assert await self.bundle.has_attribute("nonexistent", "tooltip") is False
+
+        asyncio.run(run())
 
     def test_get_message_ids(self) -> None:
         """get_message_ids returns all registered message IDs."""
-        ids = self.bundle.get_message_ids()
-        assert "greeting" in ids
-        assert "farewell" in ids
-        assert "button" in ids
+
+        async def run() -> None:
+            ids = await self.bundle.get_message_ids()
+            assert "greeting" in ids
+            assert "farewell" in ids
+            assert "button" in ids
+
+        asyncio.run(run())
 
     def test_get_message_found(self) -> None:
         """get_message returns the AST node for a known message."""
-        msg = self.bundle.get_message("greeting")
-        assert isinstance(msg, Message)
-        assert msg.id.name == "greeting"
+
+        async def run() -> None:
+            msg = await self.bundle.get_message("greeting")
+            assert isinstance(msg, Message)
+            assert msg.id.name == "greeting"
+
+        asyncio.run(run())
 
     def test_get_message_not_found(self) -> None:
         """get_message returns None for an absent message."""
-        assert self.bundle.get_message("nonexistent") is None
+
+        async def run() -> None:
+            assert await self.bundle.get_message("nonexistent") is None
+
+        asyncio.run(run())
 
     def test_get_term_found(self) -> None:
         """get_term returns the AST node for a registered term."""
-        term = self.bundle.get_term("brand")
-        assert isinstance(term, Term)
-        assert term.id.name == "brand"
+
+        async def run() -> None:
+            term = await self.bundle.get_term("brand")
+            assert isinstance(term, Term)
+            assert term.id.name == "brand"
+
+        asyncio.run(run())
 
     def test_get_term_not_found(self) -> None:
         """get_term returns None for an absent term."""
-        assert self.bundle.get_term("nonexistent") is None
+
+        async def run() -> None:
+            assert await self.bundle.get_term("nonexistent") is None
+
+        asyncio.run(run())
 
     def test_introspect_message(self) -> None:
         """introspect_message returns variable and function metadata."""
@@ -481,14 +592,22 @@ class TestSyncReadOperations:
             return bundle
 
         bundle = asyncio.run(build())
-        info = bundle.introspect_message("price")
-        assert "amount" in info.get_variable_names()
-        assert "NUMBER" in info.get_function_names()
+
+        async def run() -> None:
+            info = await bundle.introspect_message("price")
+            assert "amount" in info.get_variable_names()
+            assert "NUMBER" in info.get_function_names()
+
+        asyncio.run(run())
 
     def test_introspect_message_key_error(self) -> None:
         """introspect_message raises KeyError for an absent message."""
-        with pytest.raises(KeyError, match="nonexistent"):
-            self.bundle.introspect_message("nonexistent")
+
+        async def run() -> None:
+            with pytest.raises(KeyError, match="nonexistent"):
+                await self.bundle.introspect_message("nonexistent")
+
+        asyncio.run(run())
 
 
 # ---------------------------------------------------------------------------
@@ -497,12 +616,16 @@ class TestSyncReadOperations:
 
 
 class TestCacheOperations:
-    """Cache stats and audit log delegate correctly."""
+    """Cache stats and debug-log delegation stays aligned with the bundle API."""
 
     def test_get_cache_stats_none_when_disabled(self) -> None:
         """get_cache_stats returns None when caching is not configured."""
-        bundle = AsyncFluentBundle("en_US")
-        assert bundle.get_cache_stats() is None
+
+        async def run() -> None:
+            bundle = AsyncFluentBundle("en_US")
+            assert await bundle.get_cache_stats() is None
+
+        asyncio.run(run())
 
     def test_get_cache_stats_present_when_enabled(self) -> None:
         """get_cache_stats returns a CacheStats instance when caching is on."""
@@ -511,20 +634,28 @@ class TestCacheOperations:
             bundle = AsyncFluentBundle("en_US", cache=CacheConfig())
             await bundle.add_resource("msg = Hello!")
             await bundle.format_pattern("msg")
-            stats = bundle.get_cache_stats()
+            stats = await bundle.get_cache_stats()
             assert stats is not None
 
         asyncio.run(run())
 
     def test_clear_cache_noop_when_disabled(self) -> None:
         """clear_cache is a no-op when caching is not configured."""
-        bundle = AsyncFluentBundle("en_US")
-        bundle.clear_cache()  # must not raise
 
-    def test_get_cache_audit_log_none_when_disabled(self) -> None:
-        """get_cache_audit_log returns None when caching is disabled."""
-        bundle = AsyncFluentBundle("en_US")
-        assert bundle.get_cache_audit_log() is None
+        async def run() -> None:
+            bundle = AsyncFluentBundle("en_US")
+            await bundle.clear_cache()  # must not raise
+
+        asyncio.run(run())
+
+    def test_get_cache_debug_log_none_when_disabled(self) -> None:
+        """get_cache_debug_log returns None when caching is disabled."""
+
+        async def run() -> None:
+            bundle = AsyncFluentBundle("en_US")
+            assert await bundle.get_cache_debug_log() is None
+
+        asyncio.run(run())
 
 
 # ---------------------------------------------------------------------------

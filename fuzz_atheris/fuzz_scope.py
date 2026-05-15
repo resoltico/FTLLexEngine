@@ -42,15 +42,19 @@ from typing import Any, cast
 _psutil_mod: Any = None
 _atheris_mod: Any = None
 
-try:  # noqa: SIM105 - need module ref for check_dependencies
-    import psutil as _psutil_mod  # type: ignore[no-redef]
+try:
+    import psutil
 except ImportError:
     pass
+else:
+    _psutil_mod = psutil
 
-try:  # noqa: SIM105 - need module ref for check_dependencies
-    import atheris as _atheris_mod  # type: ignore[no-redef]
+try:
+    import atheris
 except ImportError:
     pass
+else:
+    _atheris_mod = atheris
 
 from fuzz_common import (  # noqa: E402 - after dependency capture  # pylint: disable=C0413
     GC_INTERVAL,
@@ -104,6 +108,7 @@ logging.getLogger("ftllexengine").setLevel(logging.CRITICAL)
 with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.diagnostics.codes import DiagnosticCode
     from ftllexengine.diagnostics.errors import FrozenFluentError
+    from ftllexengine.integrity import ResourceConflictIntegrityError
     from ftllexengine.runtime.bundle import FluentBundle
 
 
@@ -148,6 +153,10 @@ _state.pattern_intended_weights = {name: float(weight) for name, weight in _PATT
 _ALLOWED_EXCEPTIONS = (
     ValueError, TypeError, OverflowError,
     FrozenFluentError, RecursionError, RuntimeError,
+    # Adversarial FTL text may now fail closed during registration if injected
+    # bytes create duplicate/shadowing IDs. That is valid bundle-integrity
+    # behavior, not a scope-resolution defect.
+    ResourceConflictIntegrityError,
 )
 
 # Node ID pool for FTL message/term identifiers

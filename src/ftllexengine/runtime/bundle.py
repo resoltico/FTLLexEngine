@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ftllexengine.syntax import Message, Term
     from ftllexengine.syntax.parser import FluentParserV1
 
+    from ._resolution_gate import ResolutionReentryGate
     from .bundle_protocols import BundleStateProtocol
     from .cache import IntegrityCache
     from .cache_config import CacheConfig
@@ -42,13 +43,14 @@ class FluentBundle(
     _cache_config: CacheConfig | None
     _function_registry: FunctionRegistry
     _locale: LocaleCode
-    _max_expansion_size: int
+    _max_expansion_size: int | None
     _max_nesting_depth: int
-    _max_source_size: int
+    _max_source_size: int | None
     _messages: dict[str, Message]
     _msg_deps: dict[str, frozenset[str]]
     _owns_registry: bool
     _parser: FluentParserV1
+    _resolution_gate: ResolutionReentryGate
     _resolver: FluentResolver
     _rwlock: RWLock
     _strict: bool
@@ -68,6 +70,7 @@ class FluentBundle(
         "_msg_deps",
         "_owns_registry",
         "_parser",
+        "_resolution_gate",
         "_resolver",
         "_rwlock",
         "_strict",
@@ -85,5 +88,5 @@ class FluentBundle(
         attribute: str | None = None,
     ) -> tuple[str, tuple[FrozenFluentError, ...]]:
         """Format one message or attribute to a string."""
-        with self._rwlock.read():
+        with self._resolution_gate.format_call(), self._rwlock.read():
             return self._format_pattern_impl(message_id, args, attribute)

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: MIGRATION
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [migration, fluent.runtime, FluentBundle, FluentLocalization, strict mode]
   questions: ["how do I migrate from fluent.runtime?", "what changes when I switch to FTLLexEngine?"]

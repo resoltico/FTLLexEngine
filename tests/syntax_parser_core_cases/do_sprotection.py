@@ -1,6 +1,7 @@
 # mypy: ignore-errors
 """Split test cases from tests/test_syntax_parser_core.py."""
 
+from ftllexengine import UNLIMITED
 from tests.syntax_parser_core_cases import *  # noqa: F403 - shared split test support
 
 # ============================================================================
@@ -154,8 +155,8 @@ class TestDoSAbortBehavior:
     # -- max_parse_errors: boundary conditions -----------------------------
 
     def test_disabled_max_parse_errors_never_aborts(self) -> None:
-        """Parser with max_parse_errors=0 never aborts."""
-        parser = FluentParserV1(max_parse_errors=0)
+        """UNLIMITED keeps parse-error collection intentionally unbounded."""
+        parser = FluentParserV1(max_parse_errors=UNLIMITED)
         source = "####\n" * 200
         result = parser.parse(source)
         junk = [e for e in result.entries if isinstance(e, Junk)]

@@ -5,6 +5,7 @@ from tests.runtime_bundle_cases import (
     FluentBundle,
     FormattingIntegrityError,
     FunctionRegistry,
+    ResourceConflictIntegrityError,
     SyntaxIntegrityError,
     assume,
     create_default_registry,
@@ -433,38 +434,36 @@ class TestLocaleValidationAsciiOnly:
 
 
 class TestBundleOverwriteWarning:
-    """Overwriting an existing message or term in add_resource logs a WARNING."""
+    """Replacing existing IDs requires explicit overwrite admission."""
 
-    def test_message_overwrite_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Overwriting a message logs a warning with the message ID."""
+    def test_message_overwrite_requires_allow_overwrite(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Implicit message replacement is rejected."""
         bundle = FluentBundle("en")
 
         with caplog.at_level(logging.WARNING):
             bundle.add_resource("greeting = Hello")
-            bundle.add_resource("greeting = Goodbye")
+            with pytest.raises(ResourceConflictIntegrityError, match="greeting"):
+                bundle.add_resource("greeting = Goodbye")
 
-        warning_messages = [
-            record.message for record in caplog.records
-            if record.levelno == logging.WARNING
-        ]
-        assert any("Overwriting existing message 'greeting'" in msg for msg in warning_messages)
+        assert caplog.records == []
 
-    def test_term_overwrite_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Overwriting a term logs a warning with the term ID."""
+    def test_term_overwrite_requires_allow_overwrite(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Implicit term replacement is rejected."""
         bundle = FluentBundle("en")
 
         with caplog.at_level(logging.WARNING):
             bundle.add_resource("-brand = Acme")
-            bundle.add_resource("-brand = NewCorp")
+            with pytest.raises(ResourceConflictIntegrityError, match="-brand"):
+                bundle.add_resource("-brand = NewCorp")
 
-        warning_messages = [
-            record.message for record in caplog.records
-            if record.levelno == logging.WARNING
-        ]
-        assert any("Overwriting existing term '-brand'" in msg for msg in warning_messages)
+        assert caplog.records == []
 
     def test_no_warning_for_new_entries(self, caplog: pytest.LogCaptureFixture) -> None:
-        """No overwrite warning when adding distinct entries."""
+        """Distinct entries register without overwrite diagnostics."""
         bundle = FluentBundle("en")
 
         with caplog.at_level(logging.WARNING):
@@ -477,12 +476,12 @@ class TestBundleOverwriteWarning:
         ]
         assert len(overwrite_warnings) == 0
 
-    def test_last_write_wins_behavior_preserved(self) -> None:
-        """Last Write Wins behavior: last added resource wins on repeated key."""
+    def test_explicit_overwrite_replaces_previous_value(self) -> None:
+        """Intentional replacement works when the caller opts in."""
         bundle = FluentBundle("en")
         bundle.add_resource("greeting = First")
-        bundle.add_resource("greeting = Second")
-        bundle.add_resource("greeting = Third")
+        bundle.add_resource("greeting = Second", allow_overwrite=True)
+        bundle.add_resource("greeting = Third", allow_overwrite=True)
 
         result, _ = bundle.format_pattern("greeting")
         assert result == "Third"

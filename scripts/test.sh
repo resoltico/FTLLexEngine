@@ -38,8 +38,15 @@ set -o nounset
 set -o pipefail
 shopt -s inherit_errexit
 
+PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "$PROJECT_ROOT/scripts/lib/python_support_contract.sh"
+
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.13}"
+# Premise: default verification must exercise the minimum supported runtime.
+# Reason: contributors can widen coverage with PY_VERSION=... while one
+# contract file remains the authoritative version owner.
+PY_VERSION="${PY_VERSION:-$FTLLEXENGINE_PYTHON_MIN}"
 if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
     TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
 else
@@ -49,7 +56,6 @@ if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" && -z "${UV_LINK_MODE:-}" ]]; then
     export UV_LINK_MODE="copy"
 fi
 
-PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 if [[ "${UV_PROJECT_ENVIRONMENT:-}" != "$TARGET_VENV" ]]; then

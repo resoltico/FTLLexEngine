@@ -348,15 +348,25 @@ def _tokenize_babel_pattern(pattern: str) -> list[str]:
     return tokens
 
 
-def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
-    """Convert one CLDR date/time pattern to a Python strptime pattern."""
+def _babel_to_strptime(
+    babel_pattern: str,
+    *,
+    token_map: dict[str, str | None] | None = None,
+) -> tuple[str, bool]:
+    """Convert one CLDR date/time pattern to a Python strptime pattern.
+
+    ``token_map`` is an explicit dependency so callers can customize token
+    handling without mutating shared module state. That keeps cache creation and
+    conversion free-thread-safe by construction.
+    """
     tokens = _tokenize_babel_pattern(babel_pattern)
     result_parts: list[str] = []
     has_era = False
+    active_token_map = _BABEL_TOKEN_MAP if token_map is None else token_map
 
     for token in tokens:
-        if token in _BABEL_TOKEN_MAP:
-            mapped = _BABEL_TOKEN_MAP[token]
+        if token in active_token_map:
+            mapped = active_token_map[token]
             if mapped is None:
                 if token.startswith("G"):
                     has_era = True

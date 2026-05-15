@@ -203,7 +203,7 @@ class TestSecCacheErrorBloat001:
 
     def test_cache_skips_entries_with_excessive_errors(self) -> None:
         """IntegrityCache skips caching when error count exceeds limit."""
-        cache = IntegrityCache(strict=False, maxsize=100, max_errors_per_entry=10)
+        cache = IntegrityCache(maxsize=100, max_errors_per_entry=10)
 
         # Create result with too many errors
         many_errors = tuple(
@@ -222,27 +222,23 @@ class TestSecCacheErrorBloat001:
         stats = cache.get_stats()
         assert stats["error_bloat_skips"] == 1
 
-    def test_cache_skips_entries_with_error_weight_exceeding_limit(self) -> None:
-        """IntegrityCache skips caching when total error weight exceeds limit.
+    def test_cache_skips_entries_with_error_payload_exceeding_limit(self) -> None:
+        """IntegrityCache skips caching when retained payload bytes exceed the limit.
 
-        Dynamic weight calculation: base overhead (100) + actual string lengths.
-        Each error with a 100-char message: 100 + 100 = 200 bytes.
-        25 errors with 100-char messages = 5000 bytes.
-        String: 100 chars = 100 bytes.
-        Total: 5100 bytes > 5000 (max_entry_weight).
+        The cache budget is the deterministic UTF-8 payload it retains, not the
+        old pseudo-memory weight heuristic. Each bare error here contributes its
+        message bytes plus fixed serialization overhead, so 60 errors with
+        100-byte messages exceed the 5KB retained-payload ceiling.
         """
         cache = IntegrityCache(
-            strict=False,
             maxsize=100,
-            max_entry_weight=5000,  # 5KB limit
+            max_entry_payload_bytes=5000,  # 5KB limit
             max_errors_per_entry=100,  # Allow 100 errors
         )
 
-        # Create errors with long messages to trigger weight limit
-        # Each error: 100 base + 100 chars = 200 bytes
-        # 25 errors x 200 = 5000 bytes, plus 100 char string = 5100 > 5000
+        # Create errors with long messages to exceed the retained payload budget.
         errors = tuple(
-            FrozenFluentError("E" * 100, ErrorCategory.REFERENCE) for _ in range(25)
+            FrozenFluentError("E" * 100, ErrorCategory.REFERENCE) for _ in range(60)
         )
 
         # Put should skip due to total weight
@@ -252,16 +248,16 @@ class TestSecCacheErrorBloat001:
         cached = cache.get("msg", None, None, "en", use_isolating=True)
         assert cached is None
 
-        # Verify skip was counted under combined_weight_skips:
-        # 25 errors with 100-char messages pass the count check (25 <= 100),
-        # but combined weight (100 formatted + 25 * 200 per error = 5100) exceeds limit.
+        # Verify skip was counted under combined_payload_skips:
+        # 60 errors pass the count check (60 <= 100), but the retained payload
+        # exceeds the 5KB entry budget.
         stats = cache.get_stats()
-        assert stats["combined_weight_skips"] == 1
+        assert stats["combined_payload_skips"] == 1
         assert stats["error_bloat_skips"] == 0
 
     def test_cache_accepts_reasonable_error_collections(self) -> None:
         """IntegrityCache caches results with reasonable error counts."""
-        cache = IntegrityCache(strict=False, maxsize=100, max_errors_per_entry=50)
+        cache = IntegrityCache(maxsize=100, max_errors_per_entry=50)
 
         # Create result with moderate errors
         few_errors = tuple(
@@ -283,7 +279,7 @@ class TestSecCacheErrorBloat001:
 
     def test_cache_stats_includes_max_errors_per_entry(self) -> None:
         """Cache stats includes max_errors_per_entry configuration."""
-        cache = IntegrityCache(strict=False, max_errors_per_entry=25)
+        cache = IntegrityCache(max_errors_per_entry=25)
 
         stats = cache.get_stats()
         assert "max_errors_per_entry" in stats
@@ -291,7 +287,7 @@ class TestSecCacheErrorBloat001:
 
     def test_cache_clear_preserves_error_bloat_counter(self) -> None:
         """Cache.clear() does not reset error_bloat_skips; counter is cumulative."""
-        cache = IntegrityCache(strict=False, max_errors_per_entry=5)
+        cache = IntegrityCache(max_errors_per_entry=5)
 
         # Trigger some error bloat skips
         many_errors = tuple(

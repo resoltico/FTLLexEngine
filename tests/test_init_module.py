@@ -262,7 +262,7 @@ class TestParserOnlyFacadeBehavior:
 
             assert "FluentLocalization" not in localization.__all__
             assert "LocalizationBootConfig" not in localization.__all__
-            assert "CacheAuditLogEntry" in localization.__all__
+            assert "CacheDebugLogEntry" in localization.__all__
             assert localization.PathResourceLoader.__name__ == "PathResourceLoader"
 
     def test_parser_only_feature_probing_uses_is_babel_available(self) -> None:
@@ -456,7 +456,7 @@ class TestInitModuleExports:
         """
         import ftllexengine
 
-        assert len(ftllexengine.__all__) == 60
+        assert len(ftllexengine.__all__) == 62
 
     def test_babel_optional_exports_are_in_all(self) -> None:
         """Babel-optional symbols (FluentBundle, etc.) are listed in __all__."""
@@ -524,6 +524,14 @@ class TestInitModuleExports:
             "require_territory_code",
         ):
             assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+
+    def test_limit_contract_exports_are_in_all(self) -> None:
+        """The explicit unlimited sentinel is part of the public API contract."""
+        import ftllexengine
+
+        for name in ("UNLIMITED", "UnlimitedLimit"):
+            assert name in ftllexengine.__all__, f"{name!r} missing from ftllexengine.__all__"
+            assert hasattr(ftllexengine, name)
 
     def test_iso_types_are_in_all(self) -> None:
         """ISO code types and guards are in ftllexengine.__all__."""

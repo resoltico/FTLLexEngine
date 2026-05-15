@@ -51,6 +51,7 @@ from ftllexengine.core.locale_utils import (
     normalize_locale,
 )
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
+from ftllexengine.diagnostics._redaction import redacted_parse_failure
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.parsing.currency_maps import (
     _FAST_TIER_UNAMBIGUOUS_SYMBOLS,
@@ -124,6 +125,7 @@ def _resolve_currency_code(
         Tuple of (currency_code, error) - one will be None
     """
     is_iso_code = _is_valid_iso_4217_format(currency_str)
+    value_summary = redacted_parse_failure(value, parse_type="currency")
 
     symbol_map, ambiguous_symbols, locale_to_currency, valid_iso_codes = _get_currency_maps()
 
@@ -132,7 +134,9 @@ def _resolve_currency_code(
         if currency_str not in valid_iso_codes:
             diagnostic = ErrorTemplate.parse_currency_code_invalid(currency_str, value)
             context = FrozenErrorContext(
-                input_value=str(value), locale_code=locale_code, parse_type="currency"
+                input_value=value_summary,
+                locale_code=locale_code,
+                parse_type="currency",
             )
             error = FrozenFluentError(
                 str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
@@ -147,7 +151,9 @@ def _resolve_currency_code(
             if not _is_valid_iso_4217_format(default_currency):
                 diagnostic = ErrorTemplate.parse_currency_code_invalid(default_currency, value)
                 context = FrozenErrorContext(
-                    input_value=str(value), locale_code=locale_code, parse_type="currency"
+                    input_value=value_summary,
+                    locale_code=locale_code,
+                    parse_type="currency",
                 )
                 error = FrozenFluentError(
                     str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
@@ -166,7 +172,9 @@ def _resolve_currency_code(
         # No resolution available
         diagnostic = ErrorTemplate.parse_currency_ambiguous(currency_str, value)
         context = FrozenErrorContext(
-            input_value=str(value), locale_code=locale_code, parse_type="currency"
+            input_value=value_summary,
+            locale_code=locale_code,
+            parse_type="currency",
         )
         error = FrozenFluentError(
             str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
@@ -178,7 +186,9 @@ def _resolve_currency_code(
     if mapped is None:
         diagnostic = ErrorTemplate.parse_currency_symbol_unknown(currency_str, value)
         context = FrozenErrorContext(
-            input_value=str(value), locale_code=locale_code, parse_type="currency"
+            input_value=value_summary,
+            locale_code=locale_code,
+            parse_type="currency",
         )
         error = FrozenFluentError(
             str(diagnostic), ErrorCategory.PARSE, diagnostic=diagnostic, context=context
@@ -259,7 +269,7 @@ def _detect_currency_symbol(
             value, locale_code, "No currency symbol or code found",
         )
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=redacted_parse_failure(value, parse_type="currency"),
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -316,7 +326,7 @@ def _parse_currency_amount(
             number_str, value, str(failure_reason),
         )
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=redacted_parse_failure(value, parse_type="currency"),
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -332,7 +342,7 @@ def _parse_currency_amount(
 
 
 def parse_currency(
-    value: str,
+    value: object,
     locale_code: str,
     *,
     default_currency: str | None = None,
@@ -418,15 +428,16 @@ def parse_currency(
     unknown_locale_error_class = get_unknown_locale_error_class()
     number_format_error_class = get_number_format_error_class()
     parse_decimal = get_parse_decimal_func()
+    value_summary = redacted_parse_failure(value, parse_type="currency")
 
     if not isinstance(value, str):
-        diagnostic = ErrorTemplate.parse_currency_failed(  # type: ignore[unreachable]
-            str(value),
+        diagnostic = ErrorTemplate.parse_currency_failed(
+            value,
             locale_code,
             f"Expected string, got {type(value).__name__}",
         )
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -445,7 +456,7 @@ def parse_currency(
     if not is_structurally_valid_locale_code(locale_code):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -461,7 +472,7 @@ def parse_currency(
     except (unknown_locale_error_class, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -483,7 +494,7 @@ def parse_currency(
             value, locale_code, "No currency symbol or code found",
         )
         context = FrozenErrorContext(  # pragma: no cover
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -513,7 +524,7 @@ def parse_currency(
             value, locale_code, "Currency resolution failed",
         )
         context = FrozenErrorContext(  # pragma: no cover
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="currency",
         )
@@ -543,7 +554,7 @@ def parse_currency(
             value, locale_code, "Amount parsing failed",
         )
         context = FrozenErrorContext(  # pragma: no cover
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="currency",
         )

@@ -19,7 +19,7 @@ from ftllexengine._optional_exports import (
 from ftllexengine.core.babel_compat import is_babel_available
 from ftllexengine.diagnostics import ValidationResult
 
-from .cache import CacheAuditLogEntry, WriteLogEntry
+from .cache import CacheDebugLogEntry, CacheIntegrityEvent, CacheIntegrityEventKind
 from .cache_config import CacheConfig
 from .function_bridge import FluentNumber, FunctionRegistry, fluent_function
 from .value_types import make_fluent_number
@@ -73,15 +73,15 @@ def __getattr__(name: str) -> object:
         optional_attrs=_BABEL_OPTIONAL_ATTRS,
     )
 
-
-
+# ruff: noqa: RUF022 - grouped runtime exports mirror the reader-facing facade
 __all__: list[str] = [
-    "CacheAuditLogEntry",
+    "CacheDebugLogEntry",
     "CacheConfig",
+    "CacheIntegrityEvent",
+    "CacheIntegrityEventKind",
     "FluentNumber",
     "FunctionRegistry",
     "ValidationResult",
-    "WriteLogEntry",
     "fluent_function",
     "make_fluent_number",
 ]

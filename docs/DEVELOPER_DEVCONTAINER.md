@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: CONTRIBUTING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [devcontainer, contributor workflow, docker, check.sh, atheris]
   questions: ["how do I open the contributor container?", "how do I run the full repo gate?", "how do I run Atheris in the supported environment?"]
@@ -58,6 +58,8 @@ From the host without opening an interactive shell:
 ```bash
 npx --yes @devcontainers/cli exec --workspace-folder . ./scripts/fuzz_hypofuzz.sh --preflight
 npx --yes @devcontainers/cli exec --workspace-folder . ./scripts/fuzz_atheris.sh --smoke-all --time 3
+npx --yes @devcontainers/cli exec --workspace-folder . env PY_VERSION=3.14 ./scripts/lint.sh
+npx --yes @devcontainers/cli exec --workspace-folder . env PY_VERSION=3.14 ./scripts/test.sh
 ```
 
 ## Validation

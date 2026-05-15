@@ -1,20 +1,20 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: RUNTIME
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [CacheConfig, FunctionRegistry, fluent_function, number_format, currency_format, select_plural_category, clear_module_caches]
-  questions: ["how do I configure runtime formatting?", "how do custom functions and registries work?", "where are cache config and write-log entry types documented?"]
+  questions: ["how do I configure runtime formatting?", "how do custom functions and registries work?", "where are cache debug and integrity event types documented?"]
 ---
 
 # Runtime Reference
 
-This reference covers cache configuration, function registries, built-in formatters, plural selection, cache/audit entry types, and the root-level `clear_module_caches()` helper.
+This reference covers cache configuration, function registries, built-in formatters, plural selection, cache debug/integrity evidence types, and the root-level `clear_module_caches()` helper.
 Runtime-adjacent utilities, validators, and package metadata constants are documented in [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md).
 
 Parser-only facade note:
-- `CacheConfig`, `FunctionRegistry`, `fluent_function`, `make_fluent_number`, `CacheAuditLogEntry`, `WriteLogEntry`, and `ValidationResult` remain importable in parser-only installs.
+- `CacheConfig`, `FunctionRegistry`, `fluent_function`, `make_fluent_number`, `CacheDebugLogEntry`, `CacheIntegrityEvent`, `CacheIntegrityEventKind`, and `ValidationResult` remain importable in parser-only installs.
 - `create_default_registry`, `get_shared_registry`, `number_format`, `datetime_format`, `currency_format`, `select_plural_category`, `FluentBundle`, and `AsyncFluentBundle` require the full runtime install. In parser-only installs they resolve to lazy placeholders that raise `BabelImportError` on first use.
 - `clear_module_caches()` is a root-level helper that works in both parser-only and full-runtime installs.
 
@@ -32,17 +32,21 @@ Dataclass that configures optional format-result caching.
 class CacheConfig:
     size: int = 1000
     write_once: bool = False
-    integrity_strict: bool = True
-    enable_audit: bool = False
-    max_audit_entries: int = 10000
-    max_entry_weight: int = 10000
+    enable_debug_log: bool = False
+    max_debug_entries: int = 10000
+    max_entry_payload_bytes: int = 10000
     max_errors_per_entry: int = 50
+    integrity_event_sink: IntegrityEventSink | None = None
+    debug_fingerprint_key: bytes | None = None
 ```
 
 ### Constraints
 - Purpose: Single cache configuration object for bundle/localization runtime
 - State: Immutable
 - Thread: Safe
+- Integrity boundary: Cache corruption, key confusion, and write-once conflicts are system
+  integrity failures regardless of `FluentBundle.strict`; formatting softness does not downgrade
+  cache-integrity exceptions into fallback results
 
 ---
 
@@ -61,6 +65,7 @@ class FunctionRegistry:
 - State: Mutable until `freeze()`
 - Thread: Safe for normal runtime use after registration
 - Main methods: `register()`, `call()`, `get_callable()`, `list_functions()`, `copy()`
+- Cache contract: `register(..., cacheable=False)` is the safe default for custom functions; opt in with `cacheable=True` only for pure functions whose output depends solely on the cache key inputs
 
 ---
 
@@ -265,44 +270,87 @@ def clear_module_caches(components: frozenset[str] | None = None) -> None:
 
 ---
 
-## `CacheAuditLogEntry`
+## `CacheDebugLogEntry`
 
-Public alias for the cache audit-log record type.
-
-### Signature
-```python
-CacheAuditLogEntry = WriteLogEntry
-```
-
-### Constraints
-- Purpose: Stable public alias returned by bundle/localization cache-audit APIs
-- Underlying type: `WriteLogEntry`
-- Import: `from ftllexengine.runtime import CacheAuditLogEntry` or `from ftllexengine.localization import CacheAuditLogEntry`
-
----
-
-## `WriteLogEntry`
-
-Immutable dataclass that represents one cache audit-log record.
+Immutable dataclass that represents one bounded cache debug-log record.
 
 ### Signature
 ```python
 @dataclass(frozen=True, slots=True)
-class WriteLogEntry:
+class CacheDebugLogEntry:
     operation: str
-    key_hash: str
-    timestamp: float
-    sequence: int
+    key_fingerprint: str
+    timestamp_monotonic: float
+    wall_time_unix: float
+    debug_sequence: int
     cache_sequence: int
+    cache_generation: int
     checksum_hex: str
+```
+
+### Constraints
+- Purpose: Recent-operation debug evidence for hits, misses, puts, evictions, and write-once outcomes
+- State: Immutable
+- Thread: Safe
+- Import: `from ftllexengine.runtime import CacheDebugLogEntry` or `from ftllexengine.localization import CacheDebugLogEntry`
+- `debug_sequence`: Monotonic debug-ring order across cache operations
+- `cache_sequence`: Cache-entry sequence observed at the time of the event
+- `cache_generation`: Cache-clear generation active when the event was recorded
+- `key_fingerprint`: Keyed privacy-preserving fingerprint, not the raw cache key
+
+---
+
+## `CacheIntegrityEvent`
+
+Immutable dataclass that represents one critical cache-integrity event.
+
+### Signature
+```python
+@dataclass(frozen=True, slots=True)
+class CacheIntegrityEvent:
+    kind: CacheIntegrityEventKind
+    message_id: str
+    locale_code: str
+    attribute: str | None
+    use_isolating: bool
+    key_fingerprint: str | None
+    event_sequence: int
+    cache_sequence: int
+    cache_generation: int
+    correlation_id: str | None
+    thread_id: int
+    task_name: str | None
+    detail: str
+    timestamp_monotonic: float
     wall_time_unix: float
 ```
 
 ### Constraints
-- Purpose: Underlying runtime cache dataclass behind the `CacheAuditLogEntry` public alias
+- Purpose: Critical evidence for corruption, write conflicts, key-contract failures, and immediate verification failures
 - State: Immutable
 - Thread: Safe
-- `sequence`: Monotonic audit-event order across all cache operations
-- `cache_sequence`: Cache-entry sequence observed at the time of the event
+- Import: `from ftllexengine.runtime import CacheIntegrityEvent` or `from ftllexengine.localization import CacheIntegrityEvent`
+
+---
+
+## `CacheIntegrityEventKind`
+
+String enum that classifies critical cache-integrity event types.
+
+### Signature
+```python
+class CacheIntegrityEventKind(StrEnum):
+    ENTRY_CORRUPTION = "entry_corruption"
+    KEY_CONFUSION = "key_confusion"
+    WRITE_CONFLICT = "write_conflict"
+    KEY_SERIALIZATION_FAILED = "key_serialization_failed"
+    ENTRY_VERIFICATION_FAILED = "entry_verification_failed"
+```
+
+### Constraints
+- Purpose: Stable event-category vocabulary for `CacheIntegrityEvent.kind`
+- State: Immutable enum values
+- Thread: Safe
+- Import: `from ftllexengine.runtime import CacheIntegrityEventKind`
 
 ---

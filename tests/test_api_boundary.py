@@ -257,7 +257,7 @@ class TestSourceTypeValidation:
     def test_standalone_validate_resource_rejects_bytes(self) -> None:
         """Standalone validate_resource raises TypeError for bytes."""
         with pytest.raises(TypeError) as exc_info:
-            validate_resource(b"msg = Hello")  # type: ignore[arg-type]
+            validate_resource(b"msg = Hello")
 
         assert "source must be str" in str(exc_info.value)
         assert "bytes" in str(exc_info.value)
@@ -265,7 +265,7 @@ class TestSourceTypeValidation:
     def test_standalone_validate_resource_rejects_list(self) -> None:
         """Standalone validate_resource raises TypeError for list."""
         with pytest.raises(TypeError) as exc_info:
-            validate_resource(["msg = Hello"])  # type: ignore[arg-type]
+            validate_resource(["msg = Hello"])
 
         assert "source must be str" in str(exc_info.value)
         assert "list" in str(exc_info.value)

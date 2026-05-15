@@ -1,7 +1,7 @@
 # AGENTS.md — Agent Entry Protocol
 
-**Version:** 2.3.0
-**Updated:** 2026-04-30
+**Version:** 2.4.1
+**Updated:** 2026-05-08
 
 This file is the repository entry point for agent work. It defines load order, precedence, repository-wide exceptions, and the universal minimum that applies before any specialized language, framework, database/native, domain-modeling, or documentation rule.
 
@@ -31,7 +31,7 @@ When opening a repository, load context in this order:
 5. Load the application-framework protocol for each touched surface:
    - Tauri 2.10.x: `.codex/AGENTS_TAURI210.md` (v2.0.0+)
 6. Load the database/native dependency protocol for each touched surface:
-   - SQLite3 Multiple Ciphers 2.3.3 / SQLite 3.53.0: `.codex/AGENTS_SQLITE3MC233_SQLITE353.md` (v2.0.0+)
+   - SQLite3 Multiple Ciphers 2.3.3 / SQLite 3.53.0: `.codex/AGENTS_SQLITE3MC234_SQLITE3531.md` (v2.0.1+)
 7. Load the domain-modeling lens **only when the change touches business meaning**: `.codex/DOMAIN_DRIVEN_DESIGN_LENS.md` (v1.0.0+). Triggers include domain state, business rules, workflow names, commands, domain events, permissions, policies, calculations, lifecycle transitions, user-facing business terms, or integration contracts between models. Do not load for purely mechanical work — build wiring, generic plumbing, infrastructure with no domain meaning. The Universal Engineering Contract §1.7 *Domain meaning gate* is the formal trigger.
 8. For documentation authoring, documentation refactoring, or code changes that alter documented public contracts, load `.codex/PROTOCOL_AFAD.md` unless the only touched document is the repository root `README.md`.
 
@@ -88,7 +88,7 @@ Application-framework surfaces:
 
 Database/native dependency surfaces:
 
-- SQLite3 Multiple Ciphers 2.3.3 / SQLite 3.53.0 surfaces use `.codex/AGENTS_SQLITE3MC233_SQLITE353.md` in addition to any applicable language or framework protocol.
+- SQLite3 Multiple Ciphers 2.3.4 / SQLite 3.53.1 surfaces use `.codex/AGENTS_SQLITE3MC234_SQLITE3531.md` in addition to any applicable language or framework protocol.
 
 Domain-modeling surfaces:
 
@@ -202,10 +202,30 @@ For non-trivial work, the final report combines two shapes:
 
 Keep the report proportional to risk. For tiny edits, a concise sentence with verification is enough.
 
-## 7.10 No emoji
+### 7.10 No emoji
 
 Do not add, retain, or introduce emoji anywhere. This rule applies across all programming languages, markup languages, documentation formats, and plain text.
 
 This includes, without limitation, source code, inline comments, documentation comments, docstrings, commit messages, changelogs, release notes, configuration files, documentation, and this AGENTS.md file.
 
 There are no exceptions. Remove any emoji encountered while creating, editing, reviewing, or refactoring content.
+
+### 7.11 In-progress work awareness
+
+Before beginning any non-trivial task, inspect the repository's in-progress state, not just its committed state:
+
+```bash
+gh pr list --state open \
+  --json number,title,url,headRefName,isDraft,author \
+  --jq '.[] | [.number, .headRefName, .title] | @tsv'
+```
+
+For each open PR whose branch or title overlaps the task area, read the PR body and the actual diff before proceeding. An open PR is existing theory-in-progress — work a prior session or contributor already built toward the same goal. Starting fresh without reading it destroys that theory rather than building on it.
+
+If an open PR substantially covers the task:
+
+- treat it as the starting point, not a parallel path;
+- understand what it does and does not yet do;
+- continue from it or explicitly explain why a fresh approach is better.
+
+This extends the §3 system map. The **Truth** axis is not only the committed HEAD; it includes everything currently in-flight. Discovering an open PR mid-task is late — discover it first.

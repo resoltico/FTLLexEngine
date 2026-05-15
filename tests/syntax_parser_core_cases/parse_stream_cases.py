@@ -95,6 +95,13 @@ class TestParseStream:
         assert len(entries) == 1
         assert isinstance(entries[0], Message)
 
+    def test_non_string_line_is_rejected(self) -> None:
+        """parse_stream should reject undecoded byte streams explicitly."""
+        parser = FluentParserV1()
+
+        with pytest.raises(TypeError, match="must yield str, got bytes"):
+            list(parser.parse_stream([b"msg = bytes\n"]))  # type: ignore[list-item]
+
     def test_lines_without_trailing_newlines(self) -> None:
         """Lines without trailing newlines are handled correctly."""
         parser = FluentParserV1()
@@ -102,6 +109,27 @@ class TestParseStream:
         entries = list(parser.parse_stream(lines))
         msg_entries = [e for e in entries if isinstance(e, Message)]
         assert len(msg_entries) == 2
+
+    def test_stream_line_length_limit_fails_closed(self) -> None:
+        """Per-line budgets should reject oversized lines before buffering them."""
+        parser = FluentParserV1(max_stream_line_length=5)
+
+        with pytest.raises(ValueError, match="Stream line length"):
+            list(parser.parse_stream(["123456"]))
+
+    def test_stream_total_length_limit_fails_closed(self) -> None:
+        """Total stream budgets should reject overlong streams before parsing chunks."""
+        parser = FluentParserV1(max_source_size=5)
+
+        with pytest.raises(ValueError, match="Stream length"):
+            list(parser.parse_stream(["1234", "56"]))
+
+    def test_entry_chunk_length_limit_fails_closed(self) -> None:
+        """One blank-line-delimited entry cannot exceed the configured chunk budget."""
+        parser = FluentParserV1(max_source_size=12, max_stream_line_length=100)
+
+        with pytest.raises(ValueError, match="Entry chunk length"):
+            list(parser.parse_stream(["ab=1", "cd=2", "ef=3"]))
 
     def test_leading_blank_line_is_skipped(self) -> None:
         """Blank line before any content is silently skipped.

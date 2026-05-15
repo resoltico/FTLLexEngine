@@ -18,6 +18,11 @@ from typing import ClassVar
 from hypothesis import event, given
 from hypothesis import strategies as st
 
+from ftllexengine.diagnostics._redaction import (
+    fingerprint_text,
+    redacted_custom_function_failure,
+    redacted_parse_failure,
+)
 from ftllexengine.diagnostics.codes import Diagnostic, DiagnosticCode
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
@@ -221,14 +226,35 @@ class TestResolutionTemplates:
 
     @given(fn=_function_names, value=_short_text, reason=_short_text)
     def test_formatting_failed(self, fn: str, value: str, reason: str) -> None:
-        """formatting_failed embeds function name, value, and reason."""
+        """formatting_failed embeds function name plus redacted value and detail."""
         d = ErrorTemplate.formatting_failed(fn, value, reason)
         assert d.code == DiagnosticCode.FORMATTING_FAILED
         assert fn in d.message
-        assert value in d.message
-        assert reason in d.message
+        assert fingerprint_text(value, label="format_value") in d.message
+        assert fingerprint_text(reason, label="detail") in d.message
         assert d.function_name == fn
         event(f"fn={fn}")
+
+    def test_formatting_failed_accepts_safe_reason(self) -> None:
+        """formatting_failed can preserve a safe high-level reason alongside redaction."""
+        d = ErrorTemplate.formatting_failed(
+            "DATETIME",
+            "not-a-date",
+            ValueError("raw parser detail"),
+            safe_reason="input is not ISO 8601 format",
+        )
+        assert "input is not ISO 8601 format" in d.message
+        assert fingerprint_text("not-a-date", label="format_value") in d.message
+        assert fingerprint_text(ValueError("raw parser detail"), label="detail") in d.message
+
+
+class TestRedactionHelpers:
+    """Direct coverage for redaction helpers with edge-case exception shapes."""
+
+    def test_redacted_custom_function_failure_without_args_uses_type_only(self) -> None:
+        """Exceptions with empty args should not invent redacted detail text."""
+        error = RuntimeError()
+        assert redacted_custom_function_failure(error) == "uncaught RuntimeError"
 
     @given(
         fn=_function_names,
@@ -350,10 +376,10 @@ class TestParsingTemplates:
     def test_parse_decimal_failed(
         self, val: str, locale: str, reason: str
     ) -> None:
-        """parse_decimal_failed embeds value, locale, and reason."""
+        """parse_decimal_failed embeds redacted value summary, locale, and reason."""
         d = ErrorTemplate.parse_decimal_failed(val, locale, reason)
         assert d.code == DiagnosticCode.PARSE_DECIMAL_FAILED
-        assert val in d.message
+        assert redacted_parse_failure(val, parse_type="decimal") in d.message
         assert locale in d.message
         assert reason in d.message
         event("template=parse_decimal_failed")
@@ -362,10 +388,10 @@ class TestParsingTemplates:
     def test_parse_date_failed(
         self, val: str, locale: str, reason: str
     ) -> None:
-        """parse_date_failed embeds value, locale, and reason."""
+        """parse_date_failed embeds redacted value summary, locale, and reason."""
         d = ErrorTemplate.parse_date_failed(val, locale, reason)
         assert d.code == DiagnosticCode.PARSE_DATE_FAILED
-        assert val in d.message
+        assert redacted_parse_failure(val, parse_type="date") in d.message
         assert locale in d.message
         assert reason in d.message
         assert "ISO 8601" in d.hint  # type: ignore[operator]
@@ -375,10 +401,10 @@ class TestParsingTemplates:
     def test_parse_datetime_failed(
         self, val: str, locale: str, reason: str
     ) -> None:
-        """parse_datetime_failed embeds value, locale, and reason."""
+        """parse_datetime_failed embeds redacted value summary, locale, and reason."""
         d = ErrorTemplate.parse_datetime_failed(val, locale, reason)
         assert d.code == DiagnosticCode.PARSE_DATETIME_FAILED
-        assert val in d.message
+        assert redacted_parse_failure(val, parse_type="datetime") in d.message
         assert locale in d.message
         assert reason in d.message
         event("template=parse_datetime_failed")
@@ -387,10 +413,10 @@ class TestParsingTemplates:
     def test_parse_currency_failed(
         self, val: str, locale: str, reason: str
     ) -> None:
-        """parse_currency_failed embeds value, locale, and reason."""
+        """parse_currency_failed embeds redacted value summary, locale, and reason."""
         d = ErrorTemplate.parse_currency_failed(val, locale, reason)
         assert d.code == DiagnosticCode.PARSE_CURRENCY_FAILED
-        assert val in d.message
+        assert redacted_parse_failure(val, parse_type="currency") in d.message
         assert locale in d.message
         assert reason in d.message
         event("template=parse_currency_failed")
@@ -408,10 +434,11 @@ class TestParsingTemplates:
     def test_parse_currency_ambiguous(
         self, symbol: str, val: str
     ) -> None:
-        """parse_currency_ambiguous embeds symbol and full value."""
+        """parse_currency_ambiguous embeds symbol and redacted value summary."""
         d = ErrorTemplate.parse_currency_ambiguous(symbol, val)
         assert d.code == DiagnosticCode.PARSE_CURRENCY_AMBIGUOUS
-        assert symbol in d.message
+        assert fingerprint_text(symbol, label="currency_symbol") in d.message
+        assert redacted_parse_failure(val, parse_type="currency") in d.message
         assert d.hint is not None
         event("template=parse_currency_ambiguous")
 
@@ -419,10 +446,10 @@ class TestParsingTemplates:
     def test_parse_currency_symbol_unknown(
         self, symbol: str, val: str
     ) -> None:
-        """parse_currency_symbol_unknown embeds symbol."""
+        """parse_currency_symbol_unknown embeds redacted symbol summary."""
         d = ErrorTemplate.parse_currency_symbol_unknown(symbol, val)
         assert d.code == DiagnosticCode.PARSE_CURRENCY_SYMBOL_UNKNOWN
-        assert symbol in d.message
+        assert fingerprint_text(symbol, label="currency_symbol") in d.message
         assert d.hint is not None
         event("template=parse_currency_symbol_unknown")
 
@@ -430,10 +457,10 @@ class TestParsingTemplates:
     def test_parse_currency_code_invalid(
         self, code: str, val: str
     ) -> None:
-        """parse_currency_code_invalid embeds the 3-letter ISO code."""
+        """parse_currency_code_invalid embeds redacted code summary."""
         d = ErrorTemplate.parse_currency_code_invalid(code, val)
         assert d.code == DiagnosticCode.PARSE_CURRENCY_CODE_INVALID
-        assert code in d.message
+        assert fingerprint_text(code, label="currency_code") in d.message
         assert d.hint is not None
         event("template=parse_currency_code_invalid")
 
@@ -441,10 +468,11 @@ class TestParsingTemplates:
     def test_parse_amount_invalid(
         self, amount: str, val: str, reason: str
     ) -> None:
-        """parse_amount_invalid embeds amount, value, and reason."""
+        """parse_amount_invalid embeds redacted amount/value summaries and reason."""
         d = ErrorTemplate.parse_amount_invalid(amount, val, reason)
         assert d.code == DiagnosticCode.PARSE_AMOUNT_INVALID
-        assert amount in d.message
+        assert fingerprint_text(amount, label="amount_fragment") in d.message
+        assert redacted_parse_failure(val, parse_type="currency") in d.message
         assert reason in d.message
         assert d.hint is not None
         event("template=parse_amount_invalid")
@@ -532,5 +560,5 @@ class TestDiagnosticsTemplatesCoverage:
 
         assert diagnostic.code == DiagnosticCode.PARSE_CURRENCY_SYMBOL_UNKNOWN
         assert "Unknown currency symbol" in diagnostic.message
-        assert "XYZ" in diagnostic.message
+        assert fingerprint_text("XYZ", label="currency_symbol") in diagnostic.message
         assert diagnostic.hint is not None

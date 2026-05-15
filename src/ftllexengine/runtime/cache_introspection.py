@@ -1,12 +1,16 @@
-"""Stats and key-shaping helpers for IntegrityCache."""
+"""Stats and key-shaping helpers for ``IntegrityCache``."""
+
+# ruff: noqa: SLF001 - co-module mixins are the owning implementation surface
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ftllexengine.constants import MAX_DEPTH
 
-from .cache_keys import HASHABLE_NODE_BUDGET, compute_key_hash, make_hashable, make_key
+from .cache_key_codec import compute_debug_key_fingerprint, compute_key_binding_digest
+from .cache_keys import HASHABLE_NODE_BUDGET, make_hashable, make_key
+from .cache_types import CacheStats
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -14,23 +18,33 @@ if TYPE_CHECKING:
     from ftllexengine.core.value_types import FluentValue
 
     from .cache_protocols import CacheStateProtocol
-    from .cache_types import CacheStats, HashableValue, _CacheKey
+    from .cache_types import HashableValue, _CacheKey
+
+
+def _as_cache_state(value: object) -> CacheStateProtocol:
+    """Cast one mixin receiver to the structural cache contract."""
+    return cast("CacheStateProtocol", value)
 
 
 class _CacheKeyMixin:
-    """Static key-shaping helpers preserved on IntegrityCache."""
+    """Static key-shaping helpers preserved on ``IntegrityCache``."""
 
     _MAX_HASHABLE_NODES: int = HASHABLE_NODE_BUDGET
 
     @staticmethod
     def _make_hashable(value: object, depth: int = MAX_DEPTH) -> HashableValue:
-        """Convert potentially unhashable cache arguments into a stable hashable form."""
+        """Convert potentially unhashable cache arguments into a stable form."""
         return make_hashable(value, depth=depth)
 
     @staticmethod
-    def _compute_key_hash(key: _CacheKey) -> bytes:
-        """Compute the 8-byte key binding used to detect cache slot confusion."""
-        return compute_key_hash(key)
+    def _compute_key_binding_digest(key: _CacheKey) -> bytes:
+        """Compute the internal key-binding digest for cache entries."""
+        return compute_key_binding_digest(key)
+
+    @staticmethod
+    def _compute_debug_key_fingerprint(key: _CacheKey, *, secret: bytes) -> str:
+        """Compute the keyed fingerprint exposed through debug/event surfaces."""
+        return compute_debug_key_fingerprint(key, secret=secret)
 
     @staticmethod
     def _make_key(
@@ -40,6 +54,7 @@ class _CacheKeyMixin:
         locale_code: str,
         *,
         use_isolating: bool,
+        function_generation: int = 0,
     ) -> _CacheKey | None:
         """Create the immutable lookup key for a formatting request."""
         return make_key(
@@ -48,121 +63,148 @@ class _CacheKeyMixin:
             attribute,
             locale_code,
             use_isolating=use_isolating,
+            function_generation=function_generation,
         )
 
 
 class _CacheStatsMixin:
-    """Stats and property accessors for IntegrityCache."""
+    """Stats and property accessors for ``IntegrityCache``."""
 
-    def get_stats(self: CacheStateProtocol) -> CacheStats:
+    def get_stats(self: object) -> CacheStats:
         """Get cache statistics."""
-        with self._lock:
-            total = self._hits + self._misses
-            hit_rate = (self._hits / total * 100) if total > 0 else 0.0
+        state = _as_cache_state(self)
+        with state._lock:
+            total = state._hits + state._misses
+            hit_rate = (state._hits / total * 100) if total > 0 else 0.0
 
-            return {
-                "size": len(self._cache),
-                "maxsize": self._maxsize,
-                "max_entry_weight": self._max_entry_weight,
-                "max_errors_per_entry": self._max_errors_per_entry,
-                "hits": self._hits,
-                "misses": self._misses,
-                "hit_rate": round(hit_rate, 2),
-                "unhashable_skips": self._unhashable_skips,
-                "oversize_skips": self._oversize_skips,
-                "error_bloat_skips": self._error_bloat_skips,
-                "combined_weight_skips": self._combined_weight_skips,
-                "corruption_detected": self._corruption_detected,
-                "idempotent_writes": self._idempotent_writes,
-                "write_once_conflicts": self._write_once_conflicts,
-                "sequence": self._sequence,
-                "write_once": self._write_once,
-                "strict": self._strict,
-                "audit_enabled": self._audit_log is not None,
-                "audit_entries": len(self._audit_log) if self._audit_log is not None else 0,
-            }
+            return CacheStats(
+                size=len(state._cache),
+                maxsize=state._maxsize,
+                max_entry_payload_bytes=state._max_entry_payload_bytes,
+                max_errors_per_entry=state._max_errors_per_entry,
+                hits=state._hits,
+                misses=state._misses,
+                hit_rate=round(hit_rate, 2),
+                unhashable_skips=state._unhashable_skips,
+                oversize_skips=state._oversize_skips,
+                error_bloat_skips=state._error_bloat_skips,
+                combined_payload_skips=state._combined_payload_skips,
+                corruption_detected=state._corruption_detected,
+                integrity_events_emitted=state._integrity_events_emitted,
+                idempotent_writes=state._idempotent_writes,
+                write_once_conflicts=state._write_once_conflicts,
+                uncacheable_function_skips=state._uncacheable_function_skips,
+                sequence=state._sequence,
+                cache_generation=state._cache_generation,
+                write_once=state._write_once,
+                debug_log_enabled=state._debug_log is not None,
+                debug_log_entries=len(state._debug_log) if state._debug_log is not None else 0,
+            )
 
-    def __len__(self: CacheStateProtocol) -> int:
+    def __len__(self: object) -> int:
         """Get current cache size. Thread-safe."""
-        with self._lock:
-            return len(self._cache)
+        state = _as_cache_state(self)
+        with state._lock:
+            return len(state._cache)
 
     @property
-    def size(self: CacheStateProtocol) -> int:
+    def size(self: object) -> int:
         """Current number of cached entries. Thread-safe."""
-        with self._lock:
-            return len(self._cache)
+        state = _as_cache_state(self)
+        with state._lock:
+            return len(state._cache)
 
     @property
-    def maxsize(self: CacheStateProtocol) -> int:
+    def maxsize(self: object) -> int:
         """Maximum cache size."""
-        return self._maxsize
+        state = _as_cache_state(self)
+        return state._maxsize
 
     @property
-    def hits(self: CacheStateProtocol) -> int:
+    def hits(self: object) -> int:
         """Number of cache hits. Thread-safe."""
-        with self._lock:
-            return self._hits
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._hits
 
     @property
-    def misses(self: CacheStateProtocol) -> int:
+    def misses(self: object) -> int:
         """Number of cache misses. Thread-safe."""
-        with self._lock:
-            return self._misses
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._misses
 
     @property
-    def unhashable_skips(self: CacheStateProtocol) -> int:
-        """Number of operations skipped due to unhashable args. Thread-safe."""
-        with self._lock:
-            return self._unhashable_skips
+    def unhashable_skips(self: object) -> int:
+        """Number of operations rejected due to unsupported key input."""
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._unhashable_skips
 
     @property
-    def oversize_skips(self: CacheStateProtocol) -> int:
-        """Number of operations skipped due to result weight. Thread-safe."""
-        with self._lock:
-            return self._oversize_skips
+    def oversize_skips(self: object) -> int:
+        """Number of operations skipped due to payload budget overrun."""
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._oversize_skips
 
     @property
-    def max_entry_weight(self: CacheStateProtocol) -> int:
-        """Maximum memory weight for cached results."""
-        return self._max_entry_weight
+    def max_entry_payload_bytes(self: object) -> int:
+        """Maximum retained payload bytes for cached results."""
+        state = _as_cache_state(self)
+        return state._max_entry_payload_bytes
 
     @property
-    def corruption_detected(self: CacheStateProtocol) -> int:
+    def corruption_detected(self: object) -> int:
         """Number of checksum mismatches detected. Thread-safe."""
-        with self._lock:
-            return self._corruption_detected
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._corruption_detected
 
     @property
-    def idempotent_writes(self: CacheStateProtocol) -> int:
+    def integrity_events_emitted(self: object) -> int:
+        """Number of critical integrity events emitted. Thread-safe."""
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._integrity_events_emitted
+
+    @property
+    def idempotent_writes(self: object) -> int:
         """Number of benign concurrent writes with identical content. Thread-safe."""
-        with self._lock:
-            return self._idempotent_writes
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._idempotent_writes
 
     @property
-    def error_bloat_skips(self: CacheStateProtocol) -> int:
+    def error_bloat_skips(self: object) -> int:
         """Number of puts skipped due to excess error count. Thread-safe."""
-        with self._lock:
-            return self._error_bloat_skips
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._error_bloat_skips
 
     @property
-    def combined_weight_skips(self: CacheStateProtocol) -> int:
-        """Number of puts skipped due to combined formatted+error weight. Thread-safe."""
-        with self._lock:
-            return self._combined_weight_skips
+    def combined_payload_skips(self: object) -> int:
+        """Number of puts skipped due to combined payload limit. Thread-safe."""
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._combined_payload_skips
 
     @property
-    def write_once_conflicts(self: CacheStateProtocol) -> int:
-        """Number of true write-once conflicts (different content, same key). Thread-safe."""
-        with self._lock:
-            return self._write_once_conflicts
+    def write_once_conflicts(self: object) -> int:
+        """Number of true write-once conflicts. Thread-safe."""
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._write_once_conflicts
 
     @property
-    def write_once(self: CacheStateProtocol) -> bool:
+    def uncacheable_function_skips(self: object) -> int:
+        """Number of results not cached due to non-cacheable functions."""
+        state = _as_cache_state(self)
+        with state._lock:
+            return state._uncacheable_function_skips
+
+    @property
+    def write_once(self: object) -> bool:
         """Whether write-once mode is enabled."""
-        return self._write_once
-
-    @property
-    def strict(self: CacheStateProtocol) -> bool:
-        """Whether strict mode is enabled."""
-        return self._strict
+        state = _as_cache_state(self)
+        return state._write_once

@@ -37,9 +37,11 @@ from __future__ import annotations
 import logging
 import re
 import sys
+from copy import replace
 from typing import TYPE_CHECKING
 
 from ftllexengine.constants import MAX_DEPTH, MAX_SOURCE_SIZE
+from ftllexengine.core._limits import LimitArg, resolve_limit_arg
 from ftllexengine.diagnostics import DiagnosticCode
 from ftllexengine.enums import CommentType
 from ftllexengine.syntax.ast import (
@@ -198,21 +200,26 @@ class FluentParserV1:
         max_nesting_depth: Maximum allowed placeable nesting depth (default: 100)
     """
 
-    __slots__ = ("_max_nesting_depth", "_max_parse_errors", "_max_source_size")
+    __slots__ = (
+        "_max_nesting_depth",
+        "_max_parse_errors",
+        "_max_source_size",
+        "_max_stream_line_length",
+    )
 
     def __init__(
         self,
         *,
-        max_source_size: int | None = None,
+        max_source_size: LimitArg = None,
         max_nesting_depth: int | None = None,
-        max_parse_errors: int | None = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
     ) -> None:
         """Initialize parser with optional size, nesting depth, and error limits.
 
         Args:
             max_source_size: Maximum source length in characters (default: 10M).
-                            Set to None or 0 to disable size limit (not recommended).
-                            Must be non-negative if specified.
+                            Use UNLIMITED only for an intentional opt-out.
             max_nesting_depth: Maximum placeable nesting depth (default: 100).
                               Prevents DoS via deeply nested { { { ... } } }.
                               Must be positive (> 0) if specified.
@@ -221,21 +228,37 @@ class FluentParserV1:
             max_parse_errors: Maximum number of Junk (error) entries before aborting (default: 100).
                              Prevents memory exhaustion from malformed input generating excessive
                              errors. Real FTL files rarely exceed 10 errors.
+            max_stream_line_length: Maximum line length accepted by parse_stream().
+                             Defaults to the same bound as max_source_size so a
+                             single hostile line cannot allocate an unbounded chunk.
 
         Raises:
-            ValueError: If max_nesting_depth is specified and <= 0.
+            ValueError: If max_nesting_depth is specified and <= 0, or if
+                any configurable security limit is non-positive.
         """
         # Validate max_nesting_depth
         if max_nesting_depth is not None and max_nesting_depth <= 0:
             msg = f"max_nesting_depth must be positive (got {max_nesting_depth})"
             raise ValueError(msg)
 
-        self._max_source_size = (
-            max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
+        self._max_source_size = resolve_limit_arg(
+            max_source_size,
+            field_name="max_source_size",
+            default=MAX_SOURCE_SIZE,
         )
 
-        self._max_parse_errors = (
-            max_parse_errors if max_parse_errors is not None else _MAX_PARSE_ERRORS
+        self._max_parse_errors = resolve_limit_arg(
+            max_parse_errors,
+            field_name="max_parse_errors",
+            default=_MAX_PARSE_ERRORS,
+        )
+        stream_line_default = (
+            self._max_source_size if self._max_source_size is not None else MAX_SOURCE_SIZE
+        )
+        self._max_stream_line_length = resolve_limit_arg(
+            max_stream_line_length,
+            field_name="max_stream_line_length",
+            default=stream_line_default,
         )
 
         # Calculate desired depth
@@ -262,7 +285,7 @@ class FluentParserV1:
     @property
     def max_source_size(self) -> int:
         """Maximum allowed source length in characters."""
-        return self._max_source_size
+        return self._max_source_size if self._max_source_size is not None else sys.maxsize
 
     @property
     def max_nesting_depth(self) -> int:
@@ -308,7 +331,7 @@ class FluentParserV1:
             - :func:`~ftllexengine.syntax.parser.rules.parse_comment` - Comment parsing
         """
         # Validate input size (DoS prevention)
-        if self._max_source_size > 0 and len(source) > self._max_source_size:
+        if self._max_source_size is not None and len(source) > self._max_source_size:
             msg = (
                 f"Source length ({len(source):,} characters) exceeds maximum "
                 f"({self._max_source_size:,} characters). "
@@ -478,13 +501,7 @@ class FluentParserV1:
                     term = term_parse.value
                     # Attach comment if available
                     if attach_comment is not None:
-                        term = Term(
-                            id=term.id,
-                            value=term.value,
-                            attributes=term.attributes,
-                            comment=attach_comment,
-                            span=term.span,
-                        )
+                        term = replace(term, comment=attach_comment)
                     entries.append(term)
                     cursor = term_parse.cursor
                     continue
@@ -497,13 +514,7 @@ class FluentParserV1:
                 message = message_parse.value
                 # Attach comment if available
                 if attach_comment is not None:
-                    message = Message(
-                        id=message.id,
-                        value=message.value,
-                        attributes=message.attributes,
-                        comment=attach_comment,
-                        span=message.span,
-                    )
+                    message = replace(message, comment=attach_comment)
                 entries.append(message)
                 cursor = message_parse.cursor
             else:
@@ -550,7 +561,7 @@ class FluentParserV1:
 
         return Resource(entries=tuple(entries))
 
-    def parse_stream(self, lines: Iterable[str]) -> Iterator[Entry]:
+    def parse_stream(self, lines: Iterable[object]) -> Iterator[Entry]:
         """Parse FTL entries incrementally from a line-oriented source stream.
 
         Splits the stream at blank-line boundaries, which delimit top-level FTL
@@ -586,13 +597,57 @@ class FluentParserV1:
             'greeting'
         """
         chunk: list[str] = []
+        chunk_chars = 0
+        total_chars = 0
         for line in lines:
+            if not isinstance(line, str):
+                msg = (
+                    f"parse_stream() lines must yield str, got {type(line).__name__}. "
+                    "Decode bytes to str before streaming FTL input."
+                )
+                raise TypeError(msg)
+
+            line_length = len(line)
+            if (
+                self._max_stream_line_length is not None
+                and line_length > self._max_stream_line_length
+            ):
+                msg = (
+                    f"Stream line length ({line_length:,} characters) exceeds maximum "
+                    f"({self._max_stream_line_length:,} characters). "
+                    "Configure max_stream_line_length only when you can safely bound "
+                    "hostile or generated input."
+                )
+                raise ValueError(msg)
+
+            total_chars += line_length
+            if self._max_source_size is not None and total_chars > self._max_source_size:
+                msg = (
+                    f"Stream length ({total_chars:,} characters) exceeds maximum "
+                    f"({self._max_source_size:,} characters). "
+                    "Configure max_source_size only when you can safely accept larger input."
+                )
+                raise ValueError(msg)
+
             stripped = line.rstrip("\n\r")
-            if stripped:
+            # FTL blank blocks may contain spaces, so whitespace-only space lines
+            # must delimit entries just like empty lines. Tabs remain non-blank.
+            is_blank_block = stripped.strip(" ") == ""
+            if not is_blank_block:
+                next_chunk_chars = chunk_chars + len(stripped) + (1 if chunk else 0)
+                if self._max_source_size is not None and next_chunk_chars > self._max_source_size:
+                    msg = (
+                        f"Entry chunk length ({next_chunk_chars:,} characters) exceeds maximum "
+                        f"({self._max_source_size:,} characters). "
+                        "Configure max_source_size only when the producer is trusted."
+                    )
+                    raise ValueError(msg)
                 chunk.append(stripped)
+                chunk_chars = next_chunk_chars
             elif chunk:
                 yield from self.parse("\n".join(chunk)).entries
                 chunk = []
+                chunk_chars = 0
         if chunk:
             yield from self.parse("\n".join(chunk)).entries
 
@@ -609,7 +664,7 @@ class FluentParserV1:
         Returns:
             True if the limit is active and has been reached, False otherwise
         """
-        if self._max_parse_errors > 0 and junk_count >= self._max_parse_errors:
+        if self._max_parse_errors is not None and junk_count >= self._max_parse_errors:
             logger.warning(
                 "Parse aborted: exceeded maximum of %d Junk entries. "
                 "This usually indicates severely malformed FTL input. "

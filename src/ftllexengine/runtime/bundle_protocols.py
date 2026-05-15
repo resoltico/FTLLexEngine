@@ -11,13 +11,14 @@ if TYPE_CHECKING:
     from ftllexengine.core.value_types import FluentValue
     from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
     from ftllexengine.diagnostics.codes import DiagnosticCode
+    from ftllexengine.runtime._resolution_gate import ResolutionReentryGate
     from ftllexengine.runtime.bundle_registration import _PendingRegistration
     from ftllexengine.runtime.cache import IntegrityCache
     from ftllexengine.runtime.cache_config import CacheConfig
     from ftllexengine.runtime.function_bridge import FunctionRegistry
     from ftllexengine.runtime.resolver import FluentResolver
     from ftllexengine.runtime.rwlock import RWLock
-    from ftllexengine.syntax import Junk, Message, Resource, Term
+    from ftllexengine.syntax import Comment, Junk, Message, Resource, Term
     from ftllexengine.syntax.parser import FluentParserV1
 
 
@@ -28,13 +29,14 @@ class BundleStateProtocol(Protocol):
     _cache_config: CacheConfig | None
     _function_registry: FunctionRegistry
     _locale: LocaleCode
-    _max_expansion_size: int
+    _max_expansion_size: int | None
     _max_nesting_depth: int
-    _max_source_size: int
+    _max_source_size: int | None
     _messages: dict[str, Message]
     _msg_deps: dict[str, frozenset[str]]
     _owns_registry: bool
     _parser: FluentParserV1
+    _resolution_gate: ResolutionReentryGate
     _resolver: FluentResolver
     _rwlock: RWLock
     _strict: bool
@@ -45,8 +47,28 @@ class BundleStateProtocol(Protocol):
     def _collect_pending_entries(self, resource: Resource) -> _PendingRegistration:
         ...  # pragma: no cover - typing-only protocol declaration
 
+    def _collect_pending_entry(
+        self,
+        pending: _PendingRegistration,
+        entry: Message | Term | Junk | Comment,
+    ) -> None:
+        ...  # pragma: no cover - typing-only protocol declaration
+
     def _register_resource(
-        self, resource: Resource, source_path: str | None
+        self,
+        resource: Resource,
+        source_path: str | None,
+        *,
+        allow_overwrite: bool = False,
+    ) -> tuple[Junk, ...]:
+        ...  # pragma: no cover - typing-only protocol declaration
+
+    def _register_pending_entries(
+        self,
+        pending: _PendingRegistration,
+        source_path: str | None,
+        *,
+        allow_overwrite: bool = False,
     ) -> tuple[Junk, ...]:
         ...  # pragma: no cover - typing-only protocol declaration
 

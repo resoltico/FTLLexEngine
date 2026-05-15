@@ -26,7 +26,7 @@ __all__ = [
     "MAX_TERRITORY_CACHE_SIZE",
     "MAX_CURRENCY_CACHE_SIZE",
     "DEFAULT_CACHE_SIZE",
-    "DEFAULT_MAX_ENTRY_WEIGHT",
+    "DEFAULT_MAX_ENTRY_PAYLOAD_BYTES",
     # Input limits
     "MAX_SOURCE_SIZE",
     "MAX_LOCALE_CODE_LENGTH",
@@ -129,12 +129,12 @@ MAX_CURRENCY_CACHE_SIZE: int = 300
 # 1000 entries is sufficient for most applications (typical UI has <500 messages).
 DEFAULT_CACHE_SIZE: int = 1000
 
-# Default maximum entry weight in characters (~10KB for typical strings).
-# Prevents unbounded memory usage when caching very large formatted results.
-# Results exceeding this limit are computed but not cached, protecting against
-# scenarios where large variable values produce very large formatted strings
-# (e.g., 10MB results cached 1000 times would consume 10GB of memory).
-DEFAULT_MAX_ENTRY_WEIGHT: int = 10_000
+# Default maximum retained payload bytes for one cached entry.
+# This bounds the UTF-8 payload of the formatted string plus the serialized
+# diagnostic content retained alongside it. It is intentionally described as
+# retained payload, not process memory, because Python object overhead varies by
+# interpreter build while payload bytes are deterministic and portable.
+DEFAULT_MAX_ENTRY_PAYLOAD_BYTES: int = 10_000
 
 # ============================================================================
 # INPUT LIMITS

@@ -625,21 +625,21 @@ class TestResourceManagement:
     def test_overlapping_messages_last_wins(
         self, msg_id: str, value1: str, value2: str
     ) -> None:
-        """PROPERTY: Later resources override earlier messages."""
+        """PROPERTY: Explicit overwrite admission replaces earlier messages."""
         assume(value1 != value2)
         assume(len(value1) > 0 and len(value2) > 0)
 
         bundle = FluentBundle("en")
 
         bundle.add_resource(f"{msg_id} = {value1}")
-        bundle.add_resource(f"{msg_id} = {value2}")
+        bundle.add_resource(f"{msg_id} = {value2}", allow_overwrite=True)
 
         result, _ = bundle.format_pattern(msg_id)
 
         event(f"winner_len={len(value2)}")
         # Second value should win
         assert value2 in result
-        event("outcome=overlapping_msg_last_wins")
+        event("outcome=explicit_overwrite_last_wins")
 
     @given(
         resource_count=st.integers(min_value=1, max_value=15),  # Keep practical bound

@@ -1,7 +1,7 @@
 # target	module	description
 bridge	fuzz_bridge.py	FunctionRegistry bridge machinery
 builtins	fuzz_builtins.py	Built-in function Babel boundary
-cache	fuzz_cache.py	Cache concurrency and audit behavior
+cache	fuzz_cache.py	Cache concurrency plus debug-log and integrity-event behavior
 currency	fuzz_currency.py	Currency formatting oracle
 cursor	fuzz_cursor.py	Cursor and parse-position helpers
 dates	fuzz_dates.py	Locale-aware date and datetime parsing

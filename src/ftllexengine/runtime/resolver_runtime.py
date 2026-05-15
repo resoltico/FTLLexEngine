@@ -15,6 +15,7 @@ from ftllexengine.constants import (
     FALLBACK_MISSING_VARIABLE,
 )
 from ftllexengine.diagnostics import ErrorCategory, ErrorTemplate, FrozenFluentError
+from ftllexengine.diagnostics._redaction import redacted_custom_function_failure
 from ftllexengine.syntax import (
     Expression,
     FunctionReference,
@@ -29,6 +30,7 @@ from ftllexengine.syntax import (
 
 if TYPE_CHECKING:
     from ftllexengine.core.value_types import FluentValue
+    from ftllexengine.runtime._resolution_gate import ResolutionReentryGate
     from ftllexengine.runtime.function_bridge import FunctionRegistry
     from ftllexengine.runtime.resolution_context import ResolutionContext
 
@@ -42,6 +44,7 @@ class _ResolverRuntimeMixin:
 
     _function_registry: FunctionRegistry
     _locale: str
+    _resolution_gate: ResolutionReentryGate
 
     if TYPE_CHECKING:
 
@@ -81,12 +84,18 @@ class _ResolverRuntimeMixin:
                 )
                 raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
+            if not self._function_registry.is_cacheable(func_name):
+                context.mark_noncacheable_function(func_name)
+
             return self._call_function_safe(
                 func_name,
                 [*positional_values, self._locale],
                 named_values,
                 errors,
             )
+
+        if not self._function_registry.is_cacheable(func_name):
+            context.mark_noncacheable_function(func_name)
 
         return self._call_function_safe(
             func_name,
@@ -104,21 +113,20 @@ class _ResolverRuntimeMixin:
     ) -> FluentValue:
         """Call a registered function and normalize unexpected exceptions."""
         try:
-            return self._function_registry.call(func_name, positional, named)
+            with self._resolution_gate.custom_function_scope():
+                return self._function_registry.call(func_name, positional, named)
         except FrozenFluentError:
             raise
         except asyncio.CancelledError:
             raise
         except Exception as error:  # noqa: BLE001 - function adapters may raise arbitrary user exceptions
+            failure_detail = redacted_custom_function_failure(error)
             logger.warning(
-                "Custom function %s raised %s: %s",
+                "Custom function %s failed: %s",
                 func_name,
-                type(error).__name__,
-                str(error),
+                failure_detail,
             )
-            diag = ErrorTemplate.function_failed(
-                func_name, f"Uncaught exception: {type(error).__name__}: {error}"
-            )
+            diag = ErrorTemplate.function_failed(func_name, failure_detail)
             errors.append(
                 FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
             )

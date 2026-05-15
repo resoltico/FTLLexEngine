@@ -26,6 +26,8 @@ readonly repo_root
 readonly dockerfile_path="${repo_root}/.devcontainer/Dockerfile"
 readonly config_path="${repo_root}/.devcontainer/devcontainer.json"
 readonly user_home_repair_script="${repo_root}/scripts/devcontainer-prepare-user-home.sh"
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "${repo_root}/scripts/lib/python_support_contract.sh"
 
 command -v docker >/dev/null 2>&1 || die "docker is required to validate the contributor devcontainer"
 command -v python3 >/dev/null 2>&1 || die "python3 is required to validate devcontainer.json"
@@ -105,9 +107,14 @@ docker build \
     --tag "${image_tag}" \
     "${repo_root}/.devcontainer" >/dev/null
 
-docker run --rm "${image_tag}" bash -lc '
+docker run --rm \
+    --env "FTLLEXENGINE_PYTHON_MIN=${FTLLEXENGINE_PYTHON_MIN}" \
+    "${image_tag}" bash -lc '
     set -euo pipefail
-    python3.13 --version | grep -E "^Python 3\.13" >/dev/null
+    # Premise: the devcontainer owns the canonical contributor interpreter.
+    # Reason: validate against the shared support contract so container drift is
+    # caught by the same owner as shell gates and CI.
+    "python${FTLLEXENGINE_PYTHON_MIN}" --version | grep -E "^Python ${FTLLEXENGINE_PYTHON_MIN//./\\.}" >/dev/null
     uv --version >/dev/null
     git --version >/dev/null
     bash --version | head -1 | grep -E "version 5" >/dev/null

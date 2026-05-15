@@ -1,11 +1,11 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: ARCHITECTURE
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
-  keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCheckFailedError, cache audit, boot validation]
-  questions: ["how does strict mode relate to integrity?", "what audit evidence does the runtime expose?", "what is boot validation for?"]
+  keywords: [data integrity, strict mode, FrozenFluentError, IntegrityCheckFailedError, cache debug log, cache integrity event, boot validation]
+  questions: ["how does strict mode relate to integrity?", "what cache evidence does the runtime expose?", "what is boot validation for?"]
 ---
 
 # Data Integrity Architecture
@@ -20,7 +20,8 @@ The library pushes validation as early as possible and represents runtime failur
 - `FrozenFluentError` captures formatting and parsing failures without mutable side channels.
 - `FormattingIntegrityError`, `SyntaxIntegrityError`, and `IntegrityCheckFailedError` surface strict-mode failures explicitly.
 - `LoadSummary`, `ResourceLoadResult`, and boot schema results provide startup evidence for localization initialization.
-- `CacheConfig(enable_audit=True)` exposes immutable audit-log entries for cache operations.
+- `CacheConfig(enable_debug_log=True)` exposes bounded debug-log entries for routine cache operations.
+- `CacheConfig(integrity_event_sink=...)` emits structured critical integrity events that applications can retain durably.
 
 ## Strict Mode
 
@@ -37,8 +38,8 @@ The library pushes validation as early as possible and represents runtime failur
 The public contract stays centered on the facade types, but the implementation is intentionally partitioned so integrity behavior can evolve without collapsing back into single large modules:
 
 - `runtime.bundle` remains the public home of `FluentBundle`, while lifecycle and mutation responsibilities are delegated into focused internal runtime modules.
-- `runtime.cache` remains the public cache surface, while audit-log behavior, stats helpers, and cache-key shaping live in dedicated internal cache modules.
+- `runtime.cache` remains the public cache surface, while debug-log behavior, integrity-event emission, stats helpers, and cache-key shaping live in dedicated internal cache modules.
 - `runtime.function_bridge` remains the public registry surface, while decorator metadata attachment and registry introspection helpers are separated internally.
 - `diagnostics.templates` remains the public diagnostic-template namespace, while reference, runtime, and parsing template families are maintained in smaller focused modules.
 
-This split does not change user imports. It preserves clearer ownership boundaries for audit evidence, strict-mode failures, and runtime mutation paths.
+This split does not change user imports. It preserves clearer ownership boundaries for debug evidence, incident-grade integrity events, strict-mode failures, and runtime mutation paths.

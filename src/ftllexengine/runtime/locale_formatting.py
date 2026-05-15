@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Literal
 from ftllexengine.constants import FALLBACK_FUNCTION_ERROR, MAX_FORMAT_DIGITS
 from ftllexengine.core.babel_compat import get_babel_dates, get_babel_numbers
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
+from ftllexengine.diagnostics._redaction import fingerprint_text
 from ftllexengine.diagnostics.templates import ErrorTemplate
 
 if TYPE_CHECKING:
@@ -30,6 +31,50 @@ __all__ = [
     "format_number_for_locale",
     "get_iso_code_pattern_for_locale",
 ]
+
+
+def _safe_datetime_parse_reason() -> str:
+    """Return the public reason for rejected datetime strings.
+
+    Premise:
+        ``datetime.fromisoformat()`` exposes raw parser details that may echo
+        caller-supplied content into the exception message.
+
+    Reason:
+        The runtime keeps the diagnostic actionable by naming the accepted
+        contract, while the redacted fingerprint carries correlation value
+        without disclosing the original string.
+    """
+    return "input is not ISO 8601 format"
+
+
+def _formatting_context(
+    *,
+    locale_code: LocaleCode,
+    value: object,
+    parse_type: Literal["currency", "datetime", "number"],
+    fallback_value: str,
+) -> FrozenErrorContext:
+    """Build a safe formatting-error context.
+
+    Premise:
+        Formatting helpers receive caller-supplied values and downstream
+        library exceptions can be data-bearing.
+
+    Reason:
+        The context keeps the locale and live fallback string that the runtime
+        needs for the current call, while the original value is stored as a
+        stable fingerprint instead of raw content that may escape into logs or
+        strict-mode exception surfaces. Long-lived retention surfaces such as
+        the format cache sanitize the fallback separately when they snapshot the
+        error.
+    """
+    return FrozenErrorContext(
+        input_value=fingerprint_text(value, label="format_value"),
+        locale_code=locale_code,
+        parse_type=parse_type,
+        fallback_value=fallback_value,
+    )
 
 
 def format_number_for_locale(
@@ -94,10 +139,10 @@ def format_number_for_locale(
 
     except (ValueError, TypeError, InvalidOperation, AttributeError, KeyError) as e:
         fallback = str(value)
-        diagnostic = ErrorTemplate.formatting_failed("NUMBER", str(value), str(e))
-        context = FrozenErrorContext(
-            input_value=str(value),
+        diagnostic = ErrorTemplate.formatting_failed("NUMBER", value, e)
+        context = _formatting_context(
             locale_code=locale_code,
+            value=value,
             parse_type="number",
             fallback_value=fallback,
         )
@@ -128,11 +173,14 @@ def format_datetime_for_locale(
         except ValueError as e:
             fallback = FALLBACK_FUNCTION_ERROR.format(name="DATETIME")
             diagnostic = ErrorTemplate.formatting_failed(
-                "DATETIME", value, "not ISO 8601 format"
+                "DATETIME",
+                value,
+                e,
+                safe_reason=_safe_datetime_parse_reason(),
             )
-            context = FrozenErrorContext(
-                input_value=value,
+            context = _formatting_context(
                 locale_code=locale_code,
+                value=value,
                 parse_type="datetime",
                 fallback_value=fallback,
             )
@@ -197,10 +245,10 @@ def format_datetime_for_locale(
 
     except (ValueError, OverflowError, AttributeError, KeyError) as e:
         fallback = dt_value.isoformat()
-        diagnostic = ErrorTemplate.formatting_failed("DATETIME", str(dt_value), str(e))
-        context = FrozenErrorContext(
-            input_value=str(dt_value),
+        diagnostic = ErrorTemplate.formatting_failed("DATETIME", dt_value, e)
+        context = _formatting_context(
             locale_code=locale_code,
+            value=dt_value,
             parse_type="datetime",
             fallback_value=fallback,
         )
@@ -290,11 +338,11 @@ def format_currency_for_locale(
     except (ValueError, TypeError, InvalidOperation, AttributeError, KeyError) as e:
         fallback = f"{currency} {value}"
         diagnostic = ErrorTemplate.formatting_failed(
-            "CURRENCY", f"{currency} {value}", str(e)
+            "CURRENCY", f"{currency} {value}", e
         )
-        context = FrozenErrorContext(
-            input_value=f"{currency} {value}",
+        context = _formatting_context(
             locale_code=locale_code,
+            value=f"{currency} {value}",
             parse_type="currency",
             fallback_value=fallback,
         )

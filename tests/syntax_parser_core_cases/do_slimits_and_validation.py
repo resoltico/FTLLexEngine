@@ -1,6 +1,7 @@
 # mypy: ignore-errors
 """Split test cases from tests/test_syntax_parser_core.py."""
 
+from ftllexengine import UNLIMITED
 from tests.syntax_parser_core_cases import *  # noqa: F403 - shared split test support
 
 # ============================================================================
@@ -82,9 +83,9 @@ class TestDoSLimitsAndValidation:
         assert parser.max_source_size == 5000
 
     def test_max_source_size_disabled(self) -> None:
-        """max_source_size=0 disables the limit."""
-        parser = FluentParserV1(max_source_size=0)
-        assert parser.max_source_size == 0
+        """UNLIMITED disables the source-size guard explicitly."""
+        parser = FluentParserV1(max_source_size=UNLIMITED)
+        assert parser.max_source_size == sys.maxsize
 
     def test_oversized_source_raises_value_error(self) -> None:
         """parse() raises ValueError when source exceeds limit."""
@@ -115,8 +116,8 @@ class TestDoSLimitsAndValidation:
         assert result is not None
 
     def test_disabled_limit_accepts_large_source(self) -> None:
-        """max_source_size=0 accepts arbitrarily large source."""
-        parser = FluentParserV1(max_source_size=0)
+        """UNLIMITED accepts intentionally unbounded source input."""
+        parser = FluentParserV1(max_source_size=UNLIMITED)
         result = parser.parse("msg = " + ("x" * 100000))
         assert result is not None
 

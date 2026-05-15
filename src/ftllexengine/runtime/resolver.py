@@ -8,9 +8,9 @@ Thread Safety:
     resolver fully reentrant and compatible with async frameworks. Each
     resolution operation creates its own isolated context.
 
-    Global depth tracking uses contextvars for async-safe per-task state,
-    preventing custom functions from bypassing depth limits by calling
-    back into bundle.format_pattern().
+    Same-session depth tracking uses contextvars, while the bundle-owned
+    ResolutionReentryGate rejects cross-thread re-entry during custom-function
+    execution.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from ftllexengine.constants import (
 )
 from ftllexengine.core import depth_clamp
 from ftllexengine.diagnostics import (
+    DiagnosticCode,
     ErrorCategory,
     ErrorTemplate,
     FrozenFluentError,
@@ -40,7 +41,6 @@ from ftllexengine.runtime.resolution_context import (
 from ftllexengine.runtime.resolver_runtime import _ResolverRuntimeMixin
 from ftllexengine.runtime.resolver_selection import _ResolverSelectionMixin
 from ftllexengine.syntax import (
-    Expression,
     FunctionReference,
     Message,
     MessageReference,
@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ftllexengine.core.value_types import FluentValue
+    from ftllexengine.runtime._resolution_gate import ResolutionReentryGate
     from ftllexengine.runtime.function_bridge import FunctionRegistry
 
 __all__ = ["FluentResolver", "GlobalDepthGuard", "ResolutionContext"]
@@ -71,6 +72,21 @@ logger = logging.getLogger(__name__)
 # Used to prevent RTL/LTR text interference when interpolating values.
 UNICODE_FSI: str = "\u2068"  # U+2068 FIRST STRONG ISOLATE
 UNICODE_PDI: str = "\u2069"  # U+2069 POP DIRECTIONAL ISOLATE
+
+
+def _is_output_budget_error(error: FrozenFluentError) -> bool:
+    """Recognize the resolver's fail-closed output-budget breach.
+
+    Premise:
+        Expansion quota failures are structural guardrails, not recoverable
+        formatting glitches.
+
+    Reason:
+        The pattern loop must stop at the first budget breach instead of
+        rendering a fallback and continuing with later output.
+    """
+    diagnostic = error.diagnostic
+    return diagnostic is not None and diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
 
 
 class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
@@ -92,6 +108,7 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
         "_max_expansion_size",
         "_max_nesting_depth",
         "_messages",
+        "_resolution_gate",
         "_terms",
         "_use_isolating",
     )
@@ -103,9 +120,10 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
         terms: dict[str, Term],
         *,
         function_registry: FunctionRegistry,
+        reentry_gate: ResolutionReentryGate | None = None,
         use_isolating: bool = True,
         max_nesting_depth: int = MAX_DEPTH,
-        max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE,
+        max_expansion_size: int | None = DEFAULT_MAX_EXPANSION_SIZE,
     ) -> None:
         """Initialize resolver.
 
@@ -114,6 +132,9 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
             messages: Message registry
             terms: Term registry
             function_registry: Function registry with camelCase conversion (keyword-only)
+            reentry_gate: Bundle-owned admission control for custom-function
+                re-entry. Direct ``FluentResolver`` callers may omit this to
+                get a resolver-owned gate with the same protection.
             use_isolating: Wrap interpolated values in Unicode bidi marks (keyword-only)
             max_nesting_depth: Maximum resolution depth limit (keyword-only)
             max_expansion_size: Maximum total characters in resolved output (keyword-only)
@@ -123,6 +144,17 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
         self._messages = messages
         self._terms = terms
         self._function_registry = function_registry
+        if reentry_gate is None:
+            # Premise: direct resolver users do not always have a bundle owner.
+            # Reason: a resolver-owned gate preserves the cross-thread
+            # re-entry invariant without forcing callers to construct an
+            # internal coordination object for one-off resolution work.
+            from ftllexengine.runtime._resolution_gate import (  # noqa: PLC0415 - runtime-only default path
+                ResolutionReentryGate,
+            )
+
+            reentry_gate = ResolutionReentryGate()
+        self._resolution_gate = reentry_gate
         self._max_nesting_depth = depth_clamp(max_nesting_depth)
         self._max_expansion_size = max_expansion_size
 
@@ -221,9 +253,10 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
             return (fallback, tuple(errors))
 
-        # Use GlobalDepthGuard to track depth across separate format_pattern() calls.
-        # This prevents custom functions from bypassing depth limits by calling
-        # back into bundle.format_pattern() which creates a fresh ResolutionContext.
+        # Same-session nested format_pattern() calls share a depth budget here.
+        # Cross-thread fresh entry is handled earlier by the bundle-owned
+        # ResolutionReentryGate because ContextVar depth does not propagate to
+        # spawned threads.
         try:
             with GlobalDepthGuard(max_depth=context.max_depth):
                 context.push(msg_key)
@@ -233,9 +266,10 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
                 finally:
                     context.pop()
         except FrozenFluentError as e:
-            # Resolution limit exceeded (global depth, expression depth, or
-            # expansion budget). Collect error and return fallback — prevents
-            # partial output from reaching the caller.
+            # Resolution limits that escape the pattern loop, such as depth
+            # guards, fail closed at the message boundary. Output-budget
+            # breaches are handled inside _resolve_pattern so the caller keeps
+            # the safe prefix accumulated before the quota was crossed.
             errors.append(e)
             fallback = FALLBACK_MISSING_MESSAGE.format(id=msg_key)
             return (fallback, tuple(errors))
@@ -254,36 +288,21 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
         """
         parts: list[str] = []
 
-        # Fast-path: budget already exceeded before any element is processed.
-        # Covers externally-provided ResolutionContext instances (e.g., test fixtures,
-        # callers that pass a pre-populated context) where no element in this pattern
-        # has yet contributed to the error list.
-        if context.total_chars > context.max_expansion_size:
-            diag = ErrorTemplate.expansion_budget_exceeded(
-                context.total_chars, context.max_expansion_size
-            )
-            errors.append(
-                FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
-            )
-            return "".join(parts)
-
         for element in pattern.elements:
+            if context.output_budget_exhausted:
+                break
             match element:
                 case TextElement():
-                    context.track_expansion(len(element.value))
-                    if context.total_chars > context.max_expansion_size:
-                        diag = ErrorTemplate.expansion_budget_exceeded(
-                            context.total_chars, context.max_expansion_size
-                        )
-                        errors.append(
-                            FrozenFluentError(
-                                str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
-                            )
-                        )
+                    try:
+                        context.reserve_output(element.value)
+                    except FrozenFluentError as error:
+                        context.mark_output_budget_exhausted()
+                        errors.append(error)
                         break
                     parts.append(element.value)
                 case Placeable():
                     try:
+                        error_count_before = len(errors)
                         # Track expression depth to prevent stack overflow from deeply
                         # nested SelectExpressions. The guard must be applied HERE at
                         # the Pattern->Placeable entry point, not just in _resolve_expression
@@ -294,48 +313,58 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
                             value = self._resolve_expression(
                                 element.expression, args, errors, context
                             )
-                        formatted = self._format_value(value)
-                        pre_track = context.total_chars
-                        context.track_expansion(len(formatted))
-                        if context.total_chars > context.max_expansion_size:
-                            if pre_track <= context.max_expansion_size:
-                                # This placeable's formatted output caused the overflow.
-                                # When pre_track was already over the limit, the overflow
-                                # was reported inside the nested resolution (term, message,
-                                # or select variant), and we must not duplicate that error.
-                                diag = ErrorTemplate.expansion_budget_exceeded(
-                                    context.total_chars, context.max_expansion_size
-                                )
-                                errors.append(
-                                    FrozenFluentError(
-                                        str(diag), ErrorCategory.RESOLUTION, diagnostic=diag
-                                    )
-                                )
+                        # Premise: nested variant/message resolution may convert a
+                        # budget breach into an appended error instead of a direct
+                        # exception on this stack frame.
+                        # Reason: the outer pattern must still stop before adding
+                        # isolation marks or later suffix text.
+                        if any(
+                            _is_output_budget_error(error)
+                            for error in errors[error_count_before:]
+                        ):
+                            context.mark_output_budget_exhausted()
                             break
-
-                        # Wrap in Unicode bidi isolation marks (FSI/PDI)
-                        # Per Unicode TR9, prevents RTL/LTR text interference
-                        if self._use_isolating:
-                            parts.append(f"{UNICODE_FSI}{formatted}{UNICODE_PDI}")
-                        else:
-                            parts.append(formatted)
+                        formatted = self._format_value(value)
+                        rendered = (
+                            f"{UNICODE_FSI}{formatted}{UNICODE_PDI}"
+                            if self._use_isolating
+                            else formatted
+                        )
+                        context.reserve_output(rendered)
+                        parts.append(rendered)
 
                     except FrozenFluentError as e:
                         # Mozilla-aligned error handling:
                         # Collect error, show readable fallback (not {ERROR: ...})
                         errors.append(e)
+                        if _is_output_budget_error(e):
+                            context.mark_output_budget_exhausted()
+                            break
                         # Check category for type-safe fallback extraction
                         if e.category == ErrorCategory.FORMATTING and e.fallback_value:
                             # Formatting errors carry the original value as fallback
+                            try:
+                                context.reserve_output(e.fallback_value)
+                            except FrozenFluentError as budget_error:
+                                context.mark_output_budget_exhausted()
+                                errors.append(budget_error)
+                                break
                             parts.append(e.fallback_value)
                         else:
-                            parts.append(self._get_fallback_for_placeable(element.expression))
+                            fallback = self._get_fallback_for_placeable(element.expression)
+                            try:
+                                context.reserve_output(fallback)
+                            except FrozenFluentError as budget_error:
+                                context.mark_output_budget_exhausted()
+                                errors.append(budget_error)
+                                break
+                            parts.append(fallback)
 
         return "".join(parts)
 
     def _resolve_expression(
         self,
-        expr: Expression,
+        expr: object,
         args: Mapping[str, FluentValue],
         errors: list[FrozenFluentError],
         context: ResolutionContext,
@@ -369,7 +398,7 @@ class FluentResolver(_ResolverRuntimeMixin, _ResolverSelectionMixin):
                     return self._resolve_expression(expr.expression, args, errors, context)
             case _:
                 # Defensive: catch unknown expression types from programmatic AST construction
-                diag = ErrorTemplate.unknown_expression(type(expr).__name__)  # type: ignore[unreachable]
+                diag = ErrorTemplate.unknown_expression(type(expr).__name__)
                 raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag)
 
     def _resolve_variable_reference(

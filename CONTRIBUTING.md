@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: CONTRIBUTING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [contributing, development, uv, lint, test, fuzz, benchmark, release, virtualenv]
   questions: ["how do I set up development?", "how do I run lint and tests?", "how do I work on fuzzing?", "how do I prepare a release?"]
@@ -65,8 +65,8 @@ Useful variants:
 Markdown changes should stay synchronized with the code and examples they describe.
 
 ```bash
-uv run python scripts/validate_docs.py
-uv run python scripts/validate_version.py
+uv run --group dev --python 3.14 python scripts/validate_docs.py
+uv run --group dev --python 3.14 python scripts/validate_version.py
 uv run python scripts/run_examples.py
 ```
 
@@ -136,4 +136,6 @@ When the change touches runtime behavior or supported Python versions, also run 
 ```bash
 PY_VERSION=3.14 ./scripts/lint.sh
 PY_VERSION=3.14 ./scripts/test.sh
+uv run --group dev --python 3.14 python scripts/validate_docs.py
+uv run --group dev --python 3.14 python scripts/validate_version.py
 ```

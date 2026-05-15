@@ -4,11 +4,11 @@ from fuzz_localization_support import (
     _NON_STRING_LOCALES,
     _SINGLE_LOCALES,
     _STRUCTURALLY_INVALID_LOCALES,
-    _VALID_AUDIT_OPERATIONS,
+    _VALID_DEBUG_OPERATIONS,
     MAX_LOCALE_LENGTH_HARD_LIMIT,
     Any,
-    CacheAuditLogEntry,
     CacheConfig,
+    CacheDebugLogEntry,
     FallbackInfo,
     FluentLocalization,
     LocalizationCacheStats,
@@ -90,68 +90,68 @@ def _pattern_introspect_api(
                 raise LocalizationFuzzError(msg)
 
 
-def _validate_localization_audit_log(
+def _validate_localization_debug_log(
     locale: str,
-    audit_log: tuple[CacheAuditLogEntry, ...],
+    debug_log: tuple[CacheDebugLogEntry, ...],
     *,
-    enable_audit: bool,
+    enable_debug_log: bool,
 ) -> int:
-    """Validate one locale's audit log and return its entry count."""
-    if not enable_audit and audit_log != ():
-        msg = f"Audit-disabled localization returned non-empty log for '{locale}'"
+    """Validate one locale's debug log and return its entry count."""
+    if not enable_debug_log and debug_log != ():
+        msg = f"Debug-log-disabled localization returned non-empty log for '{locale}'"
         raise LocalizationFuzzError(msg)
 
     last_timestamp = float("-inf")
     last_sequence = 0
-    for entry in audit_log:
-        if entry.operation not in _VALID_AUDIT_OPERATIONS:
-            msg = f"Unexpected audit operation {entry.operation!r} for locale '{locale}'"
+    for entry in debug_log:
+        if entry.operation not in _VALID_DEBUG_OPERATIONS:
+            msg = f"Unexpected debug-log operation {entry.operation!r} for locale '{locale}'"
             raise LocalizationFuzzError(msg)
-        if not entry.key_hash:
-            msg = f"Empty audit key hash for locale '{locale}'"
+        if not entry.key_fingerprint:
+            msg = f"Empty debug-log key fingerprint for locale '{locale}'"
             raise LocalizationFuzzError(msg)
-        if entry.timestamp < last_timestamp:
+        if entry.timestamp_monotonic < last_timestamp:
             msg = (
-                f"Audit timestamps regressed for locale '{locale}': "
-                f"{last_timestamp} -> {entry.timestamp}"
+                f"Debug-log timestamps regressed for locale '{locale}': "
+                f"{last_timestamp} -> {entry.timestamp_monotonic}"
             )
             raise LocalizationFuzzError(msg)
-        if entry.sequence <= last_sequence:
+        if entry.debug_sequence <= last_sequence:
             msg = (
-                f"Audit sequence regressed for locale '{locale}': "
-                f"{last_sequence} -> {entry.sequence}"
+                f"Debug-log sequence regressed for locale '{locale}': "
+                f"{last_sequence} -> {entry.debug_sequence}"
             )
             raise LocalizationFuzzError(msg)
         if entry.operation == "MISS":
             if entry.checksum_hex != "" or entry.cache_sequence < 0:
                 msg = (
-                    f"MISS audit entry for locale '{locale}' must have "
+                    f"MISS debug entry for locale '{locale}' must have "
                     "empty checksum and non-negative cache_sequence"
                 )
                 raise LocalizationFuzzError(msg)
         elif entry.checksum_hex == "" or entry.cache_sequence <= 0:
             msg = (
-                f"{entry.operation} audit entry for locale '{locale}' must carry "
+                f"{entry.operation} debug entry for locale '{locale}' must carry "
                 "a positive cache_sequence and non-empty checksum"
             )
             raise LocalizationFuzzError(msg)
-        last_timestamp = entry.timestamp
-        last_sequence = entry.sequence
+        last_timestamp = entry.timestamp_monotonic
+        last_sequence = entry.debug_sequence
 
-    return len(audit_log)
+    return len(debug_log)
 
 
 def _validate_localization_cache_stats(
     stats: LocalizationCacheStats,
     *,
-    enable_audit: bool,
+    enable_debug_log: bool,
     expected_locales: list[str],
 ) -> None:
     """Validate aggregate localization cache stats against configuration."""
-    if stats["audit_enabled"] != enable_audit:
+    if stats["debug_log_enabled"] != enable_debug_log:
         msg = (
-            "get_cache_stats()['audit_enabled'] disagrees with CacheConfig: "
-            f"{stats['audit_enabled']} vs {enable_audit}"
+            "get_cache_stats()['debug_log_enabled'] disagrees with CacheConfig: "
+            f"{stats['debug_log_enabled']} vs {enable_debug_log}"
         )
         raise LocalizationFuzzError(msg)
     if stats["bundle_count"] != len(expected_locales):
@@ -162,39 +162,39 @@ def _validate_localization_cache_stats(
         raise LocalizationFuzzError(msg)
 
 
-def _collect_localization_audit_entries(
-    audit_logs: dict[str, tuple[CacheAuditLogEntry, ...]],
+def _collect_localization_debug_entries(
+    debug_logs: dict[str, tuple[CacheDebugLogEntry, ...]],
     *,
-    enable_audit: bool,
+    enable_debug_log: bool,
 ) -> int:
-    """Validate all per-locale audit logs and return their combined length."""
-    total_audit_entries = 0
-    for locale, audit_log in audit_logs.items():
-        if any(not isinstance(entry, CacheAuditLogEntry) for entry in audit_log):
-            msg = f"get_cache_audit_log()['{locale}'] returned non-CacheAuditLogEntry data"
+    """Validate all per-locale debug logs and return their combined length."""
+    total_debug_entries = 0
+    for locale, debug_log in debug_logs.items():
+        if any(not isinstance(entry, CacheDebugLogEntry) for entry in debug_log):
+            msg = f"get_cache_debug_log()['{locale}'] returned non-CacheDebugLogEntry data"
             raise LocalizationFuzzError(msg)
-        total_audit_entries += _validate_localization_audit_log(
+        total_debug_entries += _validate_localization_debug_log(
             locale,
-            audit_log,
-            enable_audit=enable_audit,
+            debug_log,
+            enable_debug_log=enable_debug_log,
         )
-    return total_audit_entries
+    return total_debug_entries
 
 
-def _pattern_cache_audit_api(
+def _pattern_cache_debug_log_api(
     fdp: atheris.FuzzedDataProvider,
 ) -> None:
-    """get_cache_audit_log exposes per-locale immutable audit trails."""
-    _domain.cache_audit_checks += 1
+    """get_cache_debug_log exposes per-locale immutable debug histories."""
+    _domain.cache_debug_log_checks += 1
     primary, fallback = fdp.PickValueInList(list(_LOCALE_PAIRS))
-    enable_audit = fdp.ConsumeBool()
+    enable_debug_log = fdp.ConsumeBool()
     initialize_fallback = fdp.ConsumeBool()
-    primary_msg_id = f"audit-{gen_ftl_identifier(fdp)}"
+    primary_msg_id = f"debug-{gen_ftl_identifier(fdp)}"
     fallback_msg_id = f"fallback-{gen_ftl_identifier(fdp)}"
 
     l10n = FluentLocalization(
         [primary, fallback],
-        cache=CacheConfig(enable_audit=enable_audit),
+        cache=CacheConfig(enable_debug_log=enable_debug_log),
         strict=False,
     )
     l10n.add_resource(primary, f"{primary_msg_id} = primary\n")
@@ -209,14 +209,14 @@ def _pattern_cache_audit_api(
     if initialize_fallback:
         l10n.format_value(fallback_msg_id)
 
-    audit_logs = l10n.get_cache_audit_log()
-    if audit_logs is None:
-        msg = "Cached FluentLocalization returned None from get_cache_audit_log()"
+    debug_logs = l10n.get_cache_debug_log()
+    if debug_logs is None:
+        msg = "Cached FluentLocalization returned None from get_cache_debug_log()"
         raise LocalizationFuzzError(msg)
-    if list(audit_logs) != expected_locales:
+    if list(debug_logs) != expected_locales:
         msg = (
-            "get_cache_audit_log() returned wrong locale keys: "
-            f"{list(audit_logs)!r} vs {expected_locales!r}"
+            "get_cache_debug_log() returned wrong locale keys: "
+            f"{list(debug_logs)!r} vs {expected_locales!r}"
         )
         raise LocalizationFuzzError(msg)
 
@@ -226,28 +226,28 @@ def _pattern_cache_audit_api(
         raise LocalizationFuzzError(msg)
     _validate_localization_cache_stats(
         stats,
-        enable_audit=enable_audit,
+        enable_debug_log=enable_debug_log,
         expected_locales=expected_locales,
     )
-    total_audit_entries = _collect_localization_audit_entries(
-        audit_logs,
-        enable_audit=enable_audit,
+    total_debug_entries = _collect_localization_debug_entries(
+        debug_logs,
+        enable_debug_log=enable_debug_log,
     )
 
-    if total_audit_entries != int(stats.get("audit_entries", 0)):
+    if total_debug_entries != int(stats.get("debug_log_entries", 0)):
         msg = (
-            "Localization audit log length disagrees with cache stats: "
-            f"{total_audit_entries} vs {stats.get('audit_entries')}"
+            "Localization debug-log length disagrees with cache stats: "
+            f"{total_debug_entries} vs {stats.get('debug_log_entries')}"
         )
         raise LocalizationFuzzError(msg)
 
     primary_locale = normalize_locale(primary)
     fallback_locale = normalize_locale(fallback)
-    if enable_audit and len(audit_logs[primary_locale]) < 2:
-        msg = f"Primary locale '{primary_locale}' did not record expected audit entries"
+    if enable_debug_log and len(debug_logs[primary_locale]) < 2:
+        msg = f"Primary locale '{primary_locale}' did not record expected debug entries"
         raise LocalizationFuzzError(msg)
-    if initialize_fallback and enable_audit and len(audit_logs[fallback_locale]) < 2:
-        msg = f"Fallback locale '{fallback_locale}' did not record expected audit entries"
+    if initialize_fallback and enable_debug_log and len(debug_logs[fallback_locale]) < 2:
+        msg = f"Fallback locale '{fallback_locale}' did not record expected debug entries"
         raise LocalizationFuzzError(msg)
 
 

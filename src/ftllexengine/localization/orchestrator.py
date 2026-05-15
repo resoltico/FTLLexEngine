@@ -35,11 +35,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ftllexengine.constants import DEFAULT_MAX_EXPANSION_SIZE, MAX_SOURCE_SIZE
+from ftllexengine.core._limits import LimitArg, resolve_limit_arg
 from ftllexengine.core.locale_utils import require_locale_code
+from ftllexengine.localization.cache_stats import LocalizationCacheStats
 from ftllexengine.localization.orchestrator_formatting import _LocalizationFormattingMixin
 from ftllexengine.localization.orchestrator_loading import _LocalizationLoadingMixin
 from ftllexengine.localization.orchestrator_queries import _LocalizationQueryMixin
-from ftllexengine.runtime.cache import CacheStats
 from ftllexengine.runtime.locale_context import LocaleContext
 from ftllexengine.runtime.rwlock import RWLock
 
@@ -53,17 +55,6 @@ if TYPE_CHECKING:
     from ftllexengine.runtime.cache_config import CacheConfig
 
 __all__ = ["FluentLocalization", "LocalizationCacheStats"]
-
-
-class LocalizationCacheStats(CacheStats, total=True):
-    """Aggregate cache statistics across all bundles in a FluentLocalization.
-
-    Extends CacheStats with an additional field tracking the number of
-    bundles contributing to the aggregated metrics.
-    """
-
-    bundle_count: int
-    """Number of initialized bundles contributing to these statistics."""
 
 
 class FluentLocalization(
@@ -110,6 +101,10 @@ class FluentLocalization(
         "_load_results",
         "_locales",
         "_lock",
+        "_max_expansion_size",
+        "_max_parse_errors",
+        "_max_source_size",
+        "_max_stream_line_length",
         "_on_fallback",
         "_pending_functions",
         "_primary_locale",
@@ -128,6 +123,10 @@ class FluentLocalization(
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
+        max_source_size: LimitArg = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
+        max_expansion_size: LimitArg = None,
         strict: bool = True,
     ) -> None:
         """Initialize multi-locale localization.
@@ -145,6 +144,10 @@ class FluentLocalization(
                         debugging and monitoring which messages are missing translations.
                         The callback receives a FallbackInfo with requested_locale,
                         resolved_locale, and message_id.
+            max_source_size: Maximum decoded FTL source size accepted per bundle.
+            max_parse_errors: Maximum Junk entries accepted before parse abort.
+            max_stream_line_length: Maximum line length accepted by stream parsing.
+            max_expansion_size: Maximum resolved output characters per format call.
             strict: Fail-fast on formatting errors (default: True).
                    When True, syntax errors in resources raise SyntaxIntegrityError
                    and formatting errors raise FormattingIntegrityError.
@@ -183,6 +186,29 @@ class FluentLocalization(
         self._use_isolating = use_isolating
         self._cache_config: CacheConfig | None = cache
         self._on_fallback = on_fallback
+        self._max_source_size = resolve_limit_arg(
+            max_source_size,
+            field_name="max_source_size",
+            default=MAX_SOURCE_SIZE,
+        )
+        self._max_parse_errors = resolve_limit_arg(
+            max_parse_errors,
+            field_name="max_parse_errors",
+            default=100,
+        )
+        stream_default = (
+            self._max_source_size if self._max_source_size is not None else MAX_SOURCE_SIZE
+        )
+        self._max_stream_line_length = resolve_limit_arg(
+            max_stream_line_length,
+            field_name="max_stream_line_length",
+            default=stream_default,
+        )
+        self._max_expansion_size = resolve_limit_arg(
+            max_expansion_size,
+            field_name="max_expansion_size",
+            default=DEFAULT_MAX_EXPANSION_SIZE,
+        )
         self._strict = strict
 
         # Bundle storage: only contains initialized bundles (no None markers).

@@ -59,8 +59,9 @@ class TestShadowWarnings:
             and "message" in w.message.lower()
         ]
         assert len(shadow_warnings) > 0
-        assert shadow_warnings[0].severity == WarningSeverity.WARNING
-        assert "shadows existing message" in shadow_warnings[0].message
+        assert not result.is_valid
+        assert shadow_warnings[0].severity == WarningSeverity.CRITICAL
+        assert "redefines an existing message and is invalid" in shadow_warnings[0].message
 
     def test_term_shadows_known_term(self) -> None:
         """Term ID shadows known_terms entry."""
@@ -79,8 +80,9 @@ class TestShadowWarnings:
             and "term" in w.message.lower()
         ]
         assert len(shadow_warnings) > 0
-        assert shadow_warnings[0].severity == WarningSeverity.WARNING
-        assert "shadows existing term" in shadow_warnings[0].message
+        assert not result.is_valid
+        assert shadow_warnings[0].severity == WarningSeverity.CRITICAL
+        assert "redefines an existing term and is invalid" in shadow_warnings[0].message
 
     def test_multiple_messages_shadow_known_entries(self) -> None:
         """Multiple messages can shadow known entries simultaneously."""

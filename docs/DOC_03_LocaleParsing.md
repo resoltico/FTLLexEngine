@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: LOCALE_PARSING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [parse_decimal, parse_fluent_number, parse_date, parse_datetime, parse_currency, is_valid_decimal, clear_date_caches]
   questions: ["how do I parse localized numbers and dates?", "what do the locale-aware parse helpers return?", "which parsing type guards and cache-clear helpers are public?"]

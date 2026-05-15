@@ -4,8 +4,9 @@
 Targets: ftllexengine.runtime.cache (via FluentBundle public API)
 
 Concern boundary: This fuzzer stress-tests the cache subsystem by systematically
-varying all cache constructor parameters (size, entry weight, error limits,
-write-once, audit mode) under concurrent multi-threaded access. This is distinct
+varying all cache constructor parameters (size, payload-byte budget, error
+limits, write-once, debug-log mode) under concurrent multi-threaded access.
+This is distinct
 from the runtime fuzzer which tests the full resolver stack with fixed cache
 configs and only 2 threads.
 
@@ -17,7 +18,7 @@ Unique coverage (not covered by other fuzzers):
 - Frozen bundle cache behavior
 - Cache key complexity (deeply nested args via _make_hashable)
 - Hotspot access patterns (same entry repeated)
-- Memory weight enforcement
+- Payload-byte budget enforcement
 
 Patterns:
 - variable_messages: Cache key variation
@@ -25,7 +26,7 @@ Patterns:
 - select_expressions: Complex pattern caching
 - message_references: Cross-message resolution cache
 - term_references: Namespace variation
-- long_values: Memory weight stress
+- long_values: Payload budget stress
 - many_variables: Key complexity
 - circular_refs: Error caching behavior
 - minimal_resource: Edge cases
@@ -105,7 +106,7 @@ class CacheMetrics:
     concurrent_modify_tests: int = 0
     frozen_cache_tests: int = 0
     eviction_stress_tests: int = 0
-    audit_log_checks: int = 0
+    debug_log_checks: int = 0
 
     # Hit rate tracking (rolling)
     cache_hits: int = 0
@@ -184,7 +185,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["concurrent_modify_tests"] = _domain.concurrent_modify_tests
     stats["frozen_cache_tests"] = _domain.frozen_cache_tests
     stats["eviction_stress_tests"] = _domain.eviction_stress_tests
-    stats["audit_log_checks"] = _domain.audit_log_checks
+    stats["debug_log_checks"] = _domain.debug_log_checks
     stats["thread_timeouts"] = _domain.thread_timeouts
     stats["max_threads_used"] = _domain.max_threads_used
 
@@ -229,7 +230,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         WriteConflictError,
     )
     from ftllexengine.runtime.bundle import FluentBundle
-    from ftllexengine.runtime.cache import WriteLogEntry
+    from ftllexengine.runtime.cache import CacheDebugLogEntry
     from ftllexengine.runtime.cache_config import CacheConfig
 
 
@@ -241,78 +242,82 @@ TEST_LOCALES: Sequence[str] = (
 
 _MSG_IDS: Sequence[str] = tuple(f"msg{i}" for i in range(20))
 _ATTR_NAMES: Sequence[str] = ("tooltip", "aria-label", "placeholder", "title")
-_VALID_AUDIT_OPERATIONS: frozenset[str] = frozenset({
+_VALID_DEBUG_OPERATIONS: frozenset[str] = frozenset({
     "MISS",
     "PUT",
     "HIT",
     "EVICT",
     "CORRUPTION",
+    "KEY_CONFUSION",
     "WRITE_ONCE_IDEMPOTENT",
     "WRITE_ONCE_CONFLICT",
+    "ENTRY_VERIFICATION_FAILED",
+    "BYPASS_NONCACHEABLE_FUNCTION",
 })
 
 
-def _validate_cache_audit_entry(
-    entry: WriteLogEntry,
+def _validate_cache_debug_entry(
+    entry: CacheDebugLogEntry,
     *,
-    last_timestamp: float,
-    last_sequence: int,
+    last_monotonic_timestamp: float,
+    last_debug_sequence: int,
 ) -> tuple[float, int]:
-    """Validate one audit-log entry and return timestamp plus audit sequence."""
-    if entry.operation not in _VALID_AUDIT_OPERATIONS:
-        msg = f"Unexpected audit operation {entry.operation!r}"
+    """Validate one debug-log entry and return monotonic time plus sequence."""
+    if entry.operation not in _VALID_DEBUG_OPERATIONS:
+        msg = f"Unexpected debug-log operation {entry.operation!r}"
         raise CacheFuzzError(msg)
-    if not entry.key_hash:
-        msg = "Audit log entry contained an empty key hash"
+    if not entry.key_fingerprint:
+        msg = "Debug log entry contained an empty key fingerprint"
         raise CacheFuzzError(msg)
-    if entry.timestamp < last_timestamp:
+    if entry.timestamp_monotonic < last_monotonic_timestamp:
         msg = (
-            "Audit log timestamps must be non-decreasing: "
-            f"{last_timestamp} -> {entry.timestamp}"
+            "Debug-log timestamps must be non-decreasing: "
+            f"{last_monotonic_timestamp} -> {entry.timestamp_monotonic}"
         )
         raise CacheFuzzError(msg)
-    if entry.sequence <= last_sequence:
+    if entry.debug_sequence <= last_debug_sequence:
         msg = (
-            "Audit log sequences must be strictly increasing: "
-            f"{last_sequence} -> {entry.sequence}"
+            "Debug-log sequences must be strictly increasing: "
+            f"{last_debug_sequence} -> {entry.debug_sequence}"
         )
         raise CacheFuzzError(msg)
-    # wall_time_unix is a Unix timestamp (time.time()); must be a positive float.
-    # It is the wall-clock companion to the monotonic timestamp field.
     if not isinstance(entry.wall_time_unix, float):
         msg = (
-            f"WriteLogEntry.wall_time_unix must be float, "
+            f"CacheDebugLogEntry.wall_time_unix must be float, "
             f"got {type(entry.wall_time_unix).__name__!r}"
         )
         raise CacheFuzzError(msg)
     if entry.wall_time_unix <= 0:
-        msg = f"WriteLogEntry.wall_time_unix must be positive, got {entry.wall_time_unix}"
+        msg = (
+            "CacheDebugLogEntry.wall_time_unix must be positive, "
+            f"got {entry.wall_time_unix}"
+        )
         raise CacheFuzzError(msg)
 
     if entry.operation == "MISS":
         if entry.checksum_hex != "" or entry.cache_sequence < 0:
             msg = (
-                "MISS audit entries must have empty checksum and "
+                "MISS debug entries must have empty checksum and "
                 "non-negative cache_sequence"
             )
             raise CacheFuzzError(msg)
-        return entry.timestamp, entry.sequence
+        return entry.timestamp_monotonic, entry.debug_sequence
 
     if entry.checksum_hex == "" or entry.cache_sequence <= 0:
         msg = (
-            f"{entry.operation} audit entries must carry a positive cache_sequence "
+            f"{entry.operation} debug entries must carry a positive cache_sequence "
             "and non-empty checksum"
         )
         raise CacheFuzzError(msg)
-    return entry.timestamp, entry.sequence
+    return entry.timestamp_monotonic, entry.debug_sequence
 
 
 def _collect_cache_observability(
     bundle: FluentBundle,
     *,
-    enable_audit: bool,
+    enable_debug_log: bool,
 ) -> None:
-    """Accumulate cache stats and validate public audit-log accessors.
+    """Accumulate cache stats and validate public debug-log accessors.
 
     Each iteration creates a new FluentBundle/cache, so stats are
     per-iteration deltas that get accumulated into _domain totals.
@@ -327,47 +332,47 @@ def _collect_cache_observability(
     _domain.oversize_skip_counts += int(stats.get("oversize_skips", 0))
     _domain.error_bloat_counts += int(stats.get("error_bloat_skips", 0))
     _domain.corruption_events += int(stats.get("corruption_detected", 0))
-    _domain.audit_log_checks += 1
+    _domain.debug_log_checks += 1
 
-    audit_log = bundle.get_cache_audit_log()
-    if audit_log is None:
-        msg = "Cache-enabled bundle returned None from get_cache_audit_log()"
+    debug_log = bundle.get_cache_debug_log()
+    if debug_log is None:
+        msg = "Cache-enabled bundle returned None from get_cache_debug_log()"
         raise CacheFuzzError(msg)
 
-    if not isinstance(audit_log, tuple):
-        msg = f"get_cache_audit_log() returned {type(audit_log).__name__}, expected tuple"
+    if not isinstance(debug_log, tuple):
+        msg = f"get_cache_debug_log() returned {type(debug_log).__name__}, expected tuple"
         raise CacheFuzzError(msg)
 
-    if bool(stats.get("audit_enabled", False)) != enable_audit:
+    if bool(stats.get("debug_log_enabled", False)) != enable_debug_log:
         msg = (
-            "get_cache_stats()['audit_enabled'] disagrees with CacheConfig: "
-            f"{stats.get('audit_enabled')} vs {enable_audit}"
+            "get_cache_stats()['debug_log_enabled'] disagrees with CacheConfig: "
+            f"{stats.get('debug_log_enabled')} vs {enable_debug_log}"
         )
         raise CacheFuzzError(msg)
 
-    if len(audit_log) != int(stats.get("audit_entries", 0)):
+    if len(debug_log) != int(stats.get("debug_log_entries", 0)):
         msg = (
-            "get_cache_audit_log() length disagrees with cache stats: "
-            f"{len(audit_log)} vs {stats.get('audit_entries')}"
+            "get_cache_debug_log() length disagrees with cache stats: "
+            f"{len(debug_log)} vs {stats.get('debug_log_entries')}"
         )
         raise CacheFuzzError(msg)
 
-    if not enable_audit:
-        if audit_log != ():
-            msg = "Audit-disabled cache returned non-empty audit log"
+    if not enable_debug_log:
+        if debug_log != ():
+            msg = "Debug-log-disabled cache returned non-empty debug log"
             raise CacheFuzzError(msg)
         return
 
     last_timestamp = float("-inf")
     last_sequence = 0
-    for entry in audit_log:
-        if not isinstance(entry, WriteLogEntry):
-            msg = "get_cache_audit_log() returned non-WriteLogEntry entries"
+    for entry in debug_log:
+        if not isinstance(entry, CacheDebugLogEntry):
+            msg = "get_cache_debug_log() returned non-CacheDebugLogEntry entries"
             raise CacheFuzzError(msg)
-        last_timestamp, last_sequence = _validate_cache_audit_entry(
+        last_timestamp, last_sequence = _validate_cache_debug_entry(
             entry,
-            last_timestamp=last_timestamp,
-            last_sequence=last_sequence,
+            last_monotonic_timestamp=last_timestamp,
+            last_debug_sequence=last_sequence,
         )
 
 
@@ -691,13 +696,13 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
     if fdp.remaining_bytes() < 4:
         return
 
-    # Generate cache configuration (vary ALL parameters)
+    # Generate cache configuration (vary all constructor parameters).
     cache_size = fdp.ConsumeIntInRange(1, 50)
-    max_entry_weight = fdp.ConsumeIntInRange(100, 10000)
+    max_entry_payload_bytes = fdp.ConsumeIntInRange(100, 10000)
     max_errors_per_entry = fdp.ConsumeIntInRange(1, 50)
     write_once = fdp.ConsumeBool()
     strict_mode = fdp.ConsumeBool()
-    enable_audit = fdp.ConsumeBool()
+    enable_debug_log = fdp.ConsumeBool()
 
     locale = _generate_locale(fdp)
     ftl = _generate_ftl_for_pattern(fdp, pattern)
@@ -712,10 +717,10 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
             locale,
             cache=CacheConfig(
                 size=cache_size,
-                max_entry_weight=max_entry_weight,
+                max_entry_payload_bytes=max_entry_payload_bytes,
                 max_errors_per_entry=max_errors_per_entry,
                 write_once=write_once,
-                enable_audit=enable_audit,
+                enable_debug_log=enable_debug_log,
             ),
             strict=strict_mode,
         )
@@ -751,7 +756,7 @@ def test_one_input(data: bytes) -> None:  # noqa: PLR0912, PLR0915 - dispatch
 
     finally:
         try:
-            _collect_cache_observability(bundle, enable_audit=enable_audit)
+            _collect_cache_observability(bundle, enable_debug_log=enable_debug_log)
         except CacheFuzzError:
             _state.findings += 1
             raise

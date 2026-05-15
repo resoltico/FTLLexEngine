@@ -6,6 +6,7 @@ from tests.runtime_bundle_cases import (
     FluentBundle,
     FrozenFluentError,
     Mock,
+    ResourceConflictIntegrityError,
     patch,
     pytest,
 )
@@ -366,8 +367,8 @@ class TestFluentBundleIntegration:
         assert result_en == "Hello!"
         assert errors_en == ()
 
-    def test_overwrite_message_with_new_resource(self) -> None:
-        """Adding resource with same message ID overwrites."""
+    def test_overwrite_message_requires_explicit_admission(self) -> None:
+        """Adding resource with same message ID needs allow_overwrite."""
         bundle = FluentBundle("en_US")
 
         bundle.add_resource("msg = Original")
@@ -375,7 +376,9 @@ class TestFluentBundleIntegration:
         assert result1 == "Original"
         assert errors1 == ()
 
-        bundle.add_resource("msg = Updated")
+        with pytest.raises(ResourceConflictIntegrityError, match="msg"):
+            bundle.add_resource("msg = Updated")
+        bundle.add_resource("msg = Updated", allow_overwrite=True)
         result2, errors2 = bundle.format_pattern("msg")
         assert result2 == "Updated"
         assert errors2 == ()

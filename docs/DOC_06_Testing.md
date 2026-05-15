@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: TESTING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [testing, lint, pytest, fuzz, HypoFuzz, Atheris, test.sh, lint.sh, check.sh, devcontainer]
   questions: ["how do I run lint and tests?", "what is the fuzz marker for?", "which scripts drive testing?", "how do I validate the contributor container?"]
@@ -22,7 +22,7 @@ Repository script that validates runnable Markdown examples against the live pac
 
 ### Signature
 ```bash
-uv run python scripts/validate_docs.py
+uv run --group dev --python 3.14 python scripts/validate_docs.py
 ```
 
 ### Constraints
@@ -40,7 +40,7 @@ Repository script that enforces package-version sync across code, metadata, and 
 
 ### Signature
 ```bash
-uv run python scripts/validate_version.py
+uv run --group dev --python 3.14 python scripts/validate_version.py
 ```
 
 ### Constraints

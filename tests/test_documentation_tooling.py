@@ -78,6 +78,29 @@ def _index_routes() -> dict[str, tuple[Path, str]]:
     return routes
 
 
+def _documentation_index_targets() -> set[str]:
+    """Return the Markdown files listed in the human docs map.
+
+    Premise:
+        The root docs index should be a complete inventory of `docs/*.md`, not
+        just an API symbol router.
+
+    Reason:
+        A dedicated parser here lets tests fail the moment a new guide lands in
+        `docs/` without being added to the published navigation map.
+    """
+    index_path = REPO_ROOT / "docs" / "DOC_00_Index.md"
+    text = index_path.read_text(encoding="utf-8")
+    start = text.index("## Documentation Map")
+    end = text.index("## Routing Table")
+    section = text[start:end]
+
+    return {
+        Path(target).name
+        for target in re.findall(r"\[[^\]]+\]\(([^)#]+\.md)\)", section)
+    }
+
+
 def _symbol_headings(md_path: Path) -> set[str]:
     """Return the set of second-level symbol headings in a markdown file."""
     text = md_path.read_text(encoding="utf-8")
@@ -233,7 +256,7 @@ def test_run_examples_registers_contracts_for_all_shipped_examples() -> None:
     assert set(run_examples.EXAMPLE_CONTRACTS) == shipped_examples
     assert (
         run_examples.EXAMPLE_CONTRACTS["parser_only.py"](
-            "[PASS] Warning-only validation semantics verified\n"
+            "[PASS] Critical warning validation semantics verified\n"
             "[PASS] Invalid syntax semantics verified\n"
             "All examples completed successfully!\n"
         )
@@ -242,8 +265,8 @@ def test_run_examples_registers_contracts_for_all_shipped_examples() -> None:
     assert run_examples.EXAMPLE_CONTRACTS["parser_only.py"]("incomplete output") is not None
 
 
-def test_validate_version_uses_afad_frontmatter_version_contract() -> None:
-    """validate_version should enforce the AFAD v4.0 `version:` frontmatter key."""
+def test_validate_version_uses_configured_frontmatter_version_contract() -> None:
+    """validate_version should enforce the configured `version:` frontmatter key."""
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     validate_version = _load_script_module(
@@ -650,6 +673,15 @@ def test_sdist_includes_root_frontmatter_docs_and_readme() -> None:
     assert missing == []
 
 
+def test_root_readme_remains_plain_storefront_markdown() -> None:
+    """The root README should stay human-first and avoid AFAD-style wrapper markup."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert not readme.startswith("---\n")
+    assert not readme.lstrip().startswith("<!--")
+    assert "\nafad:" not in readme
+
+
 def test_repo_agent_guidance_is_git_trackable_but_not_in_sdist() -> None:
     """Agent instructions should be committable without becoming package payload."""
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
@@ -684,6 +716,25 @@ def test_release_protocol_lives_under_docs_and_repo_links_follow_it() -> None:
 
     assert "RELEASE_PROTOCOL.md" not in frontmatter_globs
     assert "RELEASE_PROTOCOL.md" not in only_include
+
+
+def test_changelog_uses_plain_changelog_conventions_not_afad_frontmatter() -> None:
+    """CHANGELOG.md should use changelog conventions without AFAD frontmatter."""
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    frontmatter_globs = set(pyproject["tool"]["validate-version"]["frontmatter_globs"])
+
+    assert not changelog.startswith("---\n")
+    assert "\nafad:" not in changelog
+    assert "CHANGELOG.md" not in frontmatter_globs
+
+
+def test_docs_index_lists_every_top_level_markdown_doc() -> None:
+    """The published docs index should enumerate every Markdown file under docs/."""
+    documented = _documentation_index_targets()
+    expected = {path.name for path in (REPO_ROOT / "docs").glob("*.md")}
+
+    assert documented == expected
 
 
 def test_public_docs_and_examples_avoid_fix_later_markers() -> None:

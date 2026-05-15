@@ -28,7 +28,7 @@ class TestCacheStatistics:
         operations: list[tuple[str, str]],
     ) -> None:
         """PROPERTY: hit_rate = hits / (hits + misses)."""
-        cache = IntegrityCache(maxsize=20, strict=False)
+        cache = IntegrityCache(maxsize=20 )
 
         for op, msg_id in operations:
             if op == "put":
@@ -59,7 +59,7 @@ class TestCacheStatistics:
         maxsize: int,
     ) -> None:
         """PROPERTY: size stat equals actual number of cached entries."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Add entries
         for i in range(num_entries):

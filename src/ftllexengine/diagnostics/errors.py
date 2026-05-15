@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from dataclasses import replace
 from typing import final
 
 from ftllexengine.integrity import PYTHON_EXCEPTION_ATTRS, ImmutabilityViolationError
 
+from ._redaction import fingerprint_text
 from .codes import Diagnostic, ErrorCategory, FrozenErrorContext
 
 # ruff: noqa: RUF022 - __all__ organized by category for readability, not alphabetically
@@ -378,6 +380,36 @@ class FrozenFluentError(Exception):
             self._message, self._category, self._diagnostic, self._context
         )
         return hmac.compare_digest(self._content_hash, expected)
+
+    def sanitized_for_cache(self) -> FrozenFluentError:
+        """Return the retained cache snapshot for this error.
+
+        Premise:
+            Runtime formatting errors may carry a user-visible fallback string
+            so the resolver can keep output behavior correct for the current
+            call.
+
+        Reason:
+            Cache retention has a different contract from live resolution. The
+            cache keeps a sanitized evidence copy so cached error inspection,
+            strict-mode cache hits, and crash artifacts do not retain the raw
+            fallback payload longer than necessary.
+        """
+        if self._context is None or not self._context.fallback_value:
+            return self
+        if self._context.fallback_value.startswith("fallback[bytes="):
+            return self
+
+        sanitized_context = replace(
+            self._context,
+            fallback_value=fingerprint_text(self._context.fallback_value, label="fallback"),
+        )
+        return FrozenFluentError(
+            self._message,
+            self._category,
+            diagnostic=self._diagnostic,
+            context=sanitized_context,
+        )
 
     @property
     def message(self) -> str:

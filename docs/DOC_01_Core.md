@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: CORE
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [FluentBundle, AsyncFluentBundle, FluentLocalization, LocalizationBootConfig, PathResourceLoader, LoadSummary, ResourceLoadResult, LocalizationCacheStats, require_clean, get_load_summary]
   questions: ["how do I format messages?", "how do I load multiple locales?", "how do I inspect localization load results?", "how do I boot localization safely?"]
@@ -31,9 +31,11 @@ class FluentBundle:
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
-        max_source_size: int | None = None,
+        max_source_size: LimitArg = None,
         max_nesting_depth: int | None = None,
-        max_expansion_size: int | None = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
+        max_expansion_size: LimitArg = None,
         strict: bool = True,
     ) -> None:
 ```
@@ -47,8 +49,13 @@ class FluentBundle:
 | `functions` | N | Custom function registry |
 | `max_source_size` | N | FTL input bound |
 | `max_nesting_depth` | N | Nesting safety bound |
+| `max_parse_errors` | N | Junk-entry abort bound |
+| `max_stream_line_length` | N | Stream line-length bound |
 | `max_expansion_size` | N | Expansion safety bound |
 | `strict` | N | Raise on integrity failures |
+
+Security-limit note:
+`LimitArg` fields fail closed on zero and negative integers. Use public `ftllexengine.UNLIMITED` only for an intentional opt-out.
 
 ### Constraints
 - Return: Bundle with normalized locale and empty resource store
@@ -75,9 +82,13 @@ class AsyncFluentBundle:
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
-        max_source_size: int | None = None,
+        max_source_size: LimitArg = None,
         max_nesting_depth: int | None = None,
-        max_expansion_size: int | None = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
+        max_expansion_size: LimitArg = None,
+        max_workers: int = 4,
+        max_pending_operations: int = 16,
         strict: bool = True,
     ) -> None:
 ```
@@ -91,14 +102,21 @@ class AsyncFluentBundle:
 | `functions` | N | Custom function registry |
 | `max_source_size` | N | FTL input bound |
 | `max_nesting_depth` | N | Nesting safety bound |
+| `max_parse_errors` | N | Junk-entry abort bound |
+| `max_stream_line_length` | N | Stream line-length bound |
 | `max_expansion_size` | N | Expansion safety bound |
+| `max_workers` | N | Owned worker-thread count |
+| `max_pending_operations` | N | Async admission bound |
 | `strict` | N | Raise on integrity failures |
+
+Security-limit note:
+`LimitArg` fields fail closed on zero and negative integers. Use public `ftllexengine.UNLIMITED` only for an intentional opt-out.
 
 ### Constraints
 - Return: Async wrapper around the same runtime semantics as `FluentBundle`
 - State: Delegates to an internal bundle instance
 - Thread: Safe
-- Async: Formatting and mutation paths run through `asyncio.to_thread()`
+- Async: Formatting, mutation, and lock-taking read paths run through one owned executor plus a bounded async admission gate
 - Availability: full-runtime only
 
 ---
@@ -119,6 +137,10 @@ class FluentLocalization:
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         on_fallback: Callable[[FallbackInfo], None] | None = None,
+        max_source_size: LimitArg = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
+        max_expansion_size: LimitArg = None,
         strict: bool = True,
     ) -> None:
 ```
@@ -132,7 +154,14 @@ class FluentLocalization:
 | `use_isolating` | N | Enable bidi isolation |
 | `cache` | N | Per-bundle cache config |
 | `on_fallback` | N | Fallback callback hook |
+| `max_source_size` | N | Per-resource decoded source bound |
+| `max_parse_errors` | N | Per-resource Junk-entry abort bound |
+| `max_stream_line_length` | N | Stream line-length bound |
+| `max_expansion_size` | N | Per-format output bound |
 | `strict` | N | Raise on integrity failures |
+
+Security-limit note:
+`LimitArg` fields fail closed on zero and negative integers. Use public `ftllexengine.UNLIMITED` only for an intentional opt-out.
 
 ### Constraints
 - Return: Multi-locale runtime with canonicalized locale chain
@@ -199,6 +228,8 @@ Dataclass that loads FTL source from a locale-substituted path template.
 class PathResourceLoader:
     base_path: str
     root_dir: str | None = None
+    max_source_bytes: LimitArg = None
+    max_source_chars: LimitArg = None
 ```
 
 ### Parameters
@@ -206,6 +237,8 @@ class PathResourceLoader:
 |:-----|:----|:----------|
 | `base_path` | Y | Path template with `{locale}` |
 | `root_dir` | N | Root for path safety checks |
+| `max_source_bytes` | N | Raw-byte read budget enforced before full decode |
+| `max_source_chars` | N | Decoded-character budget enforced during streaming decode |
 
 ### Constraints
 - Raises: `ValueError` if `base_path` lacks `{locale}`
@@ -317,16 +350,17 @@ class FallbackInfo:
 
 ## `LocalizationCacheStats`
 
-Typed dict representing aggregate cache metrics across localization bundles.
+Frozen dataclass representing aggregate cache metrics across localization bundles.
 
 ### Signature
 ```python
-class LocalizationCacheStats(CacheStats, total=True):
+@dataclass(frozen=True, slots=True)
+class LocalizationCacheStats(CacheStats):
     bundle_count: int
 ```
 
 ### Constraints
 - Purpose: Summarize per-locale cache state from `FluentLocalization.get_cache_stats()`
 - Fields: Includes all `CacheStats` fields aggregated across initialized bundles, plus `bundle_count`
-- State: Read-only result object
+- State: Immutable snapshot with mapping-style access via `CacheStats`
 - Availability: full-runtime only

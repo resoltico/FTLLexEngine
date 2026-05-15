@@ -15,6 +15,7 @@ Python 3.13+. Uses pytest.
 
 from __future__ import annotations
 
+from ftllexengine import UNLIMITED
 from ftllexengine.syntax import parse as parse_ftl
 from ftllexengine.syntax.ast import Junk, Message
 from ftllexengine.syntax.parser import FluentParserV1
@@ -117,13 +118,13 @@ class TestParseErrorLimit:
         assert len(resource.entries) == MAX_PARSE_ERRORS
 
     def test_zero_max_parse_errors_allows_unlimited(self) -> None:
-        """Setting max_parse_errors=0 disables the limit (not recommended)."""
+        """UNLIMITED disables parse-error throttling intentionally."""
         # Generate 150 invalid comment lines
         malformed_lines = [f"##### invalid comment {i}" for i in range(150)]
         source = "\n".join(malformed_lines)
 
         # Disable limit (for testing/debugging only)
-        parser = FluentParserV1(max_parse_errors=0)
+        parser = FluentParserV1(max_parse_errors=UNLIMITED)
         resource = parser.parse(source)
 
         # Count Junk entries

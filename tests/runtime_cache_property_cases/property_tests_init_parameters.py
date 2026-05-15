@@ -21,19 +21,18 @@ class TestIntegrityCacheHypothesisProperties:
     def test_property_init_parameters_stored_correctly(
         self,
         maxsize: int,
-        max_entry_weight: int,
+        max_entry_payload_bytes: int,
         max_errors_per_entry: int,
     ) -> None:
         """PROPERTY: Constructor parameters are stored correctly."""
         cache = IntegrityCache(
-            strict=False,
             maxsize=maxsize,
-            max_entry_weight=max_entry_weight,
+            max_entry_payload_bytes=max_entry_payload_bytes,
             max_errors_per_entry=max_errors_per_entry,
         )
 
         assert cache.maxsize == maxsize
-        assert cache.max_entry_weight == max_entry_weight
+        assert cache.max_entry_payload_bytes == max_entry_payload_bytes
         assert cache.size == 0
         assert cache.hits == 0
         assert cache.misses == 0
@@ -43,7 +42,7 @@ class TestIntegrityCacheHypothesisProperties:
     @settings(max_examples=50)
     def test_property_primitives_hashable(self, text: str) -> None:
         """PROPERTY: All primitive types produce valid cache keys."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
 
         # String
         cache.put("msg", {"text": text}, None, "en", use_isolating=True, formatted="result", errors=())

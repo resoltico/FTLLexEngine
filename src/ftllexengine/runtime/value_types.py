@@ -70,6 +70,10 @@ class FunctionSignature:
             params. Stored as sorted tuple of (ftl_param, python_param) pairs
             for full immutability.
         callable: The actual Python function
+        cacheable: Whether cached formatting results may safely reuse outputs
+            produced by this function. Custom functions default to ``False`` so
+            time-, I/O-, and environment-dependent callables do not acquire
+            accidental cache semantics.
         param_dict: Read-only dict view of param_mapping for O(1) lookup.
             Computed once at construction, exposed as MappingProxyType to
             prevent mutation while avoiding per-call dict reconstruction.
@@ -85,6 +89,7 @@ class FunctionSignature:
     ftl_name: str
     param_mapping: tuple[tuple[str, str], ...]
     callable: Callable[..., FluentValue]
+    cacheable: bool = False
     param_dict: MappingProxyType[str, str] = field(
         init=False, repr=False, compare=False
     )

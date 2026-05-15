@@ -129,15 +129,19 @@ class TestResourceOrdering:
     def test_last_resource_wins(
         self, msg_id: str, values: list[str]
     ) -> None:
-        """PROPERTY: Last added resource wins for same message ID."""
+        """PROPERTY: Explicit overwrite admission makes the last value canonical."""
         assume(all(len(v) > 0 for v in values))
 
         bundle = FluentBundle("en")
 
-        # Add same message multiple times with different values
-        for value in values:
-            bundle.add_resource(f"{msg_id} = {value}")
-
+        # Premise: duplicate canonical IDs are a state mutation, not a load-order
+        # accident. Reason: the first write stays default-safe and later writes
+        # opt in explicitly.
+        for index, value in enumerate(values):
+            bundle.add_resource(
+                f"{msg_id} = {value}",
+                allow_overwrite=index > 0,
+            )
         result, _ = bundle.format_pattern(msg_id)
 
         event(f"override_count={len(values)}")
@@ -165,7 +169,7 @@ class TestResourceOrdering:
         event(f"msg_count={msg_count}")
 
     def test_partial_override_preserves_others(self) -> None:
-        """Partial resource override preserves other messages."""
+        """Admitted partial overwrite replaces only the targeted message."""
         bundle = FluentBundle("en")
 
         # Add initial messages
@@ -178,7 +182,7 @@ msg3 = Value 3
         )
 
         # Override only msg2
-        bundle.add_resource("msg2 = New Value 2")
+        bundle.add_resource("msg2 = New Value 2", allow_overwrite=True)
 
         # msg1 and msg3 should be unchanged
         result1, _ = bundle.format_pattern("msg1")
@@ -336,13 +340,13 @@ class TestBundleMessageRegistry:
     def test_message_override_behavior(
         self, msg_id: str, value1: str, value2: str
     ) -> None:
-        """Property: Later messages override earlier ones with same ID."""
+        """Property: explicit overwrite replaces an earlier message cleanly."""
         values_equal = value1.strip() == value2.strip()
         event(f"values_equal={values_equal}")
         bundle = FluentBundle("en_US")
 
         bundle.add_resource(f"{msg_id} = {value1}")
-        bundle.add_resource(f"{msg_id} = {value2}")
+        bundle.add_resource(f"{msg_id} = {value2}", allow_overwrite=True)
 
         result, errors = bundle.format_pattern(msg_id)
 

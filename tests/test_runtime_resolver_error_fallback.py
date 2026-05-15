@@ -13,7 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from ftllexengine.diagnostics import ErrorCategory
+from ftllexengine.diagnostics import DiagnosticCode, ErrorCategory
 from ftllexengine.integrity import FormattingIntegrityError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.function_bridge import FunctionRegistry
@@ -67,7 +67,7 @@ class TestUnknownExpressionType:
         errors: list[FrozenFluentError] = []
         context = ResolutionContext()
         with pytest.raises(FrozenFluentError) as exc_info:
-            resolver._resolve_expression(unknown, {}, errors, context)  # type: ignore[arg-type]
+            resolver._resolve_expression(unknown, {}, errors, context)
 
         assert exc_info.value.category == ErrorCategory.RESOLUTION
         error_msg = str(exc_info.value).lower()
@@ -132,6 +132,51 @@ class TestUnknownExpressionFallback:
             selector=var_selector, variants=(dummy_variant,)
         )
         assert resolver._get_fallback_for_placeable(select_expr_var) == "{{$count} -> ...}"
+
+
+class TestPatternBudgetFallbacks:
+    """Budget handling should fail closed for fallback and pre-exhausted paths."""
+
+    def test_preexhausted_context_skips_later_pattern_elements(self) -> None:
+        """A pre-marked budget exhaustion flag should stop iteration immediately."""
+        resolver = FluentResolver(
+            locale="en_US",
+            messages={},
+            terms={},
+            function_registry=FunctionRegistry(),
+            use_isolating=False,
+        )
+        context = ResolutionContext(max_expansion_size=10)
+        context.mark_output_budget_exhausted()
+        pattern = Pattern(elements=(TextElement(value="visible"),))
+
+        assert resolver._resolve_pattern(pattern, {}, [], context) == ""
+
+    def test_formatting_fallback_is_not_appended_past_output_budget(self) -> None:
+        """Formatting-error fallback text should respect the same output budget."""
+        bundle = FluentBundle("en", strict=False, max_expansion_size=1)
+        bundle.add_resource("msg = { DATETIME($when) }")
+
+        result, errors = bundle.format_pattern("msg", {"when": "not-a-date"})
+
+        assert result == ""
+        assert len(errors) == 2
+        assert errors[0].category == ErrorCategory.FORMATTING
+        assert errors[1].diagnostic is not None
+        assert errors[1].diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
+
+    def test_generic_placeable_fallback_is_not_appended_past_output_budget(self) -> None:
+        """Reference fallbacks must also stop at the budget boundary."""
+        bundle = FluentBundle("en", strict=False, max_expansion_size=1)
+        bundle.add_resource("msg = { $name }")
+
+        result, errors = bundle.format_pattern("msg", {})
+
+        assert result == ""
+        assert len(errors) == 2
+        assert errors[0].category == ErrorCategory.REFERENCE
+        assert errors[1].diagnostic is not None
+        assert errors[1].diagnostic.code == DiagnosticCode.EXPANSION_BUDGET_EXCEEDED
 
 
 # ============================================================================

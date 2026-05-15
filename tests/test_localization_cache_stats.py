@@ -5,6 +5,7 @@ statistics across multiple FluentBundle instances within a FluentLocalization.
 """
 
 import threading
+from collections.abc import Mapping
 
 import pytest
 from hypothesis import event, given, settings
@@ -26,13 +27,14 @@ class TestGetCacheStatsBasic:
 
         assert l10n.get_cache_stats() is None
 
-    def test_returns_dict_when_caching_enabled(self) -> None:
-        """get_cache_stats() returns dict when caching is enabled."""
+    def test_returns_immutable_mapping_when_caching_enabled(self) -> None:
+        """get_cache_stats() returns an immutable mapping-style snapshot."""
         l10n = FluentLocalization(["en"], cache=CacheConfig())
         l10n.add_resource("en", "msg = Hello")
 
         stats = l10n.get_cache_stats()
-        assert isinstance(stats, dict)
+        assert isinstance(stats, LocalizationCacheStats)
+        assert isinstance(stats, Mapping)
 
     def test_returns_all_expected_keys(self) -> None:
         """get_cache_stats() returns all documented keys."""
@@ -45,7 +47,7 @@ class TestGetCacheStatsBasic:
         expected_keys = {
             "size",
             "maxsize",
-            "max_entry_weight",
+            "max_entry_payload_bytes",
             "max_errors_per_entry",
             "hits",
             "misses",
@@ -53,15 +55,17 @@ class TestGetCacheStatsBasic:
             "unhashable_skips",
             "oversize_skips",
             "error_bloat_skips",
-            "combined_weight_skips",
+            "combined_payload_skips",
             "corruption_detected",
+            "integrity_events_emitted",
             "idempotent_writes",
             "write_once_conflicts",
+            "uncacheable_function_skips",
             "sequence",
+            "cache_generation",
             "write_once",
-            "strict",
-            "audit_enabled",
-            "audit_entries",
+            "debug_log_enabled",
+            "debug_log_entries",
             "bundle_count",
         }
         assert set(stats.keys()) == expected_keys
@@ -331,7 +335,8 @@ class TestGetCacheStatsProperty:
     @settings(max_examples=20)
     def test_bundle_count_never_exceeds_locale_count(self, num_locales: int) -> None:
         """bundle_count is always <= number of locales."""
-        locales = [f"locale{i}" for i in range(num_locales)]
+        all_locales = ["en", "de", "fr", "lv", "ja"]
+        locales = all_locales[:num_locales]
         l10n = FluentLocalization(locales, cache=CacheConfig())
 
         # Initialize some bundles

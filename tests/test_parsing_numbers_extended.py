@@ -10,6 +10,7 @@ from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.diagnostics._redaction import redacted_parse_failure
 from ftllexengine.parsing.numbers import parse_decimal
 
 
@@ -76,7 +77,10 @@ class TestParseDecimalProperties:
         assert len(errors) == 1
         assert errors[0].context is not None
         assert errors[0].context.parse_type == "decimal"
-        assert errors[0].context.input_value == "not-a-number"
+        assert errors[0].context.input_value == redacted_parse_failure(
+            "not-a-number",
+            parse_type="decimal",
+        )
         assert errors[0].context.locale_code == "en_US"
 
     def test_parse_decimal_invalid_locale(self) -> None:
@@ -86,7 +90,10 @@ class TestParseDecimalProperties:
         assert len(errors) == 1
         assert errors[0].context is not None
         assert errors[0].context.parse_type == "decimal"
-        assert errors[0].context.input_value == "123"
+        assert errors[0].context.input_value == redacted_parse_failure(
+            "123",
+            parse_type="decimal",
+        )
         assert errors[0].context.locale_code == "invalid_LOCALE"
 
     def test_parse_decimal_empty_string(self) -> None:

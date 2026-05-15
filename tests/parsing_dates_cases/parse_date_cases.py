@@ -1,6 +1,7 @@
 # mypy: ignore-errors
 """Split test cases from tests/test_parsing_dates.py."""
 
+from ftllexengine.diagnostics._redaction import redacted_parse_failure
 from tests.parsing_dates_cases import *  # noqa: F403 - shared split test support
 
 # ---------------------------------------------------------------------------
@@ -45,7 +46,7 @@ class TestParseDate:
         assert len(errors) > 0
         assert result is None
         assert errors[0].parse_type == "date"
-        assert errors[0].input_value == "invalid"
+        assert errors[0].input_value == redacted_parse_failure("invalid", parse_type="date")
 
     def test_parse_date_empty_returns_error(self) -> None:
         """Empty input returns error in list."""

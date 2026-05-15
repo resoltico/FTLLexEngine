@@ -231,10 +231,10 @@ class TestIntrospectMessageTermSupport:
     def test_introspect_rejects_invalid_type(self) -> None:
         """introspect_message raises TypeError for non-Message/Term."""
         with pytest.raises(TypeError, match="Expected Message or Term"):
-            introspect_message("not a message")  # type: ignore[arg-type]
+            introspect_message("not a message")
 
         with pytest.raises(TypeError, match="Expected Message or Term"):
-            introspect_message(123)  # type: ignore[arg-type]
+            introspect_message(123)
 
 
 class TestFluentLocalizationFormatValueMapping:

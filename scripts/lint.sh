@@ -39,8 +39,19 @@ set -o nounset
 set -o pipefail
 shopt -s inherit_errexit
 
+_script_src="${BASH_SOURCE[0]}"; [[ "$_script_src" != */* ]] && _script_src="./$_script_src"
+SCRIPT_DIR="$(cd -- "${_script_src%/*}" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+unset _script_src
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "$PROJECT_ROOT/scripts/lib/python_support_contract.sh"
+
 # [SECTION: ENVIRONMENT_ISOLATION]
-PY_VERSION="${PY_VERSION:-3.13}"
+# Premise: verification defaults to the support floor so regressions surface at
+# the narrowest promised interpreter first.
+# Reason: contributors can opt into a wider lane with PY_VERSION=... without
+# the repository carrying duplicate hard-coded version tables.
+PY_VERSION="${PY_VERSION:-$FTLLEXENGINE_PYTHON_MIN}"
 if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
     TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
 else
@@ -71,15 +82,13 @@ fi
 # [SECTION: SETUP]
 CLEAN_CACHE=true
 VERBOSE=false
+FIX_MODE=false
 declare -A STATUS
 declare -A TIMING
 declare -A METRICS
 FAILED=false
 IS_GHA="${GITHUB_ACTIONS:-false}"
 # Resolve script directory using Bash built-ins only — no dependency on /usr/bin/dirname.
-_script_src="${BASH_SOURCE[0]}"; [[ "$_script_src" != */* ]] && _script_src="./$_script_src"
-SCRIPT_DIR="$(cd -- "${_script_src%/*}" && pwd)"
-unset _script_src
 PY_VERSION_NODOT="${PY_VERSION//./}"
 FAILED_ITEMS_FILE=$(mktemp)
 
@@ -89,6 +98,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-clean) CLEAN_CACHE=false; shift ;;
         --verbose)  VERBOSE=true; shift ;;
+        --fix) FIX_MODE=true; shift ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
@@ -240,7 +250,14 @@ run_ruff() {
 
     # Run on all targets at once (Ruff is safe for this)
     # Removed explicit --config to allow for nested ruff/pyproject config discovery
-    local cmd=(ruff check --fix $format_flag)
+    local cmd=(ruff check $format_flag)
+    if [[ "$FIX_MODE" == "true" ]]; then
+        # Premise: repair mode is useful locally, but CI evidence must never
+        # mutate the source tree during verification.
+        # Reason: --fix is opt-in so the lint gate proves the checked-in tree
+        # is already valid unless a contributor explicitly asks for repair.
+        cmd+=(--fix)
+    fi
     log_info "Discovery: Native/Hierarchical (ruff.toml or pyproject.toml)"
     # Append target version if we can determine it, otherwise let ruff read pyproject.toml
     if [[ -n "${PY_VERSION_NODOT}" ]]; then
@@ -287,6 +304,7 @@ run_mypy() {
 readonly -a SCRIPT_VALIDATORS=(
     "PISync:$SCRIPT_DIR/validate_pyi_sync.py"
     "ISO4217:$SCRIPT_DIR/verify_iso4217.py"
+    "PythonSupport:$SCRIPT_DIR/python_support.py validate"
 )
 
 run_script_validators() {
@@ -297,7 +315,9 @@ run_script_validators() {
     for validator_entry in "${SCRIPT_VALIDATORS[@]}"; do
         name="${validator_entry%%:*}"
         script_path="${validator_entry#*:}"
-        execute_tool "validator:$name" "all" "${TARGET_VENV}/bin/python" "$script_path"
+        # shellcheck disable=SC2206
+        local -a validator_args=($script_path)
+        execute_tool "validator:$name" "all" "${TARGET_VENV}/bin/python" "${validator_args[@]}"
     done
     log_group_end
 }

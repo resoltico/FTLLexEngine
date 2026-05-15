@@ -37,7 +37,7 @@ class WarningSeverity(StrEnum):
     """Severity levels for validation warnings.
 
     Provides semantic differentiation between warning types:
-    - CRITICAL: Will cause runtime failure (e.g., undefined reference)
+    - CRITICAL: Validation must fail closed (e.g., undefined reference)
     - WARNING: May cause issues (e.g., duplicate ID, missing value)
     - INFO: Informational only (e.g., style suggestions)
 
@@ -45,7 +45,7 @@ class WarningSeverity(StrEnum):
         critical_warnings = [w for w in warnings if w.severity == WarningSeverity.CRITICAL]
     """
 
-    CRITICAL = "critical"  # Will cause runtime failure
+    CRITICAL = "critical"  # Validation must fail closed
     WARNING = "warning"  # May cause issues
     INFO = "info"  # Informational only
 
@@ -166,8 +166,8 @@ class ValidationWarning:
     to display warning squiggles at the correct source location.
 
     Severity levels:
-        CRITICAL: Will cause runtime failure (e.g., undefined reference to message)
-        WARNING: May cause issues (e.g., duplicate ID overwrites previous)
+        CRITICAL: Validation must fail closed (e.g., undefined reference to message)
+        WARNING: May cause issues but does not invalidate the resource
         INFO: Informational only (e.g., unused term)
     """
 
@@ -252,14 +252,20 @@ class ValidationResult:
 
     @property
     def is_valid(self) -> bool:
-        """Check if validation passed (no errors or annotations).
+        """Check if validation passed.
 
-        Warnings do not affect validity - they're informational.
+        Critical warnings are validity failures because they represent
+        structural contradictions the runtime or registration layer will reject
+        or degrade on purpose.
 
         Returns:
-            True if no errors or annotations found
+            True if no errors, parser annotations, or critical warnings found
         """
-        return len(self.errors) == 0 and len(self.annotations) == 0
+        return (
+            len(self.errors) == 0
+            and len(self.annotations) == 0
+            and self.critical_warning_count == 0
+        )
 
     @property
     def error_count(self) -> int:
@@ -288,6 +294,13 @@ class ValidationResult:
         """
         return len(self.warnings)
 
+    @property
+    def critical_warning_count(self) -> int:
+        """Get number of critical warnings that invalidate the resource."""
+        return sum(
+            1 for warning in self.warnings if warning.severity == WarningSeverity.CRITICAL
+        )
+
     @staticmethod
     def valid() -> ValidationResult:
         """Create a valid result with no errors, warnings, or annotations.
@@ -303,7 +316,7 @@ class ValidationResult:
         warnings: tuple[ValidationWarning, ...] = (),
         annotations: tuple[ParserAnnotation, ...] = (),
     ) -> ValidationResult:
-        """Create an invalid result with errors and/or annotations.
+        """Create an invalid result with errors, critical warnings, and/or annotations.
 
         Args:
             errors: Tuple of validation errors (default: empty)

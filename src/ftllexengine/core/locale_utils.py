@@ -261,7 +261,7 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
         if system_locale:
             locale_code = system_locale.split(".", 1)[0]
             if not _is_pseudo_locale(locale_code):
-                return normalize_locale(locale_code)
+                return require_locale_code(locale_code, "system locale")
     except (ValueError, AttributeError):
         pass
 
@@ -272,8 +272,13 @@ def get_system_locale(*, raise_on_failure: bool = False) -> str:
             locale_code = value.split(".", 1)[0]
             if _is_pseudo_locale(locale_code):
                 continue
-            # Normalize to ensure consistent format
-            return normalize_locale(locale_code)
+            try:
+                return require_locale_code(locale_code, f"{var} locale")
+            except ValueError:
+                # Invalid environment values are not trustworthy inputs.
+                # Skip them and keep walking the fallback chain instead of
+                # returning text that downstream APIs would reject later.
+                continue
 
     # No locale detected
     if raise_on_failure:

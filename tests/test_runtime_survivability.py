@@ -180,28 +180,29 @@ class TestCacheSurvivability:
     @pytest.mark.survivability
     @given(
         maxsize=st.integers(min_value=1, max_value=100),
-        max_entry_weight=st.integers(min_value=1000, max_value=100_000),
+        max_entry_payload_bytes=st.integers(min_value=1000, max_value=100_000),
         entry_count=st.integers(min_value=10, max_value=1000),
     )
     @settings(max_examples=50, deadline=None)
     def test_cache_extreme_memory_pressure(
-        self, maxsize: int, max_entry_weight: int, entry_count: int
+        self, maxsize: int, max_entry_payload_bytes: int, entry_count: int
     ) -> None:
         """PROPERTY: Cache survives extreme memory pressure without crashing."""
         func_code = """
 from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
 
-def test_extreme_memory_pressure(maxsize, max_entry_weight, entry_count):
+def test_extreme_memory_pressure(maxsize, max_entry_payload_bytes, entry_count):
     cache = IntegrityCache(
-        maxsize=maxsize, max_entry_weight=max_entry_weight, strict=False
+        maxsize=maxsize,
+        max_entry_payload_bytes=max_entry_payload_bytes,
     )
     for i in range(entry_count):
         msg_id = f"msg_{i}"
-        formatted = "x" * min(max_entry_weight * 2, 1_000_000)
+        formatted = "x" * min(max_entry_payload_bytes * 2, 1_000_000)
         errors = []
         if i % 10 == 0:
-            for _ in range(min(10, max_entry_weight // 1000)):
+            for _ in range(min(10, max_entry_payload_bytes // 1000)):
                 errors.append(FrozenFluentError("x" * 1000, ErrorCategory.RESOLUTION))
         try:
             cache.put(msg_id, None, None, "en", use_isolating=False, formatted=formatted, errors=tuple(errors))
@@ -217,7 +218,7 @@ def test_extreme_memory_pressure(maxsize, max_entry_weight, entry_count):
             "test_extreme_memory_pressure",
             args={
                 "maxsize": maxsize,
-                "max_entry_weight": max_entry_weight,
+                "max_entry_payload_bytes": max_entry_payload_bytes,
                 "entry_count": entry_count,
             },
             timeout=60.0,
@@ -243,7 +244,7 @@ def create_deep_structure(depth):
     return [create_deep_structure(depth - 1)]
 
 def test_deep_nesting_survival(test_depth):
-    cache = IntegrityCache(maxsize=100, strict=False)
+    cache = IntegrityCache(maxsize=100 )
     safe_depth = min(test_depth - 10, MAX_DEPTH - 5)
     safe_args = create_deep_structure(safe_depth)
     cache.put("safe_msg", {"arg": safe_args}, None, "en", use_isolating=False, formatted="safe", errors=())
@@ -290,7 +291,7 @@ def worker(cache, tid, ops):
         except Exception: pass
 
 def test_concurrent(thread_count, operation_count):
-    cache = IntegrityCache(maxsize=1000, strict=False)
+    cache = IntegrityCache(maxsize=1000 )
     ts = [
         threading.Thread(target=worker, args=(cache, i, operation_count))
         for i in range(thread_count)
@@ -363,13 +364,13 @@ def test_strict_formatting(strict, ftl):
     @given(strict=st.booleans())
     @settings(max_examples=10, deadline=None)
     def test_cache_corruption_strategy(self, strict: bool) -> None:
-        """PROPERTY: Strict cache fails-fast on data corruption."""
+        """PROPERTY: Cache corruption always fails fast, independent of formatting mode."""
         func_code = """
 from ftllexengine.runtime.cache import IntegrityCache
 from ftllexengine.integrity import CacheCorruptionError
 
 def test_corruption(strict):
-    cache = IntegrityCache(maxsize=10, strict=strict)
+    cache = IntegrityCache(maxsize=10 )
     cache.put("k", None, None, "en", use_isolating=False, formatted="valid", errors=())
     entry = cache._cache[next(iter(cache._cache))]
 
@@ -388,7 +389,7 @@ def test_corruption(strict):
         assert result.success
         res = json.loads(result.stdout)["result"]["result"]
         event(f"outcome={res}")
-        assert res == ("fail_fast" if strict else "evicted")
+        assert res == "fail_fast"
 
 
 # =============================================================================
@@ -400,7 +401,6 @@ def test_corruption(strict):
     cache_config=st.fixed_dictionaries({
         "maxsize": st.integers(min_value=1, max_value=1000),
         "write_once": st.booleans(),
-        "strict": st.booleans(),
     }),
     ops=st.lists(
         st.tuples(st.sampled_from(["put", "get"]), st.integers(0, 100)),
@@ -425,7 +425,6 @@ def test_ops(cfg, ops):
     return "ok"
 """
     result = run_in_subprocess(func_code, "test_ops", args={"cfg": cache_config, "ops": ops})
-    event(f"strict={cache_config['strict']}")
     event(f"write_once={cache_config['write_once']}")
     put_count = sum(1 for op, _ in ops if op == "put")
     event(f"op_mix={'put_heavy' if put_count > len(ops) // 2 else 'get_heavy'}")

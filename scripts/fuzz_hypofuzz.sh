@@ -25,7 +25,15 @@ if [[ "${BASH_VERSINFO[0]}" -ge 5 ]]; then
     shopt -s inherit_errexit 2>/dev/null || true
 fi
 
-PY_VERSION="${PY_VERSION:-3.13}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "$PROJECT_ROOT/scripts/lib/python_support_contract.sh"
+
+# Premise: property/fuzz entrypoints should share the same default interpreter
+# contract as the core lint/test gates.
+# Reason: one source of truth keeps corpus, repro, and CI lanes from drifting.
+PY_VERSION="${PY_VERSION:-$FTLLEXENGINE_PYTHON_MIN}"
 if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
     TARGET_VENV=".venv-devcontainer-${PY_VERSION}"
 else
@@ -52,9 +60,6 @@ else
 fi
 
 export TMPDIR="/tmp"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 IS_GHA="${GITHUB_ACTIONS:-false}"
 readonly FUZZ_LIB_DIR="$SCRIPT_DIR/lib/fuzz_hypofuzz"
 

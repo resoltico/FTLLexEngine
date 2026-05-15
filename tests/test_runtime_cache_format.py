@@ -20,7 +20,10 @@ from hypothesis import strategies as st
 
 import ftllexengine
 from ftllexengine import FluentBundle
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
+from ftllexengine.constants import (
+    DEFAULT_CACHE_SIZE,
+    DEFAULT_MAX_ENTRY_PAYLOAD_BYTES,
+)
 from ftllexengine.core.locale_utils import (
     _get_babel_locale_normalized,
     clear_locale_cache,
@@ -267,11 +270,11 @@ class TestCacheConfigValidation:
         event(f"size={value}")
 
     @given(value=st.integers(max_value=0))
-    def test_max_entry_weight_rejects_non_positive(self, value: int) -> None:
-        """max_entry_weight <= 0 raises ValueError at construction."""
-        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
-            CacheConfig(max_entry_weight=value)
-        event(f"max_entry_weight={value}")
+    def test_max_entry_payload_bytes_rejects_non_positive(self, value: int) -> None:
+        """max_entry_payload_bytes <= 0 raises ValueError at construction."""
+        with pytest.raises(ValueError, match="max_entry_payload_bytes must be positive"):
+            CacheConfig(max_entry_payload_bytes=value)
+        event(f"max_entry_payload_bytes={value}")
 
     @given(value=st.integers(max_value=0))
     def test_max_errors_per_entry_rejects_non_positive(self, value: int) -> None:
@@ -281,60 +284,54 @@ class TestCacheConfigValidation:
         event(f"max_errors_per_entry={value}")
 
     @given(value=st.integers(max_value=0))
-    def test_max_audit_entries_rejects_non_positive(self, value: int) -> None:
-        """max_audit_entries <= 0 raises ValueError at construction."""
-        with pytest.raises(ValueError, match="max_audit_entries must be positive"):
-            CacheConfig(max_audit_entries=value)
-        event(f"max_audit_entries={value}")
+    def test_max_debug_entries_rejects_non_positive(self, value: int) -> None:
+        """max_debug_entries <= 0 raises ValueError at construction."""
+        with pytest.raises(ValueError, match="max_debug_entries must be positive"):
+            CacheConfig(max_debug_entries=value)
+        event(f"max_debug_entries={value}")
 
     @given(
         size=st.integers(min_value=1, max_value=100_000),
-        max_entry_weight=st.integers(min_value=1, max_value=100_000),
+        max_entry_payload_bytes=st.integers(min_value=1, max_value=100_000),
         max_errors_per_entry=st.integers(min_value=1, max_value=1000),
-        max_audit_entries=st.integers(min_value=1, max_value=100_000),
+        max_debug_entries=st.integers(min_value=1, max_value=100_000),
         write_once=st.booleans(),
-        integrity_strict=st.booleans(),
-        enable_audit=st.booleans(),
+        enable_debug_log=st.booleans(),
     )
     def test_valid_construction_preserves_all_fields(
         self,
         size: int,
-        max_entry_weight: int,
+        max_entry_payload_bytes: int,
         max_errors_per_entry: int,
-        max_audit_entries: int,
+        max_debug_entries: int,
         write_once: bool,
-        integrity_strict: bool,
-        enable_audit: bool,
+        enable_debug_log: bool,
     ) -> None:
         """All positive numeric fields and any boolean combination succeeds."""
         cfg = CacheConfig(
             size=size,
             write_once=write_once,
-            integrity_strict=integrity_strict,
-            enable_audit=enable_audit,
-            max_audit_entries=max_audit_entries,
-            max_entry_weight=max_entry_weight,
+            enable_debug_log=enable_debug_log,
+            max_debug_entries=max_debug_entries,
+            max_entry_payload_bytes=max_entry_payload_bytes,
             max_errors_per_entry=max_errors_per_entry,
         )
         assert cfg.size == size
         assert cfg.write_once is write_once
-        assert cfg.integrity_strict is integrity_strict
-        assert cfg.enable_audit is enable_audit
-        assert cfg.max_audit_entries == max_audit_entries
-        assert cfg.max_entry_weight == max_entry_weight
+        assert cfg.enable_debug_log is enable_debug_log
+        assert cfg.max_debug_entries == max_debug_entries
+        assert cfg.max_entry_payload_bytes == max_entry_payload_bytes
         assert cfg.max_errors_per_entry == max_errors_per_entry
-        strict_label = "strict" if integrity_strict else "lenient"
-        event(f"outcome={strict_label}")
+        event(f"debug_log={'enabled' if enable_debug_log else 'disabled'}")
 
     def test_defaults_match_constants(self) -> None:
         """Default CacheConfig() uses documented constant defaults."""
         cfg = CacheConfig()
         assert cfg.size == DEFAULT_CACHE_SIZE
-        assert cfg.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
+        assert cfg.max_entry_payload_bytes == DEFAULT_MAX_ENTRY_PAYLOAD_BYTES
         assert cfg.write_once is False
-        assert cfg.integrity_strict is True
-        assert cfg.enable_audit is False
-        assert cfg.max_audit_entries == 10_000
+        assert cfg.enable_debug_log is False
+        assert cfg.max_debug_entries == 10_000
         assert cfg.max_errors_per_entry == 50
 
     def test_immutability_enforced(self) -> None:
@@ -345,7 +342,7 @@ class TestCacheConfigValidation:
         with pytest.raises(AttributeError):
             cfg.write_once = True  # type: ignore[misc]
         with pytest.raises(AttributeError):
-            cfg.integrity_strict = False  # type: ignore[misc]
+            cfg.enable_debug_log = True  # type: ignore[misc]
 
     def test_equality_and_identity(self) -> None:
         """Equal configs compare equal; different configs compare unequal."""
@@ -454,7 +451,7 @@ class TestCacheIntrospection:
 
     def test_cache_put_updates_existing_key(self) -> None:
         """Updating existing cache entry moves it to end (LRU)."""
-        cache = IntegrityCache(strict=False, maxsize=2)
+        cache = IntegrityCache(maxsize=2)
 
         # Put initial value
         cache.put("msg1", {"name": "Alice"}, None, "en", use_isolating=True, formatted="Hello Alice", errors=())
@@ -848,16 +845,23 @@ class TestCacheConcurrency:
             except Exception as e:  # pylint: disable=broad-exception-caught
                 errors.append(e)
 
-        def add_resource() -> None:
+        def add_resource(worker_prefix: str) -> None:
             try:
                 for i in range(5):
-                    bundle.add_resource(f"msg{i} = World {i}")
+                    # Premise: this test targets concurrency and cache safety,
+                    # not overwrite admission. Reason: each worker uses its own
+                    # message namespace so duplicate-ID policy stays out of the
+                    # signal we are trying to measure here.
+                    bundle.add_resource(f"{worker_prefix}_msg{i} = World {i}")
             except Exception as e:  # pylint: disable=broad-exception-caught
                 errors.append(e)
 
         # Mix of formatting and resource addition
         format_threads = [threading.Thread(target=format_message) for _ in range(3)]
-        add_threads = [threading.Thread(target=add_resource) for _ in range(2)]
+        add_threads = [
+            threading.Thread(target=add_resource, args=(f"worker{index}",))
+            for index in range(2)
+        ]
 
         all_threads = format_threads + add_threads
         for thread in all_threads:

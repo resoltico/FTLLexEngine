@@ -6,7 +6,7 @@ Properties verified:
 - Concurrent: multiple concurrent format_pattern calls produce consistent results.
 - Context manager: async with always exits cleanly regardless of operations.
 - Stability: format_pattern on unknown message ID behaves predictably (non-strict mode).
-- Immutability: sync read operations (has_message, get_message, etc.) are consistent.
+- Immutability: async read operations (has_message, get_message, etc.) are consistent.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ class TestAsyncBundleVsSyncOracle:
         async def run_async() -> set[str]:
             async_bundle = AsyncFluentBundle(locale, use_isolating=False, strict=False)
             await async_bundle.add_resource(source)
-            return set(async_bundle.get_message_ids())
+            return set(await async_bundle.get_message_ids())
 
         async_ids = asyncio.run(run_async())
         event(
@@ -128,7 +128,9 @@ class TestAsyncBundleVsSyncOracle:
             b_str = AsyncFluentBundle(locale, use_isolating=False, strict=False)
             await b_buf.add_resource(source)
             await b_str.add_resource_stream(source.splitlines(keepends=True))
-            return set(b_buf.get_message_ids()), set(b_str.get_message_ids())
+            buffered_ids = set(await b_buf.get_message_ids())
+            streamed_ids = set(await b_str.get_message_ids())
+            return buffered_ids, streamed_ids
 
         ids_buf, ids_stream = asyncio.run(run_async())
         event(
@@ -218,7 +220,7 @@ class TestAsyncContextManager:
                 locale, use_isolating=False, strict=False
             ) as bundle:
                 await bundle.add_resource(source)
-                ids = list(bundle.get_message_ids())
+                ids = list(await bundle.get_message_ids())
                 if ids:
                     r, _ = await bundle.format_pattern(ids[0])
                     return r
@@ -241,12 +243,12 @@ class TestAsyncContextManager:
 
 
 # ---------------------------------------------------------------------------
-# Sync read operations consistency
+# Async read operations consistency
 # ---------------------------------------------------------------------------
 
 
-class TestSyncReadOperationsConsistency:
-    """Property: sync read operations reflect state set by async mutation ops."""
+class TestAsyncReadOperationsConsistency:
+    """Property: async read operations reflect state set by async mutation ops."""
 
     @given(
         locale=_locale_strategy,
@@ -262,8 +264,8 @@ class TestSyncReadOperationsConsistency:
         async def run_async() -> tuple[list[str], list[bool]]:
             bundle = AsyncFluentBundle(locale, use_isolating=False, strict=False)
             await bundle.add_resource(source)
-            ids = list(bundle.get_message_ids())
-            has_flags = [bundle.has_message(mid) for mid in ids]
+            ids = list(await bundle.get_message_ids())
+            has_flags = [await bundle.has_message(mid) for mid in ids]
             return ids, has_flags
 
         registered_ids, has_flags = asyncio.run(run_async())
@@ -286,8 +288,12 @@ class TestSyncReadOperationsConsistency:
         async def run_async() -> tuple[bool, int]:
             bundle = AsyncFluentBundle(locale, use_isolating=False, strict=False)
             await bundle.add_resource(source)
-            ids = list(bundle.get_message_ids())
-            all_found = all(bundle.get_message(mid) is not None for mid in ids)
+            ids = list(await bundle.get_message_ids())
+            all_found = True
+            for mid in ids:
+                if await bundle.get_message(mid) is None:
+                    all_found = False
+                    break
             return all_found, len(ids)
 
         result, count = asyncio.run(run_async())
@@ -332,7 +338,7 @@ class TestSyncReadOperationsConsistency:
         """
         async def run_async() -> bool:
             bundle = AsyncFluentBundle(locale, use_isolating=False, strict=False)
-            return bundle.has_attribute(unknown_id, "label")
+            return await bundle.has_attribute(unknown_id, "label")
 
         result = asyncio.run(run_async())
         assert result is False

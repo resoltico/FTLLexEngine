@@ -39,7 +39,12 @@ if TYPE_CHECKING:
 
     from ftllexengine.syntax.parser import FluentParserV1
 
-__all__ = ["validate_resource"]
+__all__ = [
+    "_check_undefined_references",
+    "_collect_entries",
+    "_detect_circular_references",
+    "validate_resource",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +59,7 @@ def _detect_circular_references(graph: dict[str, set[str]]) -> list[ValidationWa
 
 
 def validate_resource(
-    source: str,
+    source: object,
     *,
     parser: FluentParserV1 | None = None,
     known_messages: frozenset[str] | None = None,
@@ -110,7 +115,7 @@ def validate_resource(
     # Type validation at API boundary - type hints are not enforced at runtime.
     # Defensive check: users may pass bytes despite str annotation.
     if not isinstance(source, str):
-        msg = (  # type: ignore[unreachable]
+        msg = (
             f"source must be str, not {type(source).__name__}. "
             "Decode bytes to str (e.g., source.decode('utf-8')) before calling validate_resource()."
         )

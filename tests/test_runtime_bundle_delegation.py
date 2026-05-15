@@ -15,8 +15,9 @@ from hypothesis import assume, event, given
 from hypothesis import strategies as st
 
 from ftllexengine.constants import MAX_LOCALE_LENGTH_HARD_LIMIT
+from ftllexengine.core.value_types import FluentValue
 from ftllexengine.diagnostics import ErrorCategory
-from ftllexengine.integrity import FormattingIntegrityError
+from ftllexengine.integrity import FormattingIntegrityError, ResourceConflictIntegrityError
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.cache_config import CacheConfig
 
@@ -96,32 +97,28 @@ class TestLocaleValidationDoSPrevention:
 
 
 # ============================================================================
-# COVERAGE: Line 674 (Term overwriting warning)
+# COVERAGE: explicit overwrite admission for existing terms
 # ============================================================================
 
 
 class TestTermOverwritingWarning:
-    """Test term overwriting produces warning log (line 674)."""
+    """Test term replacement requires explicit overwrite admission."""
 
-    def test_overwriting_term_logs_warning(self, caplog: Any) -> None:
-        """Overwriting existing term logs warning with term ID."""
+    def test_overwriting_term_requires_allow_overwrite(self, caplog: Any) -> None:
+        """Implicit term replacement is rejected with a conflict error."""
         bundle = FluentBundle("en")
 
         # Add initial term
         bundle.add_resource("-brand = Firefox")
         assert "-brand" not in bundle.get_message_ids()  # Terms not in message IDs
 
-        # Overwrite term - should trigger warning on line 674
-        bundle.add_resource("-brand = Chrome")
+        with pytest.raises(ResourceConflictIntegrityError, match="-brand"):
+            bundle.add_resource("-brand = Chrome")
 
-        # Verify warning was logged
-        assert any(
-            "Overwriting existing term '-brand'" in record.message
-            for record in caplog.records
-        )
+        assert caplog.records == []
 
-    def test_overwriting_multiple_terms_logs_each(self, caplog: Any) -> None:
-        """Overwriting multiple terms logs separate warning for each."""
+    def test_allow_overwrite_replaces_existing_terms(self, caplog: Any) -> None:
+        """Explicit overwrite replaces the prior term without warning noise."""
         bundle = FluentBundle("en")
 
         # Add initial terms
@@ -134,26 +131,34 @@ class TestTermOverwritingWarning:
 
         caplog.clear()
 
-        # Overwrite both terms
         bundle.add_resource(
             """
 -brand = Chrome
 -version = 2.0
-"""
+""",
+            allow_overwrite=True,
         )
 
-        # Should have two warnings
-        warnings = [r for r in caplog.records if "Overwriting existing term" in r.message]
-        assert len(warnings) == 2
-        assert any("-brand" in w.message for w in warnings)
-        assert any("-version" in w.message for w in warnings)
+        replacement_warnings = [
+            record.message
+            for record in caplog.records
+            if "Replacing existing bundle entry" in record.message
+        ]
+        assert any("-brand" in message for message in replacement_warnings)
+        assert any("-version" in message for message in replacement_warnings)
+        brand_term = bundle.get_term("brand")
+        version_term = bundle.get_term("version")
+        assert brand_term is not None
+        assert brand_term.value is not None
+        assert version_term is not None
+        assert version_term.value is not None
+        assert getattr(brand_term.value.elements[0], "value", None) == "Chrome"
+        assert getattr(version_term.value.elements[0], "value", None) == "2.0"
 
     @given(
         st.lists(
             st.text(
-                alphabet=st.characters(
-                    whitelist_categories=("Ll", "Lu"), min_codepoint=0x0061
-                ),
+                alphabet=st.characters(min_codepoint=0x61, max_codepoint=0x7A),
                 min_size=1,
                 max_size=20,
             ),
@@ -165,8 +170,7 @@ class TestTermOverwritingWarning:
     def test_property_overwriting_any_term_logs_warning(
         self, term_ids: list[str]
     ) -> None:
-        """Property: Overwriting any term produces warning (log check omitted)."""
-        assume(all(tid.isidentifier() for tid in term_ids))
+        """Property: replacement needs admission and succeeds once explicit."""
         event(f"term_count={len(term_ids)}")
 
         bundle = FluentBundle("en", strict=False)
@@ -175,12 +179,10 @@ class TestTermOverwritingWarning:
         for tid in term_ids:
             bundle.add_resource(f"-{tid} = Original")
 
-        # Overwrite all terms - should succeed without errors
         for tid in term_ids:
-            bundle.add_resource(f"-{tid} = Updated")
-
-        # Verify terms were overwritten (no exception = success)
-        # Note: Log verification removed - hypothesis tests shouldn't use fixtures
+            with pytest.raises(ResourceConflictIntegrityError, match=rf"-{tid}"):
+                bundle.add_resource(f"-{tid} = Updated")
+            bundle.add_resource(f"-{tid} = Updated", allow_overwrite=True)
 
 
 # ============================================================================
@@ -402,6 +404,71 @@ class TestInvalidArgsTypeValidation:
         assert result == "{???}"
         assert len(errors) == 1
         assert errors[0].category == ErrorCategory.RESOLUTION
+
+    def test_top_level_args_key_must_be_string(self) -> None:
+        """Non-string top-level mapping keys should fail before cache shaping."""
+        bundle = FluentBundle("en", strict=False)
+        bundle.add_resource("msg = Test")
+
+        result, errors = bundle.format_pattern("msg", {1: "value"})  # type: ignore[dict-item]
+
+        assert result == "{???}"
+        assert len(errors) == 1
+        assert "Invalid args key type" in str(errors[0])
+
+    def test_nested_mapping_key_must_be_string(self) -> None:
+        """Nested mappings should be rejected before recursive cache-key normalization."""
+        bundle = FluentBundle("en", strict=False)
+        bundle.add_resource("msg = Test")
+
+        result, errors = bundle.format_pattern(
+            "msg",
+            {"payload": {1: "value"}},  # type: ignore[dict-item]
+        )
+
+        assert result == "{???}"
+        assert len(errors) == 1
+        assert "Invalid nested mapping key" in str(errors[0])
+
+    def test_deep_nested_mapping_key_error_bubbles_up(self) -> None:
+        """Nested mapping validation should propagate deeper failures back up."""
+        bundle = FluentBundle("en", strict=False)
+        bundle.add_resource("msg = Test")
+
+        result, errors = bundle.format_pattern(
+            "msg",
+            {"payload": {"inner": {1: "value"}}},  # type: ignore[dict-item]
+        )
+
+        assert result == "{???}"
+        assert len(errors) == 1
+        assert "Invalid nested mapping key" in str(errors[0])
+
+    def test_nested_sequence_key_error_bubbles_up(self) -> None:
+        """Nested sequence validation should propagate mapping-key failures too."""
+        bundle = FluentBundle("en", strict=False)
+        bundle.add_resource("msg = Test")
+
+        result, errors = bundle.format_pattern(
+            "msg",
+            {"payload": [{"inner": {1: "value"}}]},  # type: ignore[dict-item]
+        )
+
+        assert result == "{???}"
+        assert len(errors) == 1
+        assert "Invalid nested mapping key" in str(errors[0])
+
+    def test_cyclic_nested_mapping_is_tolerated_by_validation_walk(self) -> None:
+        """Self-referential nested mappings should not recurse forever."""
+        bundle = FluentBundle("en", strict=False, cache=None)
+        bundle.add_resource("msg = Ready")
+        payload: dict[str, FluentValue] = {}
+        payload["self"] = payload
+
+        result, errors = bundle.format_pattern("msg", {"payload": payload})
+
+        assert result == "Ready"
+        assert errors == ()
 
 
 # ============================================================================

@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: DIAGNOSTICS
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [ParserAnnotation, ValidationResult, ValidationError, ValidationWarning, DiagnosticCode, DiagnosticFormatter, OutputFormat, SourceSpan]
   questions: ["what validation result types exist?", "how do I format diagnostics output?", "where are diagnostic codes and source spans documented?"]
@@ -75,6 +75,7 @@ class ValidationWarning:
 - Import: `from ftllexengine.diagnostics import ValidationWarning`
 - Produced by: `validate_resource()`
 - Formatting helper: `.format()` delegates to `DiagnosticFormatter`
+- Severity: `WarningSeverity.CRITICAL` marks a fail-closed semantic violation and contributes to `ValidationResult.critical_warning_count`
 
 ---
 
@@ -114,9 +115,10 @@ class ValidationResult:
 ### Constraints
 - Import: `from ftllexengine.diagnostics import ValidationResult`
 - Produced by: `validate_resource()`
-- Properties: `is_valid`, `error_count`, `warning_count`, `annotation_count`
+- Properties: `is_valid`, `error_count`, `warning_count`, `annotation_count`, `critical_warning_count`
 - Factories: `valid()`, `invalid()`, `from_annotations()`
 - Annotation contract: stores any object satisfying `ParserAnnotation`; parser AST `Annotation` nodes are the common implementation
+- Validity rule: `is_valid` is `False` when errors, parser annotations, or critical semantic warnings are present
 - Formatting helper: `.format()` delegates to `DiagnosticFormatter`
 
 ---

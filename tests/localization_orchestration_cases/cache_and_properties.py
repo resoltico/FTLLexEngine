@@ -9,7 +9,7 @@ from hypothesis import strategies as st
 
 from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.localization import (
-    CacheAuditLogEntry,
+    CacheDebugLogEntry,
     FluentLocalization,
     PathResourceLoader,
 )
@@ -75,67 +75,67 @@ class TestCacheStatsBranch:
         assert stats["bundle_count"] == 2
         assert stats["maxsize"] == 100  # Only en's maxsize
 
-class TestCacheAuditLogBranch:
-    """Tests for get_cache_audit_log per-locale audit access."""
+class TestCacheDebugLogBranch:
+    """Tests for get_cache_debug_log per-locale access."""
 
     def test_returns_none_when_caching_disabled(self) -> None:
-        """get_cache_audit_log() returns None when localization caching is disabled."""
+        """get_cache_debug_log() returns None when localization caching is disabled."""
         l10n = FluentLocalization(["en"])
         l10n.add_resource("en", "msg = Hello\n")
 
-        assert l10n.get_cache_audit_log() is None
+        assert l10n.get_cache_debug_log() is None
 
     def test_returns_empty_mapping_when_no_bundles_initialized(self) -> None:
-        """get_cache_audit_log() does not create bundles during inspection."""
-        l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_audit=True))
+        """get_cache_debug_log() does not create bundles during inspection."""
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_debug_log=True))
 
-        audit_logs = l10n.get_cache_audit_log()
-        assert audit_logs == {}
+        debug_logs = l10n.get_cache_debug_log()
+        assert debug_logs == {}
 
-    def test_returns_per_locale_write_log_entries(self) -> None:
-        """get_cache_audit_log() returns immutable CacheAuditLogEntry tuples per locale."""
-        l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_audit=True))
+    def test_returns_per_locale_debug_log_entries(self) -> None:
+        """get_cache_debug_log() returns immutable CacheDebugLogEntry tuples per locale."""
+        l10n = FluentLocalization(["en", "de"], cache=CacheConfig(enable_debug_log=True))
         l10n.add_resource("en", "msg = Hello\n")
         l10n.add_resource("de", "msg = Hallo\n")
 
         l10n.format_value("msg")
         l10n.format_value("msg")
 
-        audit_logs = l10n.get_cache_audit_log()
-        assert audit_logs is not None
-        assert list(audit_logs) == ["en", "de"]
-        assert [entry.operation for entry in audit_logs["en"]] == ["MISS", "PUT", "HIT"]
-        assert audit_logs["de"] == ()
-        assert all(isinstance(entry, CacheAuditLogEntry) for entry in audit_logs["en"])
+        debug_logs = l10n.get_cache_debug_log()
+        assert debug_logs is not None
+        assert list(debug_logs) == ["en", "de"]
+        assert [entry.operation for entry in debug_logs["en"]] == ["MISS", "PUT", "HIT"]
+        assert debug_logs["de"] == ()
+        assert all(isinstance(entry, CacheDebugLogEntry) for entry in debug_logs["en"])
 
-    @given(enable_audit=st.booleans(), locales=locale_chains(min_size=1, max_size=3))
+    @given(enable_debug_log=st.booleans(), locales=locale_chains(min_size=1, max_size=3))
     @settings(max_examples=20, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_property_audit_log_tracks_initialized_locales(
-        self, enable_audit: bool, locales: list[str]
+    def test_property_debug_log_tracks_initialized_locales(
+        self, enable_debug_log: bool, locales: list[str]
     ) -> None:
-        """PROPERTY: get_cache_audit_log() uses canonical locale keys."""
-        l10n = FluentLocalization(locales, cache=CacheConfig(enable_audit=enable_audit))
+        """PROPERTY: get_cache_debug_log() uses canonical locale keys."""
+        l10n = FluentLocalization(locales, cache=CacheConfig(enable_debug_log=enable_debug_log))
         for locale in locales:
             l10n.add_resource(locale, "msg = Hello\n")
 
         l10n.format_value("msg")
 
-        audit_logs = l10n.get_cache_audit_log()
-        assert audit_logs is not None
+        debug_logs = l10n.get_cache_debug_log()
+        assert debug_logs is not None
         normalized_locales = [normalize_locale(locale) for locale in locales]
-        assert list(audit_logs) == normalized_locales
+        assert list(debug_logs) == normalized_locales
 
-        event(f"audit={'enabled' if enable_audit else 'disabled'}")
+        event(f"debug_log={'enabled' if enable_debug_log else 'disabled'}")
         event(f"locale_count={len(locales)}")
 
-        if enable_audit:
-            assert len(audit_logs[normalized_locales[0]]) >= 2
+        if enable_debug_log:
+            assert len(debug_logs[normalized_locales[0]]) >= 2
             assert all(
-                isinstance(entry, CacheAuditLogEntry)
-                for entry in audit_logs[normalized_locales[0]]
+                isinstance(entry, CacheDebugLogEntry)
+                for entry in debug_logs[normalized_locales[0]]
             )
         else:
-            assert all(log == () for log in audit_logs.values())
+            assert all(log == () for log in debug_logs.values())
 
 class TestFormatPattern:
     """Tests for format_pattern fallback chain edge cases."""
@@ -356,15 +356,17 @@ class TestOrchestrationProperties:
         value1: str,
         value2: str,
     ) -> None:
-        """Adding resource twice uses latest value (override property)."""
-        event("outcome=override")
+        """Explicit overwrite admission replaces the earlier localized value."""
+        event("outcome=explicit_override")
         locale = locales[0]
         l10n = FluentLocalization([locale])
 
         l10n.add_resource(locale, f"{message_id} = {value1}")
         result1, _ = l10n.format_value(message_id)
 
-        l10n.add_resource(locale, f"{message_id} = {value2}")
+        # Premise: replacing a canonical message ID is a deliberate mutation.
+        # Reason: tests must opt in explicitly instead of relying on load order.
+        l10n.add_resource(locale, f"{message_id} = {value2}", allow_overwrite=True)
         result2, _ = l10n.format_value(message_id)
 
         assert value1 in result1 or value2 in result1

@@ -17,6 +17,7 @@ from hypothesis import event, given, settings
 
 from ftllexengine import FluentBundle
 from ftllexengine.constants import MAX_IDENTIFIER_LENGTH as _MAX_IDENTIFIER_LENGTH
+from ftllexengine.integrity import ResourceConflictIntegrityError
 from ftllexengine.syntax.ast import Junk, Message
 from ftllexengine.syntax.parser import FluentParserV1
 from ftllexengine.validation import validate_resource
@@ -273,11 +274,13 @@ class TestBundleBehavioralContracts:
         assert bundle.has_message("msg1")
         assert bundle.has_message("msg2")
 
-    def test_later_definition_overwrites_earlier_same_key(self) -> None:
-        """A later definition of the same key overwrites the earlier definition."""
+    def test_later_definition_requires_explicit_replacement(self) -> None:
+        """Replacing a key requires an explicit overwrite admission."""
         bundle = FluentBundle("en")
         bundle.add_resource("msg = First")
-        bundle.add_resource("msg = Second")
+        with pytest.raises(ResourceConflictIntegrityError, match="msg"):
+            bundle.add_resource("msg = Second")
+        bundle.add_resource("msg = Second", allow_overwrite=True)
         result, errors = bundle.format_pattern("msg")
         assert not errors
         assert result == "Second"

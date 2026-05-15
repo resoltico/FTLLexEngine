@@ -34,6 +34,7 @@ from ftllexengine.integrity import (
     ImmutabilityViolationError,
     IntegrityCheckFailedError,
     IntegrityContext,
+    ResourceConflictIntegrityError,
     SyntaxIntegrityError,
     WriteConflictError,
 )
@@ -159,6 +160,8 @@ class TestDataIntegrityError:
         assert error.context is context
         assert error.context.component == context.component
         assert error.context.operation == context.operation
+        assert error.evidence.message == message
+        assert error.evidence.context is context
 
     @given(message=error_messages())
     @settings(max_examples=50)
@@ -758,6 +761,23 @@ class TestSyntaxIntegrityError:
         assert isinstance(caught, SyntaxIntegrityError)
         assert caught.source_path == "locales/en/main.ftl"
         assert len(caught.junk_entries) == 1
+
+
+class TestResourceConflictIntegrityError:
+    """Resource conflict exceptions should retain structured overwrite evidence."""
+
+    def test_conflict_properties_expose_duplicate_shadow_and_source_path(self) -> None:
+        """Duplicate and shadowed IDs are part of the public integrity contract."""
+        error = ResourceConflictIntegrityError(
+            "duplicate ids",
+            duplicate_ids=("msg", "-term"),
+            shadowed_ids=("existing",),
+            source_path="locales/en/main.ftl",
+        )
+
+        assert error.duplicate_ids == ("msg", "-term")
+        assert error.shadowed_ids == ("existing",)
+        assert error.source_path == "locales/en/main.ftl"
 
 
 # =============================================================================
