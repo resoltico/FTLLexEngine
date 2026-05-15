@@ -5,6 +5,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The release runbook now keeps its verification workspace alive through the negative Python-floor check.**
+  `docs/RELEASE_PROTOCOL.md` no longer deletes `TMP_DIR` before the explicit Python 3.12
+  rejection step, and the documentation contract tests now enforce that cleanup happens only after
+  the positive install proof and the negative floor proof have both run.
+
 ## [0.167.0] - 2026-05-15
 
 ### Changed

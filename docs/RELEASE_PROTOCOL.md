@@ -400,7 +400,6 @@ gh release download vX.Y.Z \
 uv venv --python 3.13 --seed "$TMP_DIR/py313"
 "$TMP_DIR/py313/bin/pip" install --no-cache-dir "ftllexengine==X.Y.Z"
 "$TMP_DIR/py313/bin/python" -c "import ftllexengine as pkg; print(pkg.__version__)"
-rm -rf "$TMP_DIR"
 ```
 
 Use `uv` for this installability check even if the host shell does not expose a direct
@@ -416,6 +415,8 @@ if "$TMP_DIR/py312/bin/pip" install --no-cache-dir "ftllexengine==X.Y.Z"; then
   echo "Unexpected Python 3.12 install success"
   exit 1
 fi
+
+rm -rf "$TMP_DIR"
 ```
 
 The release is not complete until the release object, assets, and real install test all succeed.
