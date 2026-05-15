@@ -341,9 +341,11 @@ the PyPI job fails — repair the workflow on `main`, merge the fix, and then re
 `workflow_dispatch` for the existing tag. Do not delete, move, or recreate the tag to retrigger
 publication.
 
-If the publish workflow fails immediately because the tag is the wrong object type and GitHub
-Release assets were never created, fix the contract first, then replace the tag exactly once with
-an annotated tag on the intended release commit:
+If the publish workflow fails before any public release object or assets exist because the tag is
+the wrong object type, or because the publish contract itself needed correction, treat publication
+as not yet started. Fix the defect on a normal branch and PR first. If that fix changes `main`,
+reopen Step 5 on the merged corrective commit and use that newly verified `main` commit as the
+release target. Then replace the bad tag exactly once with an annotated tag:
 
 ```bash
 gh release view vX.Y.Z --json tagName,isDraft,isPrerelease,publishedAt,url,assets || true
@@ -353,10 +355,11 @@ git tag -a vX.Y.Z -m "Release X.Y.Z"
 git push origin vX.Y.Z
 ```
 
-This recovery is allowed only when both of these are true:
+This recovery is allowed only when all of these are true:
 
 - the failed publish run exited before any public release object or assets were created;
-- the replacement tag points to the same intended release commit you already verified in Step 5.
+- any release-blocking corrective fix has already been merged through the normal PR path;
+- the replacement tag points to the intended release commit you most recently re-verified in Step 5.
 
 If GitHub Release assets need manual convergence after the workflow, use:
 

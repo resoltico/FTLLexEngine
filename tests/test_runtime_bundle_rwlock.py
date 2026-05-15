@@ -9,10 +9,31 @@ Verifies that:
 
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from queue import Empty, SimpleQueue
 
 from ftllexengine.runtime.bundle import FluentBundle
 from ftllexengine.runtime.cache_config import CacheConfig
+
+
+# Premise:
+# Free-threaded CPython no longer serializes unsynchronized test bookkeeping
+# through the GIL, so worker threads must not mutate shared counters and
+# result lists if we want the test outcome to reflect the bundle contract.
+#
+# Reason:
+# These concurrency tests aggregate worker results in the owning thread or via
+# a thread-safe queue so failures expose runtime locking defects instead of
+# races in the test harness itself.
+def _drain_simple_queue[T](queue: SimpleQueue[T]) -> list[T]:
+    """Return every queued item after producers have finished."""
+    items: list[T] = []
+    while True:
+        try:
+            items.append(queue.get_nowait())
+        except Empty:
+            return items
 
 
 class TestBundleReadOperationsConcurrency:
@@ -23,16 +44,12 @@ class TestBundleReadOperationsConcurrency:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
-        results = []
-
-        def format_message() -> None:
-            result, errors = bundle.format_pattern("msg", {"name": "World"})
-            results.append((result, errors))
+        def format_message() -> tuple[str, tuple[object, ...]]:
+            return bundle.format_pattern("msg", {"name": "World"})
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(format_message) for _ in range(50)]
-            for future in futures:
-                future.result()
+            results = [future.result() for future in futures]
 
         assert len(results) == 50
         for result, errors in results:
@@ -44,17 +61,14 @@ class TestBundleReadOperationsConcurrency:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("msg1 = Hello")
 
-        results = []
-
-        def check_message() -> None:
+        def check_message() -> tuple[bool, bool]:
             has_msg1 = bundle.has_message("msg1")
             has_msg2 = bundle.has_message("msg2")
-            results.append((has_msg1, has_msg2))
+            return (has_msg1, has_msg2)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(check_message) for _ in range(30)]
-            for future in futures:
-                future.result()
+            results = [future.result() for future in futures]
 
         assert len(results) == 30
         for has_msg1, has_msg2 in results:
@@ -66,16 +80,13 @@ class TestBundleReadOperationsConcurrency:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("price = { NUMBER($amount, minimumFractionDigits: 2) }")
 
-        results = []
-
-        def introspect() -> None:
+        def introspect() -> frozenset[str]:
             info = bundle.introspect_message("price")
-            results.append(info.get_variable_names())
+            return info.get_variable_names()
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(introspect) for _ in range(20)]
-            for future in futures:
-                future.result()
+            results = [future.result() for future in futures]
 
         assert len(results) == 20
         for var_names in results:
@@ -86,16 +97,13 @@ class TestBundleReadOperationsConcurrency:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("msg1 = Hello")
 
-        results = []
-
-        def validate() -> None:
+        def validate() -> bool:
             result = bundle.validate_resource("msg2 = World")
-            results.append(result.is_valid)
+            return result.is_valid
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(validate) for _ in range(20)]
-            for future in futures:
-                future.result()
+            results = [future.result() for future in futures]
 
         assert len(results) == 20
         assert all(results)
@@ -142,11 +150,11 @@ class TestBundleWriteOperationsExclusive:
         """Multiple add_resource calls are serialized (exclusive write access)."""
         bundle = FluentBundle("en", use_isolating=False)
 
-        messages_added = []
+        messages_added: SimpleQueue[int] = SimpleQueue()
 
         def add_message(msg_id: int) -> None:
             bundle.add_resource(f"msg{msg_id} = Message {msg_id}")
-            messages_added.append(msg_id)
+            messages_added.put(msg_id)
             time.sleep(0.01)  # Simulate work
 
         threads = [threading.Thread(target=add_message, args=(i,)) for i in range(5)]
@@ -155,9 +163,11 @@ class TestBundleWriteOperationsExclusive:
         for thread in threads:
             thread.join()
 
+        added_ids = _drain_simple_queue(messages_added)
+
         # All messages should be added
-        assert len(messages_added) == 5
-        assert set(messages_added) == {0, 1, 2, 3, 4}
+        assert len(added_ids) == 5
+        assert set(added_ids) == {0, 1, 2, 3, 4}
 
         # Verify all messages exist
         for i in range(5):
@@ -207,22 +217,19 @@ class TestBundleReadWriteMixedConcurrency:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("msg = Hello, { $name }!")
 
-        read_count = 0
-        write_count = 0
-
-        def reader() -> None:
-            nonlocal read_count
+        def reader() -> int:
+            local_reads = 0
             for _ in range(10):
                 result, _ = bundle.format_pattern("msg", {"name": "Test"})
                 assert result == "Hello, Test!"
-                read_count += 1
+                local_reads += 1
                 time.sleep(0.001)
+            return local_reads
 
-        def writer() -> None:
-            nonlocal write_count
+        def writer() -> int:
             time.sleep(0.02)  # Let readers start
             bundle.add_resource("msg2 = New message")
-            write_count += 1
+            return 1
 
         with ThreadPoolExecutor(max_workers=15) as executor:
             # Many readers
@@ -230,8 +237,8 @@ class TestBundleReadWriteMixedConcurrency:
             # One writer
             writer_future = executor.submit(writer)
 
-            for future in [*reader_futures, writer_future]:
-                future.result()
+            read_count = sum(future.result() for future in reader_futures)
+            write_count = writer_future.result()
 
         assert read_count == 100  # 10 readers * 10 iterations
         assert write_count == 1
@@ -242,15 +249,13 @@ class TestBundleReadWriteMixedConcurrency:
         bundle = FluentBundle("en", use_isolating=False)
         bundle.add_resource("count = { $val }")
 
-        operations = []
-
-        def reader(reader_id: int) -> None:
+        def reader(reader_id: int) -> str:
             _result, _ = bundle.format_pattern("count", {"val": reader_id})
-            operations.append(f"R{reader_id}")
+            return f"R{reader_id}"
 
-        def writer(msg_id: int) -> None:
+        def writer(msg_id: int) -> str:
             bundle.add_resource(f"msg{msg_id} = Message {msg_id}")
-            operations.append(f"W{msg_id}")
+            return f"W{msg_id}"
 
         with ThreadPoolExecutor(max_workers=20) as executor:
             futures = []
@@ -261,8 +266,7 @@ class TestBundleReadWriteMixedConcurrency:
             for i in range(10, 20):
                 futures.append(executor.submit(reader, i))
 
-            for future in futures:
-                future.result()
+            operations = [future.result() for future in futures]
 
         # All operations completed
         assert len(operations) == 25  # 20 readers + 5 writers
@@ -310,21 +314,19 @@ class TestBundleLockCorrectness:
         # Prime cache
         bundle.format_pattern("msg")
 
-        clear_count = 0
-        format_count = 0
+        clear_events: SimpleQueue[None] = SimpleQueue()
+        format_events: SimpleQueue[None] = SimpleQueue()
 
         def clear_cache() -> None:
-            nonlocal clear_count
             for _ in range(5):
                 bundle.clear_cache()
-                clear_count += 1
+                clear_events.put(None)
                 time.sleep(0.002)
 
         def format_message() -> None:
-            nonlocal format_count
             for _ in range(10):
                 bundle.format_pattern("msg")
-                format_count += 1
+                format_events.put(None)
                 time.sleep(0.001)
 
         clear_thread = threading.Thread(target=clear_cache)
@@ -335,6 +337,9 @@ class TestBundleLockCorrectness:
 
         clear_thread.join()
         format_thread.join()
+
+        clear_count = len(_drain_simple_queue(clear_events))
+        format_count = len(_drain_simple_queue(format_events))
 
         assert clear_count == 5
         assert format_count == 10
@@ -392,20 +397,18 @@ class TestBundleStressTest:
         bundle = FluentBundle("en", use_isolating=False, cache=CacheConfig())
         bundle.add_resource("msg = Hello, { $name }!")
 
-        operation_count = {"format": 0, "add": 0, "check": 0}
-
-        def format_operation() -> None:
+        def format_operation() -> str:
             result, _ = bundle.format_pattern("msg", {"name": "Test"})
             assert result == "Hello, Test!"
-            operation_count["format"] += 1
+            return "format"
 
-        def add_operation(msg_id: int) -> None:
+        def add_operation(msg_id: int) -> str:
             bundle.add_resource(f"msg{msg_id} = Message {msg_id}")
-            operation_count["add"] += 1
+            return "add"
 
-        def check_operation() -> None:
-            bundle.has_message("msg")
-            operation_count["check"] += 1
+        def check_operation() -> str:
+            assert bundle.has_message("msg") is True
+            return "check"
 
         with ThreadPoolExecutor(max_workers=30) as executor:
             futures = []
@@ -419,8 +422,7 @@ class TestBundleStressTest:
             for _ in range(50):
                 futures.append(executor.submit(check_operation))
 
-            for future in futures:
-                future.result()
+            operation_count = Counter(future.result() for future in futures)
 
         assert operation_count["format"] == 100
         assert operation_count["add"] == 10

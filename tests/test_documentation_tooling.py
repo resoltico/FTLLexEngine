@@ -549,14 +549,17 @@ def test_release_protocol_artifact_leak_check_uses_base_tooling() -> None:
     assert "| rg " not in text
 
 
-def test_release_protocol_requires_annotated_tags_and_documents_lightweight_recovery() -> None:
-    """Release instructions should require annotated tags and bound the wrong-tag recovery path."""
+def test_release_protocol_requires_annotated_tags_and_documents_prepublication_retag_recovery() -> None:
+    """Release instructions should bound the wrong-tag recovery path before any public release exists."""
     text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
 
     assert 'git tag -a vX.Y.Z -m "Release X.Y.Z"' in text
     assert "wrong object type" in text
     assert "git push --delete origin vX.Y.Z" in text
     assert "the failed publish run exited before any public release object or assets were created" in text
+    assert "any release-blocking corrective fix has already been merged through the normal PR path" in text
+    assert "the intended release commit you most recently re-verified in Step 5" in text
+    assert "the same intended release commit you already verified in Step 5" not in text
 
 
 def test_atheris_inventory_readme_matches_target_manifest() -> None:

@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release publication now enforces annotated tags without depending on a separately configured GitHub-verified tag signature.**
   The publish workflow and release runbook now agree that `vX.Y.Z` must be an immutable annotated
   tag object, and the runbook includes the one allowed recovery path for replacing an accidentally
-  pushed lightweight tag before any public release object or assets exist.
+  pushed lightweight tag before any public release object or assets exist. When a failed
+  pre-publication publish attempt reveals a release-blocking workflow or protocol defect, the
+  runbook now explicitly reopens Step 5 on the corrective merge commit before the tag is recreated.
 - **Release-tag immutability checks now live with the release architecture contract instead of the Python support owner.**
   The repository validator that owns supported-interpreter truth now limits itself to Python
   matrix wiring, while the publish workflow's annotated-tag requirements are enforced by the
