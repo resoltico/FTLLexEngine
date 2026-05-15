@@ -549,6 +549,16 @@ def test_release_protocol_artifact_leak_check_uses_base_tooling() -> None:
     assert "| rg " not in text
 
 
+def test_release_protocol_requires_annotated_tags_and_documents_lightweight_recovery() -> None:
+    """Release instructions should require annotated tags and bound the wrong-tag recovery path."""
+    text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
+
+    assert 'git tag -a vX.Y.Z -m "Release X.Y.Z"' in text
+    assert "wrong object type" in text
+    assert "git push --delete origin vX.Y.Z" in text
+    assert "the failed publish run exited before any public release object or assets were created" in text
+
+
 def test_atheris_inventory_readme_matches_target_manifest() -> None:
     """The published Atheris inventory should stay aligned with the live target registry."""
     readme = (REPO_ROOT / "fuzz_atheris" / "README.md").read_text(encoding="utf-8")

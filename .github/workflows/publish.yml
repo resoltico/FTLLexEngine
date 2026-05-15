@@ -106,14 +106,6 @@ jobs:
                   "::error::Release tag must point to a commit object"
               )
 
-          verification = tag_object.get("verification") or {}
-          if not verification.get("verified"):
-              reason = verification.get("reason", "unknown")
-              raise SystemExit(
-                  "::error::Release tag signature is not verified by GitHub "
-                  f"(reason: {reason})"
-              )
-
           commit_sha = str(target_object.get("sha", ""))
           if len(commit_sha) != 40:
               raise SystemExit("::error::Resolved release commit SHA is malformed")

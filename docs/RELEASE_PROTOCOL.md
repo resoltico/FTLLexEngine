@@ -298,10 +298,11 @@ Do not create the tag until the exact merged `main` commit you intend to tag has
 
 ## Step 6: Tag, Publish Workflow, And Asset Convergence
 
-Create and push the version tag only after Step 5 is green:
+Create and push the version tag only after Step 5 is green. Use an annotated tag object, not a
+lightweight tag:
 
 ```bash
-git tag vX.Y.Z
+git tag -a vX.Y.Z -m "Release X.Y.Z"
 git push origin vX.Y.Z
 ```
 
@@ -339,6 +340,23 @@ If the tag push reaches a partial success state — for example, GitHub Release 
 the PyPI job fails — repair the workflow on `main`, merge the fix, and then rerun
 `workflow_dispatch` for the existing tag. Do not delete, move, or recreate the tag to retrigger
 publication.
+
+If the publish workflow fails immediately because the tag is the wrong object type and GitHub
+Release assets were never created, fix the contract first, then replace the tag exactly once with
+an annotated tag on the intended release commit:
+
+```bash
+gh release view vX.Y.Z --json tagName,isDraft,isPrerelease,publishedAt,url,assets || true
+git tag -d vX.Y.Z
+git push --delete origin vX.Y.Z
+git tag -a vX.Y.Z -m "Release X.Y.Z"
+git push origin vX.Y.Z
+```
+
+This recovery is allowed only when both of these are true:
+
+- the failed publish run exited before any public release object or assets were created;
+- the replacement tag points to the same intended release commit you already verified in Step 5.
 
 If GitHub Release assets need manual convergence after the workflow, use:
 

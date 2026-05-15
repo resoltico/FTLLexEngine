@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already proved a detached bootstrap commit containing the full final payload. That removes the
   ambiguity around how to create `release/X.Y.Z` after bootstrap-path verification while keeping
   the PR diff against `origin/main` as the authoritative scope checkpoint.
+- **Release publication now enforces annotated tags without depending on a separately configured GitHub-verified tag signature.**
+  The publish workflow and release runbook now agree that `vX.Y.Z` must be an immutable annotated
+  tag object, and the runbook includes the one allowed recovery path for replacing an accidentally
+  pushed lightweight tag before any public release object or assets exist.
+- **Release-tag immutability checks now live with the release architecture contract instead of the Python support owner.**
+  The repository validator that owns supported-interpreter truth now limits itself to Python
+  matrix wiring, while the publish workflow's annotated-tag requirements are enforced by the
+  release architecture tests that own publication semantics.
 - **Runtime boundaries, release contracts, and validation semantics now fail closed earlier and more explicitly.**
   Streamed resource loading now enforces bounded input before allocation, filesystem loaders now
   apply bounded no-follow reads, custom-function and parsing diagnostics redact payloads by

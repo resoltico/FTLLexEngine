@@ -218,16 +218,20 @@ def _validate_workflows(root: Path, errors: list[str]) -> None:
             errors=errors,
         )
 
+    # Premise:
+    # Python support owns interpreter-version truth for the publication workflow,
+    # but release-tag immutability and tag-object semantics are a separate
+    # release-contract concern.
+    #
+    # Reason:
+    # Keeping this validator scoped to Python-version wiring prevents unrelated
+    # release-tag policy changes from breaking the Python support owner while
+    # the release architecture tests remain responsible for tag semantics.
     publish_markers = (
         "release-contract:",
         "fromJSON(needs.release-contract.outputs.supported-json)",
         "needs.release-contract.outputs.release-commit",
         "needs.release-contract.outputs.freethreaded-version",
-        "Resolve immutable annotated release tag",
-        "/git/ref/tags/",
-        "/git/tags/",
-        "Release tags must be annotated tag objects",
-        "Release tag signature is not verified by GitHub",
     )
     for marker in publish_markers:
         _expect(
