@@ -14,7 +14,9 @@ import pytest
 
 from ftllexengine.core.locale_utils import normalize_locale
 from ftllexengine.diagnostics import ErrorCategory, FrozenFluentError
+from ftllexengine.integrity import ResourceConflictIntegrityError
 from ftllexengine.runtime import FluentBundle
+from ftllexengine.runtime.bundle_registration import _BundleRegistrationMixin
 
 
 class TestBundleInitialization:
@@ -352,23 +354,62 @@ class TestResourceAccumulationValidation:
         bundle.add_resource("msg3 = Third")
         assert len(bundle.get_message_ids()) == 3
 
-    def test_add_resource_overwrites_duplicate_id(self):
-        """Kills: dict assignment mutations.
-
-        Later resources with same ID should overwrite earlier ones.
-        """
+    def test_add_resource_requires_explicit_overwrite_for_duplicate_id(self):
+        """Later resources with the same ID must opt into replacement explicitly."""
         bundle = FluentBundle("en")
 
         bundle.add_resource("msg = First")
         first_result, first_errors = bundle.format_pattern("msg")
 
-        bundle.add_resource("msg = Second")
-        second_result, second_errors = bundle.format_pattern("msg")
+        with pytest.raises(ResourceConflictIntegrityError):
+            bundle.add_resource("msg = Second")
 
         assert first_result == "First"
-        assert second_result == "Second"
         assert first_errors == ()
+
+    def test_add_resource_allow_overwrite_replaces_duplicate_id(self):
+        """Intentional replacement requires ``allow_overwrite=True``."""
+        bundle = FluentBundle("en")
+
+        bundle.add_resource("msg = First")
+        bundle.add_resource("msg = Second", allow_overwrite=True)
+        second_result, second_errors = bundle.format_pattern("msg")
+
+        assert second_result == "Second"
         assert second_errors == ()
+
+    def test_add_resource_duplicate_summary_truncates_after_five_ids(self):
+        """Conflict diagnostics should stay readable when many IDs collide at once."""
+        bundle = FluentBundle("en")
+        source = (
+            "a = first\n"
+            "a = second\n"
+            "b = first\n"
+            "b = second\n"
+            "c = first\n"
+            "c = second\n"
+            "d = first\n"
+            "d = second\n"
+            "e = first\n"
+            "e = second\n"
+            "f = first\n"
+            "f = second"
+        )
+
+        with pytest.raises(ResourceConflictIntegrityError) as exc_info:
+            bundle.add_resource(source, source_path="locales/en/main.ftl")
+
+        assert exc_info.value.duplicate_ids == ("a", "b", "c", "d", "e", "f")
+        assert exc_info.value.source_path == "locales/en/main.ftl"
+        assert "(and 1 more)" in str(exc_info.value)
+
+    def test_duplicate_tracker_keeps_only_one_copy_of_each_conflict_id(self):
+        """Conflict collectors should preserve first-seen order without duplicates."""
+        collected: list[str] = []
+        _BundleRegistrationMixin._append_unique(collected, "msg")
+        _BundleRegistrationMixin._append_unique(collected, "msg")
+
+        assert collected == ["msg"]
 
     def test_add_resource_preserves_other_messages(self):
         """Kills: dict clear() mutations.

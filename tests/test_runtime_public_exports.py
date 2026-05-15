@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from ftllexengine.localization import CacheAuditLogEntry as LocalizationCacheAuditLogEntry
+from ftllexengine.localization import CacheDebugLogEntry as LocalizationCacheDebugLogEntry
 from ftllexengine.runtime import (
-    CacheAuditLogEntry,
+    CacheDebugLogEntry,
     FluentNumber,
-    WriteLogEntry,
     fluent_function,
 )
 
@@ -31,9 +30,7 @@ def test_runtime_fluent_function_export_marks_locale_injection() -> None:
     assert getattr(format_amount, "_ftl_requires_locale", False) is True
 
 
-def test_cache_audit_log_entry_public_alias_matches_write_log_entry() -> None:
-    """Public audit-log alias resolves to the immutable runtime dataclass."""
-    assert CacheAuditLogEntry is WriteLogEntry
-    assert LocalizationCacheAuditLogEntry is WriteLogEntry
-
+def test_cache_debug_log_entry_public_export_matches_localization_facade() -> None:
+    """Runtime and localization facades expose the same debug-log entry type."""
+    assert LocalizationCacheDebugLogEntry is CacheDebugLogEntry
 

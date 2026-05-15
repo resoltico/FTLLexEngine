@@ -25,7 +25,11 @@ class _LocalizationFormattingMixin:
     """Formatting and mutation behavior for FluentLocalization."""
 
     def add_resource(
-        self: LocalizationStateProtocol, locale: LocaleCode, ftl_source: FTLSource
+        self: LocalizationStateProtocol,
+        locale: LocaleCode,
+        ftl_source: FTLSource,
+        *,
+        allow_overwrite: bool = False,
     ) -> tuple[Junk, ...]:
         """Add FTL resource to a specific locale bundle."""
         normalized_locale = require_locale_code(locale, "locale")
@@ -37,7 +41,10 @@ class _LocalizationFormattingMixin:
 
             if normalized_locale not in self._bundles:
                 self._create_bundle(normalized_locale)
-            return self._bundles[normalized_locale].add_resource(ftl_source)
+            return self._bundles[normalized_locale].add_resource(
+                ftl_source,
+                allow_overwrite=allow_overwrite,
+            )
 
     def add_resource_stream(
         self: LocalizationStateProtocol,
@@ -45,6 +52,7 @@ class _LocalizationFormattingMixin:
         lines: Iterable[str],
         *,
         source_path: str | None = None,
+        allow_overwrite: bool = False,
     ) -> tuple[Junk, ...]:
         """Add FTL resource to a locale bundle from a line-oriented stream."""
         normalized_locale = require_locale_code(locale, "locale")
@@ -57,7 +65,9 @@ class _LocalizationFormattingMixin:
             if normalized_locale not in self._bundles:
                 self._create_bundle(normalized_locale)
             return self._bundles[normalized_locale].add_resource_stream(
-                lines, source_path=source_path
+                lines,
+                source_path=source_path,
+                allow_overwrite=allow_overwrite,
             )
 
     def _handle_message_not_found(

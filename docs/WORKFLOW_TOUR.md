@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: GUIDE
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [workflow tour, multi-locale, bidirectional parsing, boot validation, thread safety, async, introspection, streaming]
   questions: ["how do I use FTLLexEngine end-to-end?", "multi-locale formatting example", "how do I parse localized user input?", "boot validation example", "thread-safe formatting", "async bundle example"]
@@ -269,7 +269,7 @@ Multiple threads can format messages simultaneously. Adding resources or functio
 
 ## Use async bundles in event-loop applications
 
-`AsyncFluentBundle` keeps the same strict-mode guarantees but offloads mutations and formatting through `asyncio.to_thread()`, keeping the event loop free.
+`AsyncFluentBundle` keeps the same strict-mode guarantees but offloads mutations and formatting through an owned worker pool plus a bounded async admission gate, keeping the event loop free and the queue size explicit.
 
 ```python
 import asyncio

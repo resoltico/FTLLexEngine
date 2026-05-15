@@ -30,7 +30,7 @@ class TestCacheRobustness:
         self, args: dict[str, int | Decimal | str | bool | None]
     ) -> None:
         """ROBUSTNESS: Cache handles various argument types."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         # Should not crash with various arg types
         try:
@@ -55,7 +55,7 @@ class TestCacheRobustness:
         maxsize: int,
     ) -> None:
         """ROBUSTNESS: Cache handles duplicate puts gracefully."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Put same message multiple times
         for msg_id in msg_ids:
@@ -69,7 +69,7 @@ class TestCacheRobustness:
     @settings(max_examples=50)
     def test_cache_stats_never_negative(self, maxsize: int) -> None:
         """ROBUSTNESS: Cache stats are never negative."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Perform various operations
         cache.put("msg", None, None, "en_US", use_isolating=True, formatted="result", errors=())

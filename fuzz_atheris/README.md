@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: FUZZING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [atheris, fuzz inventory, fuzz targets, libfuzzer, corpus]
   questions: ["what do the Atheris fuzzers cover?", "which targets exist?", "how do I map a target name to a file?"]
@@ -18,7 +18,7 @@ The executable target registry lives in `targets.tsv`. This table is the human-r
 |:-------|:-----|:--------|
 | `bridge` | `fuzz_bridge.py` | FunctionRegistry bridge machinery |
 | `builtins` | `fuzz_builtins.py` | Built-in function Babel boundary |
-| `cache` | `fuzz_cache.py` | Cache concurrency and audit behavior |
+| `cache` | `fuzz_cache.py` | Cache concurrency plus debug-log and integrity-event behavior |
 | `currency` | `fuzz_currency.py` | Currency formatting oracle |
 | `cursor` | `fuzz_cursor.py` | Cursor and parse-position helpers |
 | `dates` | `fuzz_dates.py` | Locale-aware date and datetime parsing |

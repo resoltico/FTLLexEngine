@@ -75,12 +75,13 @@ class FunctionRegistry(_FunctionRegistryIntrospectionMixin):
         CUSTOM
     """
 
-    __slots__ = ("_frozen", "_functions")
+    __slots__ = ("_frozen", "_functions", "_generation")
 
     def __init__(self) -> None:
         """Initialize empty function registry."""
         self._functions: dict[str, FunctionSignature] = {}
         self._frozen: bool = False
+        self._generation: int = 0
 
     def register(
         self,
@@ -88,6 +89,7 @@ class FunctionRegistry(_FunctionRegistryIntrospectionMixin):
         *,
         ftl_name: str | None = None,
         param_map: dict[str, str] | None = None,
+        cacheable: bool = False,
     ) -> None:
         """Register Python function for FTL use.
 
@@ -95,6 +97,9 @@ class FunctionRegistry(_FunctionRegistryIntrospectionMixin):
             func: Python function to register
             ftl_name: Function name in FTL (default: func.__name__.upper())
             param_map: Custom parameter mappings (overrides auto-generation)
+            cacheable: Whether formatting results that depend on this function
+                may be cached. Defaults to ``False`` for safety; built-in pure
+                formatting helpers opt in explicitly during registry creation.
 
         Raises:
             TypeError: If registry is frozen (via freeze() method).
@@ -121,8 +126,10 @@ class FunctionRegistry(_FunctionRegistryIntrospectionMixin):
             func,
             ftl_name=ftl_name,
             param_map=param_map,
+            cacheable=cacheable,
         )
         self._functions[signature_metadata.ftl_name] = signature_metadata
+        self._generation += 1
 
     def call(
         self,
@@ -184,6 +191,7 @@ class FunctionRegistry(_FunctionRegistryIntrospectionMixin):
         """Create an unfrozen copy of this registry."""
         new_registry = FunctionRegistry()
         new_registry._functions = self._functions.copy()
+        new_registry._generation = self._generation
         return new_registry
 
     @staticmethod

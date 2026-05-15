@@ -34,13 +34,11 @@ def _check_entry(
         warnings.append(
             ValidationWarning(
                 code=DiagnosticCode.VALIDATION_DUPLICATE_ID,
-                message=(
-                    f"Duplicate {kind} ID '{entry_name}' (later definition will overwrite earlier)"
-                ),
+                message=f"Duplicate {kind} ID '{entry_name}' is invalid",
                 context=entry_name,
                 line=line,
                 column=column,
-                severity=WarningSeverity.WARNING,
+                severity=WarningSeverity.CRITICAL,
             )
         )
     seen_ids.add(entry_name)
@@ -51,13 +49,13 @@ def _check_entry(
             ValidationWarning(
                 code=DiagnosticCode.VALIDATION_SHADOW_WARNING,
                 message=(
-                    f"{kind.capitalize()} '{entry_name}' shadows existing {kind} "
-                    "(this definition will override the earlier one)"
+                    f"{kind.capitalize()} '{entry_name}' redefines an existing "
+                    f"{kind} and is invalid"
                 ),
                 context=entry_name,
                 line=line,
                 column=column,
-                severity=WarningSeverity.WARNING,
+                severity=WarningSeverity.CRITICAL,
             )
         )
 
@@ -71,12 +69,12 @@ def _check_entry(
                     code=DiagnosticCode.VALIDATION_DUPLICATE_ATTRIBUTE,
                     message=(
                         f"{kind.capitalize()} '{entry_name}' has duplicate attribute "
-                        f"'{attr_name}' (later will override earlier)"
+                        f"'{attr_name}' and is invalid"
                     ),
                     context=f"{entry_name}.{attr_name}",
                     line=line,
                     column=column,
-                    severity=WarningSeverity.WARNING,
+                    severity=WarningSeverity.CRITICAL,
                 )
             )
         seen_attr_ids.add(attr_name)

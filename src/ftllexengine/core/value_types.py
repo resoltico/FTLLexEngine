@@ -145,10 +145,11 @@ class FluentNumber:
                 "Use int(your_bool) explicitly if you need 0 or 1."
             )
             raise TypeError(msg)
-        if not isinstance(self.value, (int, Decimal)):
-            msg = (  # type: ignore[unreachable]
+        value_obj: object = self.value
+        if not isinstance(value_obj, (int, Decimal)):
+            msg = (
                 f"FluentNumber.value must be int or Decimal, "
-                f"got {type(self.value).__name__}"
+                f"got {type(value_obj).__name__}"
             )
             raise TypeError(msg)
         if self.precision is not None and self.precision < 0:

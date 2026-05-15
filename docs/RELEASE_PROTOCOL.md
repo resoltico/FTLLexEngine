@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: RELEASE
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [release, gh, github release, pypi, tag, assets, publish, verify, clone, main]
   questions: ["how do I cut a release?", "how do I publish GitHub assets?", "how do I verify a release handoff?", "how do I rerun publish for an existing tag?"]
@@ -166,10 +166,13 @@ Also confirm:
 
 Do not cut the release branch or tag anything while any gate is red.
 
-## Step 3: Release Branch And Staging Checkpoint
+## Step 3: Release Branch And Scope Checkpoint
 
-Create the release branch and treat staging as a scope-verification checkpoint for the delta from
-the branch point:
+Choose the branch-cut flow that matches the state proven in Step 2:
+
+### Flow A: Pre-flight ran on `origin/main` or on a partially finalized bootstrap payload
+
+Use this flow when the release payload is not yet captured in one final bootstrap commit.
 
 ```bash
 git switch -c release/X.Y.Z
@@ -191,6 +194,37 @@ Requirements before continuing:
   not the full release scope against `origin/main`.
 
 If the staged diff is incomplete or polluted, fix the branch before committing.
+
+### Flow B: Pre-flight ran on a detached bootstrap payload that already contains the full final release tree
+
+Use this flow when Step 2 already proved the exact tree you intend to release and there is no
+further release-finalization delta to stage. The payload may be one bootstrap commit or a short
+bootstrap-only commit range created while refining release docs or metadata inside the clean clone.
+In this case the cleanest history is to replay that proven payload onto a fresh `release/X.Y.Z`
+branch rooted at current `origin/main` and collapse it into one canonical release commit:
+
+```bash
+BOOTSTRAP_HEAD="$(git rev-parse HEAD)"
+git switch --detach origin/main
+git switch -c release/X.Y.Z
+git cherry-pick --no-commit "origin/main..$BOOTSTRAP_HEAD"
+git commit -m "release: bump version to X.Y.Z"
+git status --short
+git show --stat --summary --format=fuller HEAD
+git diff --name-status origin/main...HEAD
+git push origin release/X.Y.Z
+```
+
+Requirements before continuing:
+
+- `git status --short` is empty after the cherry-pick and commit.
+- `git show --stat --summary --format=fuller HEAD` confirms the release branch contains exactly
+  one intentional release commit.
+- `git diff --name-status origin/main...HEAD` matches the full intended release file set.
+- Step 4 PR diff review remains the authoritative scope checkpoint against `origin/main`.
+
+If the cherry-pick does not replay cleanly or the diff is polluted, stop and repair the release
+branch before opening the PR.
 
 ## Step 4: Pull Request And CI Checkpoint
 
@@ -351,6 +385,17 @@ rm -rf "$TMP_DIR"
 Use `uv` for this installability check even if the host shell does not expose a direct
 `python3.13` binary. The release verifier must exercise a real Python 3.13 environment, but it
 does not need to come from the system PATH.
+
+Also verify the negative packaging floor explicitly. Python 3.12 is intentionally unsupported, so
+the release smoke check must confirm that the published metadata rejects it:
+
+```bash
+uv venv --python 3.12 --seed "$TMP_DIR/py312"
+if "$TMP_DIR/py312/bin/pip" install --no-cache-dir "ftllexengine==X.Y.Z"; then
+  echo "Unexpected Python 3.12 install success"
+  exit 1
+fi
+```
 
 The release is not complete until the release object, assets, and real install test all succeed.
 

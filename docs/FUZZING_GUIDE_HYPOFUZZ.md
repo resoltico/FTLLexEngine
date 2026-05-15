@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: FUZZING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [hypofuzz, hypothesis, fuzz_hypofuzz.sh, deep mode, preflight, repro]
   questions: ["how do I run HypoFuzz?", "what does --deep do?", "how do I reproduce a Hypothesis failure?"]

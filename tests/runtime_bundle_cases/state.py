@@ -6,6 +6,7 @@ from tests.runtime_bundle_cases import (
     CacheConfig,
     FluentBundle,
     FormattingIntegrityError,
+    ResourceConflictIntegrityError,
     SyntaxIntegrityError,
     ValidationError,
     logging,
@@ -79,30 +80,30 @@ class TestBundlePropertyAccessors:
         assert off.cache_config is not None
         assert off.cache_config.write_once is False
 
-    def test_cache_enable_audit_config(self) -> None:
-        """cache_config.enable_audit reflects configured boolean."""
-        on = FluentBundle("en", cache=CacheConfig(enable_audit=True))
+    def test_cache_enable_debug_log_config(self) -> None:
+        """cache_config.enable_debug_log reflects configured boolean."""
+        on = FluentBundle("en", cache=CacheConfig(enable_debug_log=True))
         assert on.cache_config is not None
-        assert on.cache_config.enable_audit is True
-        off = FluentBundle("en", cache=CacheConfig(enable_audit=False))
+        assert on.cache_config.enable_debug_log is True
+        off = FluentBundle("en", cache=CacheConfig(enable_debug_log=False))
         assert off.cache_config is not None
-        assert off.cache_config.enable_audit is False
+        assert off.cache_config.enable_debug_log is False
 
-    def test_cache_max_audit_entries_config(self) -> None:
-        """cache_config.max_audit_entries reflects configured maximum."""
+    def test_cache_max_debug_entries_config(self) -> None:
+        """cache_config.max_debug_entries reflects configured maximum."""
         bundle = FluentBundle(
-            "en", cache=CacheConfig(max_audit_entries=5000)
+            "en", cache=CacheConfig(max_debug_entries=5000)
         )
         assert bundle.cache_config is not None
-        assert bundle.cache_config.max_audit_entries == 5000
+        assert bundle.cache_config.max_debug_entries == 5000
 
-    def test_cache_max_entry_weight_config(self) -> None:
-        """cache_config.max_entry_weight reflects configured maximum."""
+    def test_cache_max_entry_payload_bytes_config(self) -> None:
+        """cache_config.max_entry_payload_bytes reflects configured maximum."""
         bundle = FluentBundle(
-            "en", cache=CacheConfig(max_entry_weight=8000)
+            "en", cache=CacheConfig(max_entry_payload_bytes=8000)
         )
         assert bundle.cache_config is not None
-        assert bundle.cache_config.max_entry_weight == 8000
+        assert bundle.cache_config.max_entry_payload_bytes == 8000
 
     def test_cache_max_errors_per_entry_config(self) -> None:
         """cache_config.max_errors_per_entry reflects configured maximum."""
@@ -355,27 +356,22 @@ class TestBundleResourceManagement:
         bundle.add_resource("second = Second")
         assert bundle.get_cache_stats()["size"] == 0  # type: ignore[index]
 
-    def test_duplicate_terms_overwrite(self, caplog: Any) -> None:
-        """Duplicate term definitions produce overwrite warning."""
+    def test_duplicate_terms_are_rejected(self, caplog: Any) -> None:
+        """Duplicate term definitions fail closed inside one resource."""
         bundle = FluentBundle("en")
-        bundle.add_resource("-brand = Firefox\n-brand = Chrome\n")
-        assert any(
-            "Overwriting existing term '-brand'" in r.message
-            for r in caplog.records
-        )
+        with pytest.raises(ResourceConflictIntegrityError, match="-brand"):
+            bundle.add_resource("-brand = Firefox\n-brand = Chrome\n")
+        assert caplog.records == []
 
-    def test_multiple_duplicate_terms(self, caplog: Any) -> None:
-        """Multiple duplicate terms each produce warnings."""
+    def test_multiple_duplicate_terms_are_rejected(self, caplog: Any) -> None:
+        """Multiple duplicate terms fail as one audited conflict set."""
         bundle = FluentBundle("en")
-        bundle.add_resource(
-            "-brand = First\n-version = First\n"
-            "-brand = Second\n-version = Second\n"
-        )
-        warnings = [
-            r for r in caplog.records
-            if "Overwriting existing term" in r.message
-        ]
-        assert len(warnings) == 2
+        with pytest.raises(ResourceConflictIntegrityError, match="-brand, -version"):
+            bundle.add_resource(
+                "-brand = First\n-version = First\n"
+                "-brand = Second\n-version = Second\n"
+            )
+        assert caplog.records == []
 
     def test_comments_with_debug_logging(self, caplog: Any) -> None:
         """Comments are processed at debug level without errors."""
@@ -768,5 +764,4 @@ class TestBundleCacheManagement:
 
 
 # -- Introspection (variables, introspect_message/term, has_attribute) -------
-
 

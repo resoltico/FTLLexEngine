@@ -68,7 +68,7 @@ EXAMPLE_CONTRACTS: dict[str, ExampleContract] = {
     ),
     "locale_fallback.py": _require_output_markers("[SUCCESS] All examples complete!"),
     "parser_only.py": _require_output_markers(
-        "[PASS] Warning-only validation semantics verified",
+        "[PASS] Critical warning validation semantics verified",
         "[PASS] Invalid syntax semantics verified",
         "All examples completed successfully!",
     ),

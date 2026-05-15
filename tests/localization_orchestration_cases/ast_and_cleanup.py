@@ -367,29 +367,29 @@ class TestValidateMessageSchemasTruncation:
         err_str = str(exc_info.value)
         assert "more issues" in err_str
 
-class TestGetCacheAuditLogBundleWithoutCache:
-    """Tests for get_cache_audit_log when a bundle in _bundles has no cache.
+class TestGetCacheDebugLogBundleWithoutCache:
+    """Tests for get_cache_debug_log when a bundle in _bundles has no cache.
 
-    When bundle.get_cache_audit_log() returns None (bundle has no cache
-    configured), that bundle's locale is excluded from the audit_logs dict.
-    This exercises the ``if audit_log is not None:`` False branch.
+    When bundle.get_cache_debug_log() returns None (bundle has no cache
+    configured), that bundle's locale is excluded from the debug_logs dict.
+    This exercises the ``if debug_log is not None:`` False branch.
     """
 
-    def test_bundle_without_cache_excluded_from_audit_log(self) -> None:
-        """Locale with a no-cache bundle is absent from the audit log mapping."""
+    def test_bundle_without_cache_excluded_from_debug_log(self) -> None:
+        """Locale with a no-cache bundle is absent from the debug-log mapping."""
         l10n = FluentLocalization(
-            ["en", "de"], cache=CacheConfig(enable_audit=True),
+            ["en", "de"], cache=CacheConfig(enable_debug_log=True),
         )
         l10n.add_resource("en", "msg = Hello\n")
         l10n.format_value("msg")
 
-        # Inject a bundle with no cache for "de"; get_cache_audit_log() returns None
+        # Inject a bundle with no cache for "de"; get_cache_debug_log() returns None
         no_cache_bundle = FluentBundle("de")
         no_cache_bundle.add_resource("msg = Hallo\n")
         l10n._bundles["de"] = no_cache_bundle
 
-        audit_logs = l10n.get_cache_audit_log()
+        debug_logs = l10n.get_cache_debug_log()
 
-        assert audit_logs is not None
-        assert "en" in audit_logs
-        assert "de" not in audit_logs
+        assert debug_logs is not None
+        assert "en" in debug_logs
+        assert "de" not in debug_logs

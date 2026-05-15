@@ -1,5 +1,7 @@
 # ISO data utilities (call-time Babel requirement)
 from .analysis import detect_cycles as detect_cycles
+from .core._limits import UNLIMITED as UNLIMITED
+from .core._limits import UnlimitedLimit as UnlimitedLimit
 from .core.babel_compat import get_cldr_version as get_cldr_version
 
 # Locale utilities (no Babel dependency)
@@ -85,8 +87,8 @@ from .localization import ResourceLoadResult as ResourceLoadResult
 
 # Babel-backed facades
 from .localization.boot import LocalizationBootConfig as LocalizationBootConfig
+from .localization.cache_stats import LocalizationCacheStats as LocalizationCacheStats
 from .localization.orchestrator import FluentLocalization as FluentLocalization
-from .localization.orchestrator import LocalizationCacheStats as LocalizationCacheStats
 from .runtime import AsyncFluentBundle as AsyncFluentBundle
 from .runtime import FluentBundle as FluentBundle
 from .runtime import FluentNumber as FluentNumber
@@ -133,6 +135,8 @@ __all__: list[str] = [
     "FrozenErrorContext",
     "FrozenFluentError",
     "ParseTypeLiteral",
+    "UNLIMITED",
+    "UnlimitedLimit",
     # Data integrity exceptions
     "CacheCorruptionError",
     "DataIntegrityError",

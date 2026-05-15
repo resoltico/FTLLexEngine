@@ -4,7 +4,7 @@
 
 ## 1.1 Library Identity
 
-FTLLexEngine is the Python runtime for the **Fluent Template Language specification**, with **CLDR-backed locale-aware formatting** and **fail-fast boot validation with structured audit evidence**. Every public symbol must arise from one of these three purposes. The library is not a general utilities collection, not a financial domain toolkit, not a concurrency framework — it is the i18n layer that production systems build directly on top of, and nothing else.
+FTLLexEngine is the Python runtime for the **Fluent Template Language specification**, with **CLDR-backed locale-aware formatting** and **fail-fast boot validation with structured integrity evidence**. Every public symbol must arise from one of these three purposes. The library is not a general utilities collection, not a financial domain toolkit, not a concurrency framework — it is the i18n layer that production systems build directly on top of, and nothing else.
 
 The primary use case is production systems where every locale resource must load cleanly, every message schema must match exactly, and every failure must produce named, traceable evidence — regulated deployments, audited backends, compliance-constrained services. This purpose drives every API design decision.
 
@@ -14,10 +14,10 @@ The primary use case is production systems where every locale resource must load
 Before adding any symbol to a public facade, ask: *what downstream composition does this replace?* Every public surface must eliminate a pattern that serious callers would otherwise implement themselves. `require_locale_code()` replaced per-caller trim/blank/length/normalize chains. `LocalizationBootConfig` replaced per-caller boot sequence assembly. `make_fluent_number()` replaced per-caller visible-precision inference. Primitives that serve only internal composition belong in submodules, not on `ftllexengine`, `ftllexengine.runtime`, or `ftllexengine.localization`.
 
 **Axiom 2 — Fail-Fast at Boot, Structured Evidence at Runtime.**
-Validate everything before accepting traffic. The canonical boot chain — `LocalizationBootConfig.boot()`, or `FluentLocalization` + `require_clean()` + `validate_message_schemas()` — raises `IntegrityCheckFailedError` if any resource fails to load cleanly or any schema mismatches. At runtime, errors are returned as immutable structured evidence (`FrozenFluentError`, `WriteLogEntry`, `LoadSummary`) so callers can build auditable, loggable, compliant systems on top. Silent degradation is prohibited; all failures are explicit.
+Validate everything before accepting traffic. The canonical boot chain — `LocalizationBootConfig.boot()`, or `FluentLocalization` + `require_clean()` + `validate_message_schemas()` — raises `IntegrityCheckFailedError` if any resource fails to load cleanly or any schema mismatches. At runtime, formatting and parsing errors are returned as immutable structured evidence (`FrozenFluentError`, `LoadSummary`), while cache evidence flows through `CacheDebugLogEntry` and `CacheIntegrityEvent`. Silent degradation is prohibited; all failures are explicit.
 
 **Axiom 3 — Explicit Failures, Immutable Evidence.**
-Every failure produces a named, typed, immutable error object with structured context. `strict=True` is the default on `FluentBundle` and `FluentLocalization` — exceptions, not silent empty strings, are the correct response to integrity failures. `strict=False` is an explicit opt-in for soft-error return semantics where `format_pattern` returns a `(result, errors)` tuple. Audit structures (`WriteLogEntry`, `IntegrityContext`) carry dual timestamps (`timestamp` for monotonic ordering, `wall_time_unix` for cross-system correlation) because compliance traces must be reproducible across restarts.
+Every failure produces a named, typed, immutable error object with structured context. `strict=True` is the default on `FluentBundle` and `FluentLocalization` — exceptions, not silent empty strings, are the correct response to integrity failures. `strict=False` is an explicit opt-in for soft-error return semantics where `format_pattern` returns a `(result, errors)` tuple. Cache evidence structures (`CacheDebugLogEntry`, `CacheIntegrityEvent`, `IntegrityContext`) carry dual timestamps (`timestamp_monotonic` for ordering, `wall_time_unix` for cross-system correlation) because compliance traces must be reproducible across restarts.
 
 **API design review — apply before any new public surface:**
 
@@ -441,7 +441,7 @@ FluentBundle's high docstring-to-code ratio is expected — it is the primary pu
 | Bundle management | `FluentBundle` | Creates on demand, holds in `_bundles` dict |
 | Fallback resolution | Locale chain | Iterates locale list until format succeeds |
 | Boot validation | `require_clean()`, `validate_message_schemas()` | Provides pre-traffic validation API |
-| Audit log | `FluentBundle.get_cache_audit_log()` | Aggregates per-locale logs into dict |
+| Cache debug log | `FluentBundle.get_cache_debug_log()` | Aggregates per-locale debug logs into dict |
 
 ### 4.5.3 LocalizationBootConfig — strict-mode boot orchestrator
 

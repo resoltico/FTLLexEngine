@@ -7,9 +7,10 @@ managed = true
 package = true
 
 [tool.validate-version]
-# Check for `version: X.Y.Z` in YAML frontmatter for non-README documentation.
+# Check for `version: X.Y.Z` in YAML frontmatter for AFAD-managed documentation and
+# examples. Special root files such as README.md and CHANGELOG.md follow their own
+# conventions and are validated by dedicated checks instead.
 frontmatter_globs = [
-    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "PATENTS.md",
     "docs/**/*.md",
@@ -61,7 +62,7 @@ shell_exec_timeout_seconds = 180
 
 [project]
 name = "ftllexengine"
-version = "0.166.0"
+version = "0.167.0"
 description = "Python runtime for the Fluent (FTL) specification: bidirectional parsing, CLDR-backed locale-aware formatting, and fail-fast boot validation with structured audit evidence."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -108,7 +109,6 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Internationalization",
     "Topic :: Software Development :: Localization",
     "Topic :: Text Processing :: Linguistic",
@@ -130,16 +130,16 @@ dev = [
     "Babel>=2.18.0,<3.0.0",  # Required for tests (locale formatting, parsing)
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.152.4",
-    "mypy>=1.20.2",
-    "ruff>=0.15.12",
+    "hypothesis>=6.152.7",
+    "mypy>=2.1.0",
+    "ruff>=0.15.13",
     "pytest-benchmark>=5.2.3",
     "psutil>=7.2.2",
     "types-psutil>=7.2.2.20260408",
 ]
 
 fuzz = [
-    "hypothesis[cli]>=6.152.4",
+    "hypothesis[cli]>=6.152.7",
     "hypofuzz>=25.11.1",
 ]
 
@@ -398,33 +398,26 @@ ignore = [
 # T201/S101: fuzzers print findings and assert invariants
 # EXE001: shebang present; file executability managed by git, not ruff
 # FBT001/FBT002: harness functions use bool flags for control flow
-# BLE001: fuzz replay scripts catch all exceptions to report crashes
 # INP001: fuzz_atheris/ is not a package
 # SLF001: fuzzers access private members for invariant checking (white-box fuzzing)
 # TRY301: raise-in-try pattern used extensively in invariant guards; abstracting to helpers adds no value
 # TC001/TC003: fuzz harnesses do not need TYPE_CHECKING optimization
-# S110: try-except-pass is used intentionally to skip non-fatal errors in crash-tolerant fuzzers
-# S311: random used for test data generation, not cryptography
 # PERF401: fuzzer loops are not performance-critical relative to the fuzzing overhead
 # ARG001: sub-handler functions in dispatch-to-sub-handlers pattern must have uniform (fdp) signatures;
 #          some handlers do not consume bytes from fdp but must accept it for the dispatch interface
-"fuzz_atheris/**/*.py" = ["ERA001", "T201", "S101", "S110", "S311", "EXE001", "FBT001", "FBT002", "FBT003", "BLE001", "INP001", "C901", "PLC0415", "SLF001", "TRY301", "TC001", "TC003", "PERF401", "ARG001"]
+"fuzz_atheris/**/*.py" = ["ERA001", "T201", "S101", "EXE001", "FBT001", "FBT002", "FBT003", "INP001", "C901", "PLC0415", "SLF001", "TRY301", "TC001", "TC003", "PERF401", "ARG001"]
 
 # SCRIPTS - Developer tooling; same rationale as fuzz_atheris
 # T201: scripts output to terminal by design
 # EXE001: shebang files; executability managed externally
 # FBT001/FBT002: script helpers use bool flags
-# S603: subprocess calls in repro/replay scripts are developer-controlled (not user input)
 # TC003: scripts do not need TYPE_CHECKING optimization
 # INP001: scripts/ is not a package
-"scripts/**/*.py" = ["T201", "EXE001", "FBT001", "FBT002", "FBT003", "INP001", "C901", "BLE001", "S101", "S603", "TC001", "TC003", "PERF401"]
+"scripts/**/*.py" = ["T201", "EXE001", "FBT001", "FBT002", "FBT003", "INP001", "C901", "S101", "TC001", "TC003", "PERF401"]
 
-# TESTS - Blanket waivers for all test files
+# TESTS - Non-production architectural waivers only; security waivers are file-specific below
 # S101: assert is the standard pytest assertion mechanism; bandit S101 targets production code
 # S108: /tmp paths in tests are intentional for temp fixture directories (not production)
-# S110: try-except-pass in tests catches expected failure paths without logging
-# S310/S311/S603: security rules targeting production code; not applicable in controlled tests
-# BLE001: broad-except used intentionally to test error isolation and exception handling
 # TRY301: raise-in-try is a natural pattern for test invariant guards
 # FBT001/FBT002/FBT003: test helpers and Hypothesis strategies may use bool flags
 # SLF001: integration and white-box tests verify internal state via private members
@@ -434,7 +427,7 @@ ignore = [
 # C901: shadow_bundle.py mirrors production dispatch; structural complexity
 # E501: test docstrings, FTL strings, and assertion messages may exceed 100 chars for clarity
 # PERF401/PERF402: test loops are not performance-critical paths
-"tests/**/*.py" = ["S101", "S108", "S110", "S310", "S311", "S603", "BLE001", "TRY301", "FBT001", "FBT002", "FBT003", "SLF001", "TC001", "TC002", "TC003", "PGH003", "T201", "C901", "E501", "PERF401", "PERF402"]
+"tests/**/*.py" = ["S101", "S108", "TRY301", "FBT001", "FBT002", "FBT003", "SLF001", "TC001", "TC002", "TC003", "PGH003", "T201", "C901", "E501", "PERF401", "PERF402"]
 
 # Per-file waivers for specific test architectural patterns
 "tests/test_syntax_visitor.py" = ["N802"]
@@ -458,6 +451,37 @@ ignore = [
 "tests/test_runtime_function_bridge_validation.py" = ["PLC0415"]
 "tests/test_init_module.py" = ["PLC0415", "EM101"]
 "tests/test_runtime_metamorphic_property.py" = ["PLC0415"]
+
+# Focused security-rule waivers. Premise: release, fuzz, and adversarial surfaces
+# are worth linting. Reason: only the exact files that need a waiver keep one.
+"fuzz_atheris/fuzz_*_entry.py" = ["BLE001"]
+"fuzz_atheris/fuzz_cache.py" = ["BLE001"]
+"fuzz_atheris/fuzz_cursor.py" = ["BLE001"]
+"fuzz_atheris/fuzz_integrity.py" = ["BLE001"]
+"fuzz_atheris/fuzz_iso.py" = ["BLE001"]
+"fuzz_atheris/fuzz_lock.py" = ["BLE001"]
+"fuzz_atheris/fuzz_parse_*.py" = ["BLE001"]
+"fuzz_atheris/fuzz_plural.py" = ["BLE001"]
+"fuzz_atheris/fuzz_roundtrip.py" = ["S110", "S311", "BLE001"]
+"fuzz_atheris/fuzz_runtime_scenarios.py" = ["S110", "BLE001"]
+"fuzz_atheris/fuzz_serializer_mutators.py" = ["S110", "S311", "BLE001"]
+"fuzz_atheris/fuzz_structured.py" = ["S110", "S311", "BLE001"]
+"scripts/fuzz_hypofuzz_repro.py" = ["S603"]
+"scripts/run_examples.py" = ["S603"]
+"scripts/validate_docs.py" = ["S603", "BLE001"]
+"tests/diagnostics_frozen_error_cases/core_behavior.py" = ["BLE001"]
+"tests/introspection_iso_cases/defensive_branches.py" = ["BLE001"]
+"tests/introspection_message_cases/properties_and_branches.py" = ["BLE001"]
+"tests/runtime_cache_integrity_cases/idempotence_and_hashes.py" = ["BLE001"]
+"tests/test_architecture_contract.py" = ["S603"]
+"tests/test_diagnostics_errors.py" = ["BLE001"]
+"tests/test_documentation_tooling.py" = ["S603"]
+"tests/test_introspection_iso_property.py" = ["S110", "BLE001"]
+"tests/test_introspection_property.py" = ["S110", "BLE001"]
+"tests/test_localization_cache_stats.py" = ["BLE001"]
+"tests/test_runtime_bundle_property_core.py" = ["S110", "BLE001"]
+"tests/test_runtime_cache_format.py" = ["BLE001"]
+"tests/test_rwlock_property.py" = ["S311"]
 "tests/test_regression_parser_l10n_rounding.py" = ["PLC0415"]
 "tests/test_rwlock_core.py" = ["PLC0415"]
 "tests/conftest.py" = ["PLC0415"]
@@ -478,7 +502,7 @@ ignore = [
 "tests/test_regression_rwlock_currency_spans.py" = ["PLC0415"]
 "tests/test_runtime_locale_utils.py" = ["SIM117"]
 "tests/fuzz/test_parsing_currency_property.py" = ["PLC0415"]
-"tests/fuzz/test_runtime_bundle_concurrent.py" = ["PLC0415"]
+"tests/fuzz/test_runtime_bundle_concurrent.py" = ["PLC0415", "BLE001"]
 "tests/fuzz/test_syntax_validator_property.py" = ["PLC0415"]
 "tests/test_parsing_babel_compat.py" = ["PLC0415"]
 "tests/test_integration_coverage.py" = ["N802", "PLC0415"]
@@ -491,7 +515,7 @@ ignore = [
 "tests/syntax_visitor_cases/__init__.py" = ["N802"]
 "tests/syntax_visitor_transformer_cases/__init__.py" = ["N802"]
 # Fuzzing: pytestmark precedes later imports for file-level marker application
-"tests/fuzz/test_syntax_parser_grammar.py" = ["E402"]
+"tests/fuzz/test_syntax_parser_grammar.py" = ["E402", "BLE001"]
 "tests/fuzz/test_syntax_parser_whitespace.py" = ["E402"]
 "tests/fuzz/test_parsing_numbers_property.py" = ["PLC0415"]
 # DTZ001: datetime strategy bounds and @example fixtures are test data, not production datetimes

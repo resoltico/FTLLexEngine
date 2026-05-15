@@ -339,15 +339,17 @@ msg = Hello
             assert not result.is_valid
 
     def test_warnings_dont_affect_is_valid(self) -> None:
-        """Test warnings don't set is_valid=False."""
+        """Critical warnings fail validation even without parser errors."""
         ftl = """
 msg = { undefined }
 """
         result = validate_resource(ftl)
 
-        # May have warnings but no errors
+        # Premise: undefined references are structural contradictions for later
+        # registration/runtime stages, so the validator now fails closed.
         if len(result.errors) == 0:
-            assert result.is_valid
+            assert result.critical_warning_count >= 1
+            assert not result.is_valid
 
     def test_validation_result_has_all_fields(self) -> None:
         """Test ValidationResult has all expected fields."""

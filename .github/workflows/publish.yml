@@ -3,7 +3,7 @@ name: Build and Publish
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -17,49 +17,146 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: publication-${{ github.workflow }}-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
+  release-contract:
+    name: Resolve Release Contract
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      minimum-version: ${{ steps.python-support.outputs.minimum-version }}
+      latest-version: ${{ steps.python-support.outputs.latest-version }}
+      supported-json: ${{ steps.python-support.outputs.supported-json }}
+      freethreaded-version: ${{ steps.python-support.outputs.freethreaded-version }}
+      unsupported-version: ${{ steps.python-support.outputs.unsupported-version }}
+      release-tag: ${{ steps.release-ref.outputs.release-tag }}
+      release-version: ${{ steps.release-ref.outputs.release-version }}
+      release-commit: ${{ steps.release-ref.outputs.release-commit }}
+      tag-object-sha: ${{ steps.release-ref.outputs.tag-object-sha }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Export Python support contract
+        id: python-support
+        run: python3 scripts/python_support.py github-outputs >> "$GITHUB_OUTPUT"
+
+      - name: Resolve immutable annotated release tag
+        id: release-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          release_tag = os.environ["RELEASE_TAG"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+
+          if re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.]+)?", release_tag) is None:
+              raise SystemExit(f"::error::Invalid release tag format: {release_tag}")
+
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          def fetch(url: str) -> dict[str, object]:
+              request = urllib.request.Request(url, headers=headers)
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:  # pragma: no cover - exercised in workflow
+                  detail = error.read().decode("utf-8", errors="replace")
+                  raise SystemExit(
+                      f"::error::Failed to fetch release metadata from {url}: "
+                      f"{error.code} {detail}"
+                  ) from error
+
+          ref = fetch(f"https://api.github.com/repos/{repo}/git/ref/tags/{release_tag}")
+          ref_object = ref.get("object", {})
+          if ref_object.get("type") != "tag":
+              raise SystemExit(
+                  "::error::Release tags must be annotated tag objects; "
+                  f"{release_tag} resolved to {ref_object.get('type')!r}"
+              )
+
+          tag_sha = str(ref_object.get("sha", ""))
+          tag_object = fetch(f"https://api.github.com/repos/{repo}/git/tags/{tag_sha}")
+          if tag_object.get("tag") != release_tag:
+              raise SystemExit(
+                  "::error::Resolved tag object does not match requested release tag"
+              )
+
+          target_object = tag_object.get("object", {})
+          if target_object.get("type") != "commit":
+              raise SystemExit(
+                  "::error::Release tag must point to a commit object"
+              )
+
+          verification = tag_object.get("verification") or {}
+          if not verification.get("verified"):
+              reason = verification.get("reason", "unknown")
+              raise SystemExit(
+                  "::error::Release tag signature is not verified by GitHub "
+                  f"(reason: {reason})"
+              )
+
+          commit_sha = str(target_object.get("sha", ""))
+          if len(commit_sha) != 40:
+              raise SystemExit("::error::Resolved release commit SHA is malformed")
+
+          print(f"release-tag={release_tag}")
+          print(f"release-version={release_tag.removeprefix('v')}")
+          print(f"release-commit={commit_sha}")
+          print(f"tag-object-sha={tag_sha}")
+          PY
+
   build:
     name: Build & Verify Quality (Python ${{ matrix.python-version }})
+    needs: release-contract
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Force all uv commands (sync, run, etc.) to use the same versioned venv as the
-    # scripts. Without this, bare "uv sync" creates the default ".venv" while the
-    # scripts pivot to ".venv-<version>", wasting ~150 MiB on a duplicate environment.
+    permissions:
+      contents: read
     env:
       UV_PROJECT_ENVIRONMENT: .venv-${{ matrix.python-version }}
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ needs.release-contract.outputs.release-tag }}
+      RELEASE_VERSION: ${{ needs.release-contract.outputs.release-version }}
+      RELEASE_COMMIT: ${{ needs.release-contract.outputs.release-commit }}
     strategy:
       fail-fast: false
       matrix:
-        # 3.13 is the minimum supported version (requires-python = ">=3.13").
-        # 3.14 validates forward compatibility.
-        # When Python 3.15 releases (~late 2026), add "3.15" here.
-        python-version: ["3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.release-contract.outputs.supported-json) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.release-contract.outputs.release-commit }}
 
       - name: Verify clean working tree
         run: |
-          # Use porcelain format for maximum reliability across all git states (detached HEAD, etc.)
           if [ -n "$(git status --porcelain)" ]; then
             echo "::error::Working directory is not clean after checkout"
-            echo "Modified/untracked files detected:"
-            git status --porcelain
-            echo ""
-            git status
+            git status --short
             exit 1
           fi
-          echo "Working tree is clean"
+          if [ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]; then
+            echo "::error::Checked out commit does not match resolved release commit"
+            exit 1
+          fi
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -71,43 +168,31 @@ jobs:
         run: chmod +x ./scripts/*.sh
 
       - name: Verify shell syntax
-        run: bash -n scripts/*.sh
+        run: bash -n check.sh scripts/*.sh
 
       - name: Detect package name
         id: detect
         run: |
           set -euo pipefail
-          # Robust detection excluding egg-info and pycache
           PACKAGE_NAME=$(find src -mindepth 1 -maxdepth 1 -type d -not -name "*.egg-info" -not -name "__pycache__" | head -n 1 | xargs basename)
           if [ -z "$PACKAGE_NAME" ]; then
             echo "::error::Could not detect package in src/"
             exit 1
           fi
-          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
+          echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "PACKAGE_NAME=$PACKAGE_NAME" >> "$GITHUB_ENV"
           echo "Detected package: $PACKAGE_NAME"
 
       - name: Validate version tag
         run: |
           set -euo pipefail
-          TAG_VERSION="${RELEASE_TAG#v}"
-
-          # Validate tag format
-          if ! [[ "$TAG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-            echo "::error::Invalid tag format: $TAG_VERSION (expected semver)"
-            exit 1
-          fi
-
           PACKAGE_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-
-          echo "Tag version: $TAG_VERSION"
+          echo "Resolved tag version: $RELEASE_VERSION"
           echo "Package version: $PACKAGE_VERSION"
-
-          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "::error::Tag $TAG_VERSION doesn't match package version $PACKAGE_VERSION"
+          if [ "$RELEASE_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Tag version $RELEASE_VERSION does not match package version $PACKAGE_VERSION"
             exit 1
           fi
-          echo "Version validation passed"
 
       - name: Install dependencies
         run: |
@@ -117,22 +202,13 @@ jobs:
       - name: Validate runtime version matches tag
         run: |
           set -euo pipefail
-
           PACKAGE="${{ steps.detect.outputs.name }}"
-
           RUNTIME_VERSION=$(uv run python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
-          TAG_VERSION="${RELEASE_TAG#v}"
-
-          echo "Package: $PACKAGE"
-          echo "Runtime version: $RUNTIME_VERSION"
-          echo "Tag version: $TAG_VERSION"
-
-          if [ "$RUNTIME_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Runtime version $RUNTIME_VERSION doesn't match tag $TAG_VERSION"
+          if [ "$RUNTIME_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "::error::Runtime version $RUNTIME_VERSION doesn't match tag $RELEASE_VERSION"
             echo "::error::Update __version__ in src/${PACKAGE}/__init__.py"
             exit 1
           fi
-          echo "Runtime version validation passed"
 
       - name: Run Quality Checks (Lint & Test)
         run: |
@@ -141,11 +217,21 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Testing"
-          uv run scripts/test.sh --ci
+          PY_VERSION=${{ matrix.python-version }} uv run scripts/test.sh --ci
           echo "::endgroup::"
 
+      - name: Verify quality gates left checkout unchanged
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Verification mutated the checkout"
+            git status --short
+            git diff --stat
+            exit 1
+          fi
+
       - name: Upload coverage reports to Codecov
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -153,23 +239,22 @@ jobs:
           fail_ci_if_error: false
 
       - name: Build package
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         run: uv build
 
       - name: Check package metadata
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         run: uv run twine check dist/*
 
       - name: Verify package integrity
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
 
           echo "Verifying package: $PACKAGE"
 
-          # Check wheel contains required files
-          set +o pipefail  # grep -q can cause SIGPIPE
+          set +o pipefail
           if ! unzip -l dist/*.whl | grep -q "${PACKAGE}/__init__.py"; then
             set -o pipefail
             echo "::error::Wheel missing ${PACKAGE}/__init__.py"
@@ -177,7 +262,6 @@ jobs:
           fi
           set -o pipefail
 
-          # Ensure no compiled Python files in wheel
           set +o pipefail
           if unzip -l dist/*.whl | grep -qE "\.pyc$|__pycache__"; then
             set -o pipefail
@@ -186,8 +270,7 @@ jobs:
           fi
           set -o pipefail
 
-          # Check source distribution contains source files
-          set +o pipefail  # grep -q closes pipe early, causing tar SIGPIPE with pipefail
+          set +o pipefail
           if ! tar -tzf dist/*.tar.gz | grep -q "src/${PACKAGE}/__init__.py"; then
             set -o pipefail
             echo "::error::Source distribution missing src/${PACKAGE}/__init__.py"
@@ -195,7 +278,6 @@ jobs:
           fi
           set -o pipefail
 
-          # Repository-only agent guidance must not ship in released artifacts
           set +o pipefail
           if unzip -l dist/*.whl | grep -qE '(^|[[:space:]])AGENTS\.md$|(^|[[:space:]])\.codex/'; then
             set -o pipefail
@@ -215,11 +297,11 @@ jobs:
           echo "Package integrity verified"
 
       - name: Create release checksum receipt
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          VERSION="${RELEASE_TAG#v}"
+          VERSION="$RELEASE_VERSION"
 
           cd dist
           shasum -a 256 \
@@ -228,11 +310,11 @@ jobs:
             > "${PACKAGE}-${VERSION}.sha256"
 
       - name: Debug Artifacts
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         run: ls -laR dist/
 
       - name: Stage publication artifacts
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         run: |
           set -euo pipefail
           mkdir -p publish-dist release-assets-dist
@@ -258,7 +340,7 @@ jobs:
           }
 
       - name: Store PyPI distributions
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pypi-dist
@@ -267,7 +349,7 @@ jobs:
           if-no-files-found: error
 
       - name: Store GitHub release assets
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == needs.release-contract.outputs.latest-version
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-assets
@@ -275,8 +357,48 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  verify-freethreaded:
+    name: Verify Free-Threaded Python (${{ needs.release-contract.outputs.freethreaded-version }})
+    needs: release-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      PY_VERSION: ${{ needs.release-contract.outputs.freethreaded-version }}
+      UV_PROJECT_ENVIRONMENT: .venv-${{ needs.release-contract.outputs.freethreaded-version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.release-contract.outputs.release-commit }}
+
+      - name: Set up Python ${{ needs.release-contract.outputs.freethreaded-version }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ needs.release-contract.outputs.freethreaded-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Make scripts executable
+        run: chmod +x ./scripts/*.sh
+
+      - name: Install dependencies
+        run: |
+          uv sync --group dev --locked --python "$PY_VERSION"
+          echo "Locked free-threaded environment synchronized"
+
+      - name: Run free-threaded test suite
+        run: |
+          echo "::group::Free-threaded Testing"
+          uv run scripts/test.sh --ci --quick
+          echo "::endgroup::"
+
   test-publish:
-    needs: build
+    needs: [build, verify-freethreaded]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'workflow_dispatch' && inputs.publish_to_testpypi
@@ -295,21 +417,21 @@ jobs:
 
   verify-test-publish:
     name: Verify TestPyPI Publication
-    needs: test-publish
+    needs: [release-contract, test-publish]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'workflow_dispatch' && inputs.publish_to_testpypi
     strategy:
       matrix:
-        # Test installation on both minimum and latest supported Python versions.
-        python-version: ["3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.release-contract.outputs.supported-json) }}
     env:
-      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_TAG: ${{ needs.release-contract.outputs.release-tag }}
+      RELEASE_VERSION: ${{ needs.release-contract.outputs.release-version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ needs.release-contract.outputs.release-commit }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -325,7 +447,7 @@ jobs:
             echo "::error::Could not detect package in src/"
             exit 1
           fi
-          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
           echo "Detected package: $PACKAGE_NAME"
 
       - name: Wait for TestPyPI CDN propagation
@@ -337,21 +459,19 @@ jobs:
         run: |
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
-          VERSION="${RELEASE_TAG#v}"
-          
+
           MAX_ATTEMPTS=5
           ATTEMPT=1
           DELAY=20
 
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${VERSION}..."
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${RELEASE_VERSION}..."
             pip cache purge || true
-            # Extra index url ensures dependencies are found on real PyPI
-            if pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "${PACKAGE}==${VERSION}"; then
-              echo "Successfully installed ${PACKAGE}==${VERSION}"
+            if pip install --no-cache-dir --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "${PACKAGE}==${RELEASE_VERSION}"; then
+              echo "Successfully installed ${PACKAGE}==${RELEASE_VERSION}"
               break
             fi
-            
+
             if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
               echo "::error::Failed to install from TestPyPI after $MAX_ATTEMPTS attempts"
               exit 1
@@ -366,16 +486,12 @@ jobs:
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
           INSTALLED_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
-          EXPECTED_VERSION="${RELEASE_TAG#v}"
-
           echo "Installed version: $INSTALLED_VERSION"
-          echo "Expected version: $EXPECTED_VERSION"
-
-          if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
-            echo "::error::Version mismatch: $INSTALLED_VERSION != $EXPECTED_VERSION"
+          echo "Expected version: $RELEASE_VERSION"
+          if [ "$INSTALLED_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "::error::Version mismatch: $INSTALLED_VERSION != $RELEASE_VERSION"
             exit 1
           fi
-          echo "Version verification passed"
 
       - name: Smoke test
         run: |
@@ -385,17 +501,19 @@ jobs:
 
   publish-release-assets:
     name: Publish GitHub Release Assets
-    needs: build
+    needs: [release-contract, build, verify-freethreaded]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ needs.release-contract.outputs.release-tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.release-contract.outputs.release-commit }}
 
       - name: Make scripts executable
         run: chmod +x ./scripts/*.sh
@@ -410,17 +528,19 @@ jobs:
 
   verify-github-release:
     name: Verify GitHub Release
-    needs: publish-release-assets
+    needs: [release-contract, publish-release-assets]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ needs.release-contract.outputs.release-tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.release-contract.outputs.release-commit }}
 
       - name: Make scripts executable
         run: chmod +x ./scripts/*.sh
@@ -429,9 +549,11 @@ jobs:
         run: ./scripts/verify-github-release.sh "$RELEASE_TAG"
 
   publish:
-    needs: build
+    needs: [build, verify-freethreaded]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      id-token: write
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -446,20 +568,20 @@ jobs:
 
   verify-publish:
     name: Verify PyPI Publication
-    needs: publish
+    needs: [release-contract, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       matrix:
-        # Test installation on both minimum and latest supported Python versions.
-        python-version: ["3.13", "3.14"]
+        python-version: ${{ fromJSON(needs.release-contract.outputs.supported-json) }}
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_TAG: ${{ needs.release-contract.outputs.release-tag }}
+      RELEASE_VERSION: ${{ needs.release-contract.outputs.release-version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.release-contract.outputs.release-commit }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -475,7 +597,7 @@ jobs:
             echo "::error::Could not detect package in src/"
             exit 1
           fi
-          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
           echo "Detected package: $PACKAGE_NAME"
 
       - name: Wait for PyPI CDN propagation
@@ -486,7 +608,6 @@ jobs:
       - name: Install from PyPI with retry
         run: |
           set -euo pipefail
-          TAG_VERSION="${RELEASE_TAG#v}"
           PACKAGE="${{ steps.detect.outputs.name }}"
 
           MAX_ATTEMPTS=5
@@ -494,10 +615,10 @@ jobs:
           DELAY=30
 
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${TAG_VERSION}..."
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Installing ${PACKAGE}==${RELEASE_VERSION}..."
             pip cache purge || true
-            if pip install --no-cache-dir "${PACKAGE}==${TAG_VERSION}"; then
-              echo "Successfully installed ${PACKAGE}==${TAG_VERSION}"
+            if pip install --no-cache-dir "${PACKAGE}==${RELEASE_VERSION}"; then
+              echo "Successfully installed ${PACKAGE}==${RELEASE_VERSION}"
               break
             fi
 
@@ -515,16 +636,12 @@ jobs:
           set -euo pipefail
           PACKAGE="${{ steps.detect.outputs.name }}"
           INSTALLED_VERSION=$(python -c "import ${PACKAGE}; print(${PACKAGE}.__version__)")
-          TAG_VERSION="${RELEASE_TAG#v}"
-
           echo "Installed version: $INSTALLED_VERSION"
-          echo "Expected version: $TAG_VERSION"
-
-          if [ "$INSTALLED_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Version mismatch: $INSTALLED_VERSION != $TAG_VERSION"
+          echo "Expected version: $RELEASE_VERSION"
+          if [ "$INSTALLED_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "::error::Version mismatch: $INSTALLED_VERSION != $RELEASE_VERSION"
             exit 1
           fi
-          echo "Version verification passed"
 
       - name: Smoke test
         run: |
@@ -533,17 +650,18 @@ jobs:
           python -c "import ${PACKAGE} as pkg; r = pkg.parse_ftl('greeting = Hello, World!'); s = pkg.serialize_ftl(r); assert 'greeting' in s; print('Smoke test passed: ${PACKAGE} v' + pkg.__version__)"
 
   verify-python-requirement:
-    name: Verify Python 3.13+ Requirement
-    needs: publish
+    name: Verify Python Requirement Floor
+    needs: [release-contract, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      RELEASE_VERSION: ${{ needs.release-contract.outputs.release-version }}
+      UNSUPPORTED_VERSION: ${{ needs.release-contract.outputs.unsupported-version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.release-contract.outputs.release-commit }}
 
       - name: Detect package name
         id: detect
@@ -554,32 +672,22 @@ jobs:
             echo "::error::Could not detect package in src/"
             exit 1
           fi
-          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
           echo "Detected package: $PACKAGE_NAME"
 
-      # Python 3.12 is intentionally used here — it is BELOW the package floor
-      # (requires-python = ">=3.13" in pyproject.toml). This step is a negative
-      # test: it verifies that pip correctly rejects installation on unsupported
-      # Python versions. 3.12 is chosen because it is the newest Python version
-      # available on GitHub Actions runners by default.
-      # GitHub Actions runners ship with Python 3.12 as their system Python as of 2025.
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ env.UNSUPPORTED_VERSION }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.12"
+          python-version: ${{ env.UNSUPPORTED_VERSION }}
 
-      - name: Verify install is blocked on Python 3.12 (below requires-python floor)
+      - name: Verify install is blocked below the support floor
         run: |
           set -euo pipefail
-          TAG_VERSION="${RELEASE_TAG#v}"
           PACKAGE="${{ steps.detect.outputs.name }}"
-
-          echo "Attempting to install $PACKAGE==$TAG_VERSION on Python 3.12 (should fail)..."
-
-          if pip install --no-cache-dir "${PACKAGE}==${TAG_VERSION}" 2>/dev/null; then
-            echo "::error::Installation succeeded on Python 3.12 (should have failed)"
+          echo "Attempting to install $PACKAGE==$RELEASE_VERSION on Python $UNSUPPORTED_VERSION (should fail)..."
+          if pip install --no-cache-dir "${PACKAGE}==${RELEASE_VERSION}" 2>/dev/null; then
+            echo "::error::Installation succeeded below the supported Python floor"
             echo "::error::Check requires-python in pyproject.toml"
             exit 1
           fi
-
-          echo "Installation correctly blocked on Python 3.12"
+          echo "Installation correctly blocked on Python $UNSUPPORTED_VERSION"

@@ -5,12 +5,12 @@ resolution, and a global depth guard that prevents stack overflow attacks
 via custom function re-entry.
 
 Architecture:
-    - GlobalDepthGuard: Uses contextvars for async-safe global depth tracking
+    - GlobalDepthGuard: Uses contextvars for async-safe same-session depth tracking
     - ResolutionContext: Explicit per-resolution state (stack, depth, expansion)
 
 Thread Safety:
     ResolutionContext is created per-resolution for full isolation.
-    GlobalDepthGuard uses contextvars for thread/async-safe state.
+    GlobalDepthGuard uses contextvars for thread/async-safe same-session state.
 
 Python 3.13+.
 """
@@ -35,19 +35,10 @@ from ftllexengine.integrity import DataIntegrityError, IntegrityContext
 __all__ = ["GlobalDepthGuard", "ResolutionContext"]
 
 # ContextVar State (Architectural Decision):
-# Global resolution depth tracking via contextvars prevents custom functions from
-# bypassing depth limits by calling back into bundle.format_pattern().
-#
-# Trade-off:
-# - Explicit parameter threading would require signature changes across resolver,
-#   function bridge, and all custom function implementations (~10+ signatures).
-# - ContextVar provides thread/async-safe implicit state with minimal API impact.
-# - Security requirement (DoS prevention via stack overflow) takes precedence over
-#   the explicit control flow principle.
-#
-# This is a permanent architectural pattern; the security mechanism cannot be
-# implemented without cross-context state tracking. Each async task/thread
-# maintains independent state via contextvars semantics.
+# Global resolution depth tracking is still the right owner for same-session
+# nested formatting. Cross-thread entry is owned separately by
+# ResolutionReentryGate at the bundle boundary because spawned threads do not
+# inherit ContextVars.
 _global_resolution_depth: ContextVar[int] = ContextVar(
     "fluent_resolution_depth", default=0
 )
@@ -73,13 +64,11 @@ class GlobalDepthGuard:
 
         GlobalDepthGuard prevents this by tracking depth across all contexts.
 
-    Thread Spawning Limitation:
-        Custom functions that spawn NEW threads bypass this guard: each new
-        thread starts with the ContextVar default (0). The guard prevents
-        re-entry within a single thread/async task; it does not prevent
-        cross-thread recursive invocation. Custom functions that may spawn
-        threads and call back into bundle.format_pattern() from those threads
-        must apply independent rate limiting at the custom function level.
+    Thread Spawning:
+        Cross-thread entry is rejected by the bundle-owned ResolutionReentryGate
+        while custom-function code is executing. This guard therefore remains
+        responsible only for same-session depth tracking, which is exactly what
+        ContextVar propagation can represent reliably.
     """
 
     __slots__ = ("_max_depth", "_token")
@@ -143,9 +132,12 @@ class ResolutionContext:
     _seen: set[str] = field(init=False, default_factory=set)
     max_depth: int = MAX_DEPTH
     max_expression_depth: int = MAX_DEPTH
-    max_expansion_size: int = DEFAULT_MAX_EXPANSION_SIZE
+    max_expansion_size: int | None = DEFAULT_MAX_EXPANSION_SIZE
     _total_chars: int = field(init=False, default=0)
     _expression_guard: DepthGuard = field(init=False)
+    _output_budget_exhausted: bool = field(init=False, default=False)
+    _cacheable_output: bool = field(init=False, default=True)
+    _noncacheable_functions: set[str] = field(init=False, default_factory=set)
 
     def __post_init__(self) -> None:
         """Initialize the expression depth guard with configured max depth."""
@@ -230,20 +222,72 @@ class ResolutionContext:
         """
         return tuple(self._stack)
 
-    def track_expansion(self, char_count: int) -> None:
-        """Add to running expansion total.
+    def reserve_output(self, text: str) -> None:
+        """Reserve budget for the exact string about to be appended.
 
-        Does not raise on budget exceeded — callers must check
-        ``total_chars > max_expansion_size`` after calling this method and
-        generate the appropriate error. Keeping error generation in the caller
-        (resolver) preserves separation of concerns: this object tracks state;
-        the resolver decides what to do when limits are breached.
+        Premise:
+            Budgeting after partial formatting creates undercount gaps.
 
-        This prevents Billion Laughs attacks where small FTL input expands to
-        gigabytes via nested message references (e.g., m0={m1}{m1},
-        m1={m2}{m2}, ...).
+        Reason:
+            The owner of the output budget must see the final string fragment
+            including isolation marks and fallbacks before it becomes visible.
         """
-        self._total_chars += char_count
+        next_total = self._total_chars + len(text)
+        if self.max_expansion_size is not None and next_total > self.max_expansion_size:
+            diag = ErrorTemplate.expansion_budget_exceeded(
+                next_total,
+                self.max_expansion_size,
+            )
+            raise FrozenFluentError(
+                str(diag),
+                ErrorCategory.RESOLUTION,
+                diagnostic=diag,
+            )
+        self._total_chars = next_total
+
+    def mark_output_budget_exhausted(self) -> None:
+        """Remember that a later append crossed the output budget.
+
+        Premise:
+            Nested pattern resolution may convert an append failure into an
+            error tuple instead of re-raising immediately.
+
+        Reason:
+            The enclosing pattern loop must still stop at the first quota
+            breach so no later literal or fallback output leaks past the
+            configured maximum.
+        """
+        self._output_budget_exhausted = True
+
+    def mark_noncacheable_function(self, function_name: str) -> None:
+        """Mark the current resolution as unsafe to cache.
+
+        Premise:
+            Custom functions may depend on time, I/O, process state, or other
+            external inputs outside the cache key.
+
+        Reason:
+            Resolution must carry cacheability evidence forward explicitly so
+            the bundle can skip caching results that depended on non-pure
+            callables.
+        """
+        self._cacheable_output = False
+        self._noncacheable_functions.add(function_name)
+
+    @property
+    def output_budget_exhausted(self) -> bool:
+        """Report whether output generation must stop after a budget breach."""
+        return self._output_budget_exhausted
+
+    @property
+    def cacheable_output(self) -> bool:
+        """Report whether the resolved output may safely enter the cache."""
+        return self._cacheable_output
+
+    @property
+    def noncacheable_functions(self) -> frozenset[str]:
+        """Return the non-cacheable functions observed during this resolution."""
+        return frozenset(self._noncacheable_functions)
 
     @property
     def expression_guard(self) -> DepthGuard:

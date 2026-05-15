@@ -151,7 +151,7 @@ class TestFluentValueCollectionsCache:
 
     def test_cache_handles_list_args(self) -> None:
         """IntegrityCache correctly handles list arguments."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
 
         args = {"items": [1, 2, 3]}
         cache.put("msg", args, None, "en", use_isolating=True, formatted="List Result", errors=())
@@ -162,7 +162,7 @@ class TestFluentValueCollectionsCache:
 
     def test_cache_handles_dict_args(self) -> None:
         """IntegrityCache correctly handles dict arguments."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
 
         args = {"data": {"key": "value"}}
         cache.put("msg", args, None, "en", use_isolating=True, formatted="Dict Result", errors=())
@@ -173,7 +173,7 @@ class TestFluentValueCollectionsCache:
 
     def test_cache_handles_nested_mixed_args(self) -> None:
         """IntegrityCache correctly handles nested mixed arguments."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
 
         # Type annotation for complex nested structure
         args: dict[str, FluentValue] = {
@@ -193,7 +193,7 @@ class TestFluentValueCollectionsCache:
 
         [1, 2, 3] and (1, 2, 3) should be different cache keys.
         """
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
 
         cache.put("msg", {"items": [1, 2, 3]}, None, "en", use_isolating=True, formatted="List", errors=())
         cache.put("msg", {"items": (1, 2, 3)}, None, "en", use_isolating=True, formatted="Tuple", errors=())
@@ -208,7 +208,7 @@ class TestFluentValueCollectionsCache:
 
     def test_cache_handles_empty_collections(self) -> None:
         """IntegrityCache handles empty collections correctly."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
 
         cache.put("msg", {"list": [], "dict": {}}, None, "en", use_isolating=True, formatted="Empty", errors=())
 
@@ -287,7 +287,7 @@ class TestFluentValueCollectionsHypothesis:
     def test_integer_lists_are_cacheable(self, items: list[int]) -> None:
         """PROPERTY: Any integer list can be cached and retrieved."""
         event(f"size={len(items)}")
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         args = {"items": items}
 
         cache.put("msg", args, None, "en", use_isolating=True, formatted=f"List: {items}", errors=())
@@ -300,7 +300,7 @@ class TestFluentValueCollectionsHypothesis:
     def test_string_int_dicts_are_cacheable(self, data: dict[str, int]) -> None:
         """PROPERTY: Any str->int dict can be cached and retrieved."""
         event(f"size={len(data)}")
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         args = {"data": data}
 
         cache.put("msg", args, None, "en", use_isolating=True, formatted=f"Dict: {data}", errors=())
@@ -323,7 +323,7 @@ class TestFluentValueCollectionsHypothesis:
         """PROPERTY: Arbitrarily nested structures can be cached and retrieved."""
         is_collection = isinstance(structure, (list, dict))
         event(f"valid={is_collection}")
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         # Hypothesis generates complex nested structures; type cast for static analysis
         args: dict[str, FluentValue] = {"nested": structure}  # type: ignore[dict-item]
 

@@ -168,14 +168,14 @@ class TestFormatCacheHitRate:
 
     def test_get_stats_hit_rate_is_float(self) -> None:
         """hit_rate is a float, not an int."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         stats = cache.get_stats()
 
         assert isinstance(stats["hit_rate"], float)
 
     def test_get_stats_hit_rate_has_precision(self) -> None:
         """hit_rate preserves decimal precision."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
 
         # Simulate some cache operations by directly manipulating stats
         # This tests the return type, not cache functionality
@@ -186,14 +186,14 @@ class TestFormatCacheHitRate:
 
     def test_get_stats_hit_rate_range(self) -> None:
         """hit_rate is between 0.0 and 100.0."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         stats = cache.get_stats()
 
         assert 0.0 <= stats["hit_rate"] <= 100.0
 
     def test_get_stats_returns_correct_types(self) -> None:
         """get_stats returns dict[str, int | float]."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         stats = cache.get_stats()
 
         # Check all keys exist (IntegrityCache has additional integrity-related keys)
@@ -204,20 +204,22 @@ class TestFormatCacheHitRate:
             "misses",
             "hit_rate",
             "unhashable_skips",
-            "max_entry_weight",
+            "max_entry_payload_bytes",
             "oversize_skips",
             "error_bloat_skips",
-            "combined_weight_skips",
+            "combined_payload_skips",
             "max_errors_per_entry",
             # IntegrityCache-specific keys
             "corruption_detected",
+            "integrity_events_emitted",
             "idempotent_writes",
             "write_once_conflicts",
+            "uncacheable_function_skips",
             "sequence",
+            "cache_generation",
             "write_once",
-            "strict",
-            "audit_enabled",
-            "audit_entries",
+            "debug_log_enabled",
+            "debug_log_entries",
         }
         assert set(stats.keys()) == expected_keys
 
@@ -228,20 +230,22 @@ class TestFormatCacheHitRate:
         assert isinstance(stats["misses"], int)
         assert isinstance(stats["hit_rate"], float)
         assert isinstance(stats["unhashable_skips"], int)
-        assert isinstance(stats["max_entry_weight"], int)
+        assert isinstance(stats["max_entry_payload_bytes"], int)
         assert isinstance(stats["oversize_skips"], int)
         assert isinstance(stats["error_bloat_skips"], int)
-        assert isinstance(stats["combined_weight_skips"], int)
+        assert isinstance(stats["combined_payload_skips"], int)
         assert isinstance(stats["max_errors_per_entry"], int)
         # IntegrityCache-specific types
         assert isinstance(stats["corruption_detected"], int)
+        assert isinstance(stats["integrity_events_emitted"], int)
         assert isinstance(stats["idempotent_writes"], int)
         assert isinstance(stats["write_once_conflicts"], int)
+        assert isinstance(stats["uncacheable_function_skips"], int)
         assert isinstance(stats["sequence"], int)
+        assert isinstance(stats["cache_generation"], int)
         assert isinstance(stats["write_once"], bool)
-        assert isinstance(stats["strict"], bool)
-        assert isinstance(stats["audit_enabled"], bool)
-        assert isinstance(stats["audit_entries"], int)
+        assert isinstance(stats["debug_log_enabled"], bool)
+        assert isinstance(stats["debug_log_entries"], int)
 
 
 class TestASTVisitorSlots:

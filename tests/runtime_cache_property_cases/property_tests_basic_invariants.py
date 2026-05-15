@@ -17,7 +17,7 @@ class TestCacheInvariants:
     @settings(max_examples=100)
     def test_cache_maxsize_enforced(self, maxsize: int) -> None:
         """INVARIANT: Cache never exceeds maxsize."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Add more than maxsize entries
         for i in range(maxsize + 10):
@@ -52,7 +52,7 @@ class TestCacheInvariants:
         value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: get(k) after put(k, v) returns v."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         formatted, errors = value
         cache.put(msg_id, args, attr, locale, use_isolating=True, formatted=formatted, errors=errors)
@@ -74,7 +74,7 @@ class TestCacheInvariants:
         locale: str,
     ) -> None:
         """PROPERTY: get(k) without put(k) returns None."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         result = cache.get(msg_id, None, None, locale, use_isolating=True)
 
@@ -85,7 +85,7 @@ class TestCacheInvariants:
     @settings(max_examples=50)
     def test_clear_resets_cache_to_empty(self, maxsize: int) -> None:
         """PROPERTY: clear() empties cache and resets counters."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Add some entries
         for i in range(min(10, maxsize)):
@@ -114,7 +114,7 @@ class TestCacheInvariants:
         value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Cache hits increment hit counter."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         formatted, errors = value
         cache.put(msg_id, None, None, locale, use_isolating=True, formatted=formatted, errors=errors)
@@ -138,7 +138,7 @@ class TestCacheInvariants:
         locale: str,
     ) -> None:
         """PROPERTY: Cache misses increment miss counter."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         initial_stats = cache.get_stats()
         cache.get(msg_id, None, None, locale, use_isolating=True)  # Cache miss

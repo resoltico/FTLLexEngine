@@ -12,9 +12,11 @@ Design:
 Hierarchy:
     DataIntegrityError (base - system failures)
     ├─ CacheCorruptionError (checksum mismatch)
+    ├─ CacheKeySerializationError (unsupported cache-key contract)
     ├─ FormattingIntegrityError (strict mode formatting failure)
     ├─ ImmutabilityViolationError (mutation attempt on frozen object)
     ├─ IntegrityCheckFailedError (generic verification failure)
+    ├─ ResourceConflictIntegrityError (duplicate or shadowed resource IDs)
     ├─ SyntaxIntegrityError (strict mode syntax error during resource loading)
     └─ WriteConflictError (write-once violation)
 
@@ -32,11 +34,14 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CacheCorruptionError",
+    "CacheKeySerializationError",
     "DataIntegrityError",
     "FormattingIntegrityError",
     "ImmutabilityViolationError",
     "IntegrityCheckFailedError",
     "IntegrityContext",
+    "IntegrityEvidence",
+    "ResourceConflictIntegrityError",
     "SyntaxIntegrityError",
     "WriteConflictError",
 ]
@@ -79,6 +84,24 @@ class IntegrityContext:
     wall_time_unix: float | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class IntegrityEvidence:
+    """Immutable integrity payload detached from Python exception transport.
+
+    Premise:
+        Python exception propagation mutates traceback and cause fields after
+        construction.
+
+    Reason:
+        Incident evidence therefore needs its own immutable record so callers
+        can distinguish the integrity payload from mutable transport metadata.
+    """
+
+    error_type: str
+    message: str
+    context: IntegrityContext | None = None
+
+
 class DataIntegrityError(Exception):
     """Base exception for all data integrity failures.
 
@@ -86,8 +109,10 @@ class DataIntegrityError(Exception):
     user-facing Fluent errors. They indicate corruption, bugs, or
     security incidents that should propagate to the top level.
 
-    This exception is immutable after construction to prevent
-    tampering with error evidence.
+    The integrity payload is immutable after construction to preserve the
+    evidence carried by ``.evidence``. Python's own exception transport fields
+    (traceback, cause, notes) remain mutable because the runtime sets them
+    during propagation.
 
     Subclasses are @final to prevent further inheritance. Both static
     analysis (mypy) and runtime (__init_subclass__) enforce finality on
@@ -97,7 +122,7 @@ class DataIntegrityError(Exception):
         context: Structured diagnostic context for post-mortem analysis
     """
 
-    __slots__ = ("_context", "_frozen")
+    __slots__ = ("_context", "_evidence", "_frozen")
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Enforce @final on DataIntegrityError subclasses at class-definition time.
@@ -123,6 +148,7 @@ class DataIntegrityError(Exception):
 
     # Type annotations for __slots__ attributes (mypy requirement)
     _context: IntegrityContext | None
+    _evidence: IntegrityEvidence
     _frozen: bool
 
     def __init__(
@@ -138,6 +164,11 @@ class DataIntegrityError(Exception):
         """
         super().__init__(message)
         object.__setattr__(self, "_context", context)
+        object.__setattr__(
+            self,
+            "_evidence",
+            IntegrityEvidence(type(self).__name__, message, context),
+        )
         object.__setattr__(self, "_frozen", True)
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -173,6 +204,11 @@ class DataIntegrityError(Exception):
         """Structured diagnostic context."""
         return self._context
 
+    @property
+    def evidence(self) -> IntegrityEvidence:
+        """Immutable evidence payload for post-mortem analysis."""
+        return self._evidence
+
     def __repr__(self) -> str:
         """Return detailed representation for debugging."""
         return f"{self.__class__.__name__}({self.args[0]!r}, context={self._context!r})"
@@ -183,10 +219,25 @@ class CacheCorruptionError(DataIntegrityError):
     """Checksum mismatch detected in cache entry.
 
     Raised when a cached value's checksum doesn't match the stored checksum.
-    This indicates memory corruption, hardware fault, or tampering.
+    This indicates accidental mutation, hardware fault, or a broken internal
+    cache invariant.
 
     This is a CRITICAL error that should trigger immediate investigation.
     The cache entry should be evicted and the operation retried.
+    """
+
+    __slots__ = ()
+
+
+@final
+class CacheKeySerializationError(DataIntegrityError):
+    """Cache request could not be encoded into the canonical key contract.
+
+    Raised when cache-enabled formatting receives argument values that cannot be
+    converted into the versioned cache-key encoding. Because the cache's
+    integrity features depend on that key contract, the failure is surfaced as a
+    typed integrity error instead of silently bypassing write-once or corruption
+    checks.
     """
 
     __slots__ = ()
@@ -218,6 +269,57 @@ class IntegrityCheckFailedError(DataIntegrityError):
     """
 
     __slots__ = ()
+
+
+@final
+class ResourceConflictIntegrityError(DataIntegrityError):
+    """Resource registration conflict detected before bundle mutation.
+
+    The owning premise is that message and term registries are canonical bundle
+    state. Replacing definitions must therefore be an explicit caller choice, not
+    an incidental side effect of resource load order.
+
+    Attributes:
+        duplicate_ids: Conflicting IDs defined more than once in the incoming resource
+        shadowed_ids: Existing bundle IDs the incoming resource attempts to replace
+        source_path: Optional source path for error context
+    """
+
+    __slots__ = ("_duplicate_ids", "_shadowed_ids", "_source_path")
+
+    _duplicate_ids: tuple[str, ...]
+    _shadowed_ids: tuple[str, ...]
+    _source_path: str | None
+
+    def __init__(
+        self,
+        message: str,
+        context: IntegrityContext | None = None,
+        *,
+        duplicate_ids: tuple[str, ...] = (),
+        shadowed_ids: tuple[str, ...] = (),
+        source_path: str | None = None,
+    ) -> None:
+        """Initialize ResourceConflictIntegrityError."""
+        object.__setattr__(self, "_duplicate_ids", tuple(duplicate_ids))
+        object.__setattr__(self, "_shadowed_ids", tuple(shadowed_ids))
+        object.__setattr__(self, "_source_path", source_path)
+        super().__init__(message, context)
+
+    @property
+    def duplicate_ids(self) -> tuple[str, ...]:
+        """IDs defined multiple times within the incoming resource."""
+        return self._duplicate_ids
+
+    @property
+    def shadowed_ids(self) -> tuple[str, ...]:
+        """Existing bundle IDs the incoming resource attempted to replace."""
+        return self._shadowed_ids
+
+    @property
+    def source_path(self) -> str | None:
+        """Optional source path for the conflicting resource."""
+        return self._source_path
 
 
 @final

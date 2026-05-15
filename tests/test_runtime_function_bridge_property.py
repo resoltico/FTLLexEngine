@@ -34,6 +34,7 @@ class TestFunctionSignatureDataclass:
             ftl_name="SAMPLE",
             param_mapping=(("value", "value"),),
             callable=sample_func,
+            cacheable=False,
         )
 
         with pytest.raises((AttributeError, TypeError)):
@@ -54,6 +55,7 @@ class TestFunctionSignatureDataclass:
             ftl_name=ftl_name,
             param_mapping=(),
             callable=dummy_func,
+            cacheable=False,
         )
 
         assert sig.python_name == python_name

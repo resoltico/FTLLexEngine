@@ -1,14 +1,49 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: TYPES
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [FluentNumber, FluentValue, ParseResult, LocaleCode, CurrencyCode, TerritoryInfo, MessageIntrospection]
   questions: ["what public types does FTLLexEngine expose?", "what value types can formatting accept?", "which semantic aliases and lookup-result types exist?", "what introspection result types exist?"]
 ---
 
 # Types Reference
+
+---
+
+## `UNLIMITED`
+
+Explicit sentinel used to disable a supported security/resource limit intentionally.
+
+### Signature
+```python
+UNLIMITED: UnlimitedLimit
+```
+
+### Constraints
+- Import: `from ftllexengine import UNLIMITED`
+- Purpose: opt out of a `LimitArg` guard explicitly instead of using ambiguous magic values like `0` or `-1`
+- Used by: `FluentParserV1`, `FluentBundle`, `AsyncFluentBundle`, and `FluentLocalization` limit parameters
+- Invariant: compare by identity (`value is UNLIMITED`) rather than by value equality
+
+---
+
+## `UnlimitedLimit`
+
+Marker type for the public `UNLIMITED` sentinel.
+
+### Signature
+```python
+@final
+class UnlimitedLimit:
+    ...
+```
+
+### Constraints
+- Import: `from ftllexengine import UnlimitedLimit`
+- Purpose: gives the explicit opt-out sentinel a distinct static type in `LimitArg`
+- Construction: callers should reuse the exported singleton `UNLIMITED` instead of creating their own instance
 
 ---
 

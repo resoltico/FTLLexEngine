@@ -38,10 +38,9 @@ Python 3.13+.
 """
 
 from datetime import date, datetime, timezone
-from importlib import import_module
-from typing import TYPE_CHECKING, cast
 
 from ftllexengine.diagnostics import ErrorCategory, FrozenErrorContext, FrozenFluentError
+from ftllexengine.diagnostics._redaction import redacted_parse_failure
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
@@ -58,9 +57,6 @@ from .date_patterns import (
     _tokenize_babel_pattern,
     clear_date_caches,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 __all__ = [
     "_BABEL_TOKEN_MAP",
@@ -79,7 +75,6 @@ __all__ = [
     "parse_datetime",
 ]
 
-_DATE_PATTERNS_MODULE = import_module("ftllexengine.parsing.date_patterns")
 _PRIVATE_DATE_EXPORTS = (
     _BABEL_TOKEN_MAP,
     _extract_datetime_separator,
@@ -92,19 +87,16 @@ _PRIVATE_DATE_EXPORTS = (
 
 
 def _babel_to_strptime(babel_pattern: str) -> tuple[str, bool]:
-    """Convert one CLDR pattern using the patchable module-level token map."""
-    module_vars = vars(_DATE_PATTERNS_MODULE)
-    original_map = cast("dict[str, str | None]", module_vars["_BABEL_TOKEN_MAP"])
-    module_vars["_BABEL_TOKEN_MAP"] = _BABEL_TOKEN_MAP
-    try:
-        converter = cast("Callable[[str], tuple[str, bool]]", module_vars["_babel_to_strptime"])
-        return converter(babel_pattern)
-    finally:
-        module_vars["_BABEL_TOKEN_MAP"] = original_map
+    """Convert one CLDR pattern using the local token map without global mutation."""
+    from .date_patterns import (  # noqa: PLC0415 - local import avoids an unnecessary parser bootstrap dependency at module import time
+        _babel_to_strptime as convert_babel_pattern,
+    )
+
+    return convert_babel_pattern(babel_pattern, token_map=_BABEL_TOKEN_MAP)
 
 
 def parse_date(
-    value: str,
+    value: object,
     locale_code: str,
 ) -> tuple[date | None, tuple[FrozenFluentError, ...]]:
     """Parse locale-aware date string to date object.
@@ -151,14 +143,15 @@ def parse_date(
         Thread-safe. Uses Babel + stdlib (no global state).
     """
     errors: list[FrozenFluentError] = []
+    value_summary = redacted_parse_failure(value, parse_type="date")
 
     # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):
-        diagnostic = ErrorTemplate.parse_date_failed(  # type: ignore[unreachable]
-            str(value), locale_code, f"Expected string, got {type(value).__name__}"
+        diagnostic = ErrorTemplate.parse_date_failed(
+            value, locale_code, f"Expected string, got {type(value).__name__}"
         )
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="date",
         )
@@ -182,7 +175,7 @@ def parse_date(
         # Unknown locale
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="date",
         )
@@ -207,7 +200,7 @@ def parse_date(
         value, locale_code, "No matching date pattern found"
     )
     context = FrozenErrorContext(
-        input_value=str(value),
+        input_value=value_summary,
         locale_code=locale_code,
         parse_type="date",
     )
@@ -219,7 +212,7 @@ def parse_date(
 
 
 def parse_datetime(
-    value: str,
+    value: object,
     locale_code: str,
     *,
     tzinfo: timezone | None = None,
@@ -272,14 +265,15 @@ def parse_datetime(
         Thread-safe. Uses Babel + stdlib (no global state).
     """
     errors: list[FrozenFluentError] = []
+    value_summary = redacted_parse_failure(value, parse_type="datetime")
 
     # Type check: value must be string (runtime defense for untyped callers)
     if not isinstance(value, str):
-        diagnostic = ErrorTemplate.parse_datetime_failed(  # type: ignore[unreachable]
-            str(value), locale_code, f"Expected string, got {type(value).__name__}"
+        diagnostic = ErrorTemplate.parse_datetime_failed(
+            value, locale_code, f"Expected string, got {type(value).__name__}"
         )
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="datetime",
         )
@@ -306,7 +300,7 @@ def parse_datetime(
         # Unknown locale
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="datetime",
         )
@@ -334,7 +328,7 @@ def parse_datetime(
         value, locale_code, "No matching datetime pattern found"
     )
     context = FrozenErrorContext(
-        input_value=str(value),
+        input_value=value_summary,
         locale_code=locale_code,
         parse_type="datetime",
     )

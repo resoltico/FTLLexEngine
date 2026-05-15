@@ -56,7 +56,7 @@ _OPTIONAL_EXPORTS_BY_FACADE: dict[str, tuple[OptionalFacadeExport, ...]] = {
         ),
         OptionalFacadeExport(
             public_name="LocalizationCacheStats",
-            source_module="ftllexengine.localization.orchestrator",
+            source_module="ftllexengine.localization.cache_stats",
             source_name="LocalizationCacheStats",
         ),
     ),
@@ -73,7 +73,7 @@ _OPTIONAL_EXPORTS_BY_FACADE: dict[str, tuple[OptionalFacadeExport, ...]] = {
         ),
         OptionalFacadeExport(
             public_name="LocalizationCacheStats",
-            source_module="ftllexengine.localization.orchestrator",
+            source_module="ftllexengine.localization.cache_stats",
             source_name="LocalizationCacheStats",
         ),
     ),

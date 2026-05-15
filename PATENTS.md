@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: LEGAL
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [patents, legal, license, fluent, apache, mit, babel]
   questions: ["what is the patent position?", "does the project include a patent grant?", "what about the Fluent specification license?"]

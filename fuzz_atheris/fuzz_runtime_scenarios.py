@@ -8,6 +8,7 @@ from fuzz_runtime_support import (
     Any,
     CacheConfig,
     CacheCorruptionError,
+    CacheKeySerializationError,
     ComplexArgs,
     FluentBundle,
     FormattingIntegrityError,
@@ -85,10 +86,10 @@ def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915 - dispatch
                     _simulate_corruption(bundle)
                     try:
                         bundle.format_pattern(msg_id, args, attribute=attribute)
-                    except CacheCorruptionError as exc:
-                        if not strict:
-                            msg = "Non-strict cache raised CacheCorruptionError."
-                            raise RuntimeIntegrityError(msg) from exc
+                    except CacheCorruptionError:
+                        # Cache corruption is a system-integrity failure, not a formatting-softness
+                        # concern. Both strict and non-strict formatting modes must surface it.
+                        pass
                     except Exception as e:  # pylint: disable=broad-exception-caught
                         is_corruption = "corruption" in str(e).lower()
                         if is_corruption and not isinstance(e, CacheCorruptionError):
@@ -108,6 +109,12 @@ def _execute_runtime_invariants(  # noqa: PLR0912, PLR0915 - dispatch
             if not cache_write_once:
                 msg = "WriteConflictError raised when write_once=False."
                 raise RuntimeIntegrityError(msg) from e
+
+        except CacheKeySerializationError as e:
+            if not enable_cache:
+                msg = "CacheKeySerializationError raised while cache was disabled."
+                raise RuntimeIntegrityError(msg) from e
+            _domain.integrity_checks += 1
 
         except (RecursionError, MemoryError, FrozenFluentError):
             # FrozenFluentError: depth guard fires MAX_DEPTH_EXCEEDED as a safety

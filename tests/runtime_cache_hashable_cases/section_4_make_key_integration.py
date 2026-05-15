@@ -12,15 +12,16 @@ class TestMakeKey:
     """Test _make_key integration with _make_hashable.
 
     _make_key builds a cache key tuple from (message_id, args, attribute,
-    locale_code, use_isolating). Returns None on any hashing failure,
-    allowing cache bypass without raising to the caller.
+    locale_code, use_isolating, function_generation). Returns None on hashing
+    failure so the cache layer can raise one typed boundary error instead of
+    performing a partial lookup.
     """
 
     def test_make_key_with_none_args(self) -> None:
         """_make_key with None args returns key with empty tuple for args component."""
         key = IntegrityCache._make_key("msg-id", None, None, "en-US", use_isolating=True)
         assert key is not None
-        assert key == ("msg-id", (), None, "en-US", True)
+        assert key == ("msg-id", (), None, "en-US", True, 0)
 
     def test_make_key_with_simple_args(self) -> None:
         """_make_key handles simple string/int arguments."""

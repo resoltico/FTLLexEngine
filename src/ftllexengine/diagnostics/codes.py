@@ -56,11 +56,17 @@ class FrozenErrorContext:
     making the error object mutable.
 
     Attributes:
-        input_value: String that failed to parse (empty if not applicable)
+        input_value: Redacted fingerprint summary of the input that failed to
+            parse (empty if not applicable). The library stores a stable
+            summary rather than raw user or resource text so diagnostics remain
+            safe to surface by default.
         locale_code: Locale used for parsing/formatting (empty if not applicable)
         parse_type: Type of parsing attempted; one of the known parse domains,
             or ``""`` (empty string sentinel) when not applicable.
-        fallback_value: Value to use in output when formatting fails
+        fallback_value: Fallback string selected for output when formatting
+            fails. Cache-retained snapshots may redact this value before
+            storage, but the live runtime context keeps the real fallback so
+            formatting behavior remains correct.
     """
 
     input_value: str = ""
@@ -105,6 +111,7 @@ class DiagnosticCode(Enum):
     PLURAL_SUPPORT_UNAVAILABLE = 2013
     FORMATTING_FAILED = 2014
     EXPANSION_BUDGET_EXCEEDED = 2015
+    REENTRANT_FORMATTING_BLOCKED = 2016
 
     # Syntax errors (3000-3999)
     # 3001: UNEXPECTED_EOF - parser cursor signals early end of input

@@ -14,7 +14,7 @@ from fuzz_localization_patterns_basic import (
 from fuzz_localization_patterns_boot import _pattern_boot_config_api
 from fuzz_localization_patterns_introspection import (
     _pattern_add_function_custom,
-    _pattern_cache_audit_api,
+    _pattern_cache_debug_log_api,
     _pattern_introspect_api,
     _pattern_locale_boundary_api,
     _pattern_on_fallback_callback,
@@ -71,7 +71,7 @@ _PATTERN_DISPATCH = {
     "validate_message_schemas_api": _pattern_validate_message_schemas_api,
     "add_function_custom": _pattern_add_function_custom,
     "introspect_api": _pattern_introspect_api,
-    "cache_audit_api": _pattern_cache_audit_api,
+    "cache_debug_log_api": _pattern_cache_debug_log_api,
     "locale_boundary_api": _pattern_locale_boundary_api,
     "on_fallback_callback": _pattern_on_fallback_callback,
     "loader_init_success": _pattern_loader_init_success,
@@ -127,7 +127,7 @@ def test_one_input(data: bytes) -> None:
                 "add_resource_mutation",
                 "introspect_api",
                 "ast_lookup_api",
-                "cache_audit_api",
+                "cache_debug_log_api",
                 "locale_boundary_api",
                 "validate_message_variables_api",
                 "validate_message_schemas_api",

@@ -493,7 +493,7 @@ class TestCacheBehavior:
     def test_cache_invalidation_on_resource_update(
         self, msg_id: str, text1: str, text2: str
     ) -> None:
-        """PROPERTY: Cache invalidates when resources change."""
+        """PROPERTY: Cache invalidates after an admitted overwrite."""
         assume(len(text1) > 0 and len(text2) > 0)
         assume(text1 != text2)
 
@@ -504,8 +504,9 @@ class TestCacheBehavior:
         result1, _ = bundle.format_pattern(msg_id)
         assert text1 in result1
 
-        # Update resource
-        bundle.add_resource(f"{msg_id} = {text2}")
+        # Premise: cache invalidation should track intentional state replacement.
+        # Reason: overwrite admission and cache coherence are one contract.
+        bundle.add_resource(f"{msg_id} = {text2}", allow_overwrite=True)
 
         event(f"text1_len={len(text1)}")
         # Format again - should get new value

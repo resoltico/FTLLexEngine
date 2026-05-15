@@ -139,7 +139,7 @@ welcome = Welcome to { -brand }
     assert result.warning_count == 0
     print(f"Valid FTL: is_valid={result.is_valid}, errors={result.error_count}")
 
-    # Warning-only FTL: semantic issues do not change is_valid
+    # Critical semantic warnings now fail validation just like syntax errors.
     warning_ftl = """
 greeting = Hello, { $name }!
 greeting = Duplicate ID!
@@ -147,12 +147,13 @@ missing-ref = Uses { -undefined-term }
 """
 
     result = validate_resource(warning_ftl)
-    assert result.is_valid
+    assert not result.is_valid
+    assert result.critical_warning_count == 2
     assert result.warning_count == 2
     print(f"Warning-only FTL: is_valid={result.is_valid}, warnings={result.warning_count}")
     for warning in result.warnings:
         print(f"  - {warning.code.name}: {warning.message}")
-    print("[PASS] Warning-only validation semantics verified")
+    print("[PASS] Critical warning validation semantics verified")
 
     # Invalid syntax FTL: parser annotations make the result invalid
     invalid_syntax_ftl = """

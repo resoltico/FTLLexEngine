@@ -1,458 +1,313 @@
-"""Tests for FluentBundle cache security parameters via CacheConfig.
+"""Bundle-level tests for the cache security and evidence contract."""
 
-Tests the IntegrityCache security parameters exposed through CacheConfig:
-- write_once: Write-once semantics for data race prevention
-- enable_audit: Audit logging for compliance
-- max_audit_entries: Audit log size limit
-- max_entry_weight: Memory weight limit for cached results
-- max_errors_per_entry: Error count limit per cache entry
+from __future__ import annotations
 
-These parameters are essential for financial-grade applications requiring
-integrity verification, audit trails, and memory bounds.
-"""
-
-from decimal import Decimal
-from unittest.mock import patch
+from dataclasses import replace
+from typing import Any
 
 import pytest
-from hypothesis import event, given, settings
-from hypothesis import strategies as st
 
-from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_WEIGHT
+from ftllexengine.constants import DEFAULT_CACHE_SIZE, DEFAULT_MAX_ENTRY_PAYLOAD_BYTES
+from ftllexengine.integrity import CacheCorruptionError
 from ftllexengine.runtime.bundle import FluentBundle
-from ftllexengine.runtime.cache import WriteLogEntry
+from ftllexengine.runtime.cache import (
+    CacheDebugLogEntry,
+    CacheIntegrityEventKind,
+    MemoryIntegrityEventSink,
+)
 from ftllexengine.runtime.cache_config import CacheConfig
+from ftllexengine.runtime.cache_events import CacheIntegrityCorrelationScope
 
 
-class TestCacheSecurityParameterDefaults:
-    """Test default values for cache security parameters."""
+def _invalid_write_once_config() -> CacheConfig:
+    """Build one config with an invalid boolean boundary value.
 
-    def test_default_cache_write_once_is_false(self) -> None:
-        """write_once defaults to False."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.write_once is False
+    Premise:
+        The runtime validator owns protection against untyped callers.
 
-    def test_default_cache_enable_audit_is_false(self) -> None:
-        """enable_audit defaults to False."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.enable_audit is False
-
-    def test_default_cache_max_audit_entries_is_10000(self) -> None:
-        """max_audit_entries defaults to 10000."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.max_audit_entries == 10000
-
-    def test_default_cache_max_entry_weight_is_default_max_entry_size(self) -> None:
-        """max_entry_weight defaults to DEFAULT_MAX_ENTRY_WEIGHT."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        cc = bundle.cache_config
-        assert cc is not None
-        assert cc.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
-        assert cc.max_entry_weight == 10_000
-
-    def test_default_cache_max_errors_per_entry_is_50(self) -> None:
-        """max_errors_per_entry defaults to 50."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.max_errors_per_entry == 50
+    Reason:
+        This helper intentionally violates the static type contract so the test
+        can prove the constructor rejects bad runtime input at the boundary.
+    """
+    return CacheConfig(write_once="false")  # type: ignore[arg-type]
 
 
-class TestCacheSecurityParameterConfiguration:
-    """Test custom configuration of cache security parameters."""
-
-    def test_cache_write_once_can_be_enabled(self) -> None:
-        """write_once can be set to True."""
-        bundle = FluentBundle("en", cache=CacheConfig(write_once=True))
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.write_once is True
-
-    def test_cache_enable_audit_can_be_enabled(self) -> None:
-        """enable_audit can be set to True."""
-        bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.enable_audit is True
-
-    def test_cache_max_audit_entries_can_be_customized(self) -> None:
-        """max_audit_entries accepts custom values."""
-        cfg = CacheConfig(enable_audit=True, max_audit_entries=5000)
-        bundle = FluentBundle("en", cache=cfg)
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.max_audit_entries == 5000
-
-    def test_cache_max_entry_weight_can_be_customized(self) -> None:
-        """max_entry_weight accepts custom values."""
-        bundle = FluentBundle("en", cache=CacheConfig(max_entry_weight=5000))
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.max_entry_weight == 5000
-
-    def test_cache_max_errors_per_entry_can_be_customized(self) -> None:
-        """max_errors_per_entry accepts custom values."""
-        bundle = FluentBundle("en", cache=CacheConfig(max_errors_per_entry=25))
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.max_errors_per_entry == 25
+def _invalid_debug_log_config() -> CacheConfig:
+    """Build one config with an invalid debug-log toggle value."""
+    return CacheConfig(enable_debug_log=1)  # type: ignore[arg-type]
 
 
-class TestCacheConfigAccessible:
-    """Test that CacheConfig is accessible via cache_config property."""
-
-    def test_cache_config_accessible_when_enabled(self) -> None:
-        """CacheConfig is accessible via cache_config property."""
-        cfg = CacheConfig(
-            size=500,
-            write_once=True,
-            enable_audit=True,
-            max_audit_entries=5000,
-            max_entry_weight=2000,
-            max_errors_per_entry=10,
-        )
-        bundle = FluentBundle("en", cache=cfg)
-
-        assert bundle.cache_enabled is True
-        cc = bundle.cache_config
-        assert cc is not None
-        assert cc.size == 500
-        assert cc.write_once is True
-        assert cc.enable_audit is True
-        assert cc.max_audit_entries == 5000
-        assert cc.max_entry_weight == 2000
-        assert cc.max_errors_per_entry == 10
+def _invalid_payload_budget_config() -> CacheConfig:
+    """Build one config with an invalid numeric boundary value."""
+    return CacheConfig(max_entry_payload_bytes=True)
 
 
-class TestCacheWriteOnceBehavior:
-    """Test write-once cache behavior."""
-
-    def test_write_once_allows_first_write(self) -> None:
-        """Write-once cache allows initial cache entries."""
-        cfg = CacheConfig(write_once=True)
-        bundle = FluentBundle("en", cache=cfg, strict=False)
-        bundle.add_resource("msg = Hello")
-
-        result, errors = bundle.format_pattern("msg")
-        assert result == "Hello"
-        assert errors == ()
-        assert bundle.cache_usage == 1
-
-    def test_write_once_allows_repeated_reads(self) -> None:
-        """Write-once cache allows reading the same cached entry."""
-        cfg = CacheConfig(write_once=True)
-        bundle = FluentBundle("en", cache=cfg, strict=False)
-        bundle.add_resource("msg = Hello")
-
-        bundle.format_pattern("msg")
-        assert bundle.cache_usage == 1
-
-        result, errors = bundle.format_pattern("msg")
-        assert result == "Hello"
-        assert errors == ()
-
-    def test_write_once_with_strict_raises_on_overwrite(self) -> None:
-        """Write-once + strict mode raises WriteConflictError on overwrite attempt."""
-        cfg = CacheConfig(write_once=True)
-        bundle = FluentBundle("en", cache=cfg, strict=True)
-        bundle.add_resource("msg = Hello")
-
-        bundle.format_pattern("msg")
-
-        bundle._messages.clear()
-        bundle.add_resource("msg = World")
-
-        stats = bundle.get_cache_stats()
-        assert stats is not None
-        assert stats["write_once"] is True
+def _invalid_fingerprint_key_config() -> CacheConfig:
+    """Build one config with a too-short keyed fingerprint secret."""
+    return CacheConfig(debug_fingerprint_key=b"short")
 
 
-class TestCacheAuditLogging:
-    """Test cache audit logging functionality."""
+def _invalid_fingerprint_key_type_config() -> CacheConfig:
+    """Build one config with an invalid fingerprint key type."""
+    return CacheConfig(debug_fingerprint_key="not-bytes")  # type: ignore[arg-type]
 
-    def test_get_cache_audit_log_returns_none_when_caching_disabled(self) -> None:
-        """get_cache_audit_log() returns None when bundle caching is disabled."""
-        bundle = FluentBundle("en")
-        assert bundle.get_cache_audit_log() is None
 
-    def test_get_cache_audit_log_returns_empty_tuple_when_audit_disabled(self) -> None:
-        """get_cache_audit_log() returns empty tuple when audit logging is disabled."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        bundle.add_resource("msg = Hello")
+def _invalid_integrity_event_sink_config() -> CacheConfig:
+    """Build one config with a non-sink integrity event consumer."""
+    return CacheConfig(integrity_event_sink=object())  # type: ignore[arg-type]
 
-        bundle.format_pattern("msg")
 
-        audit_log = bundle.get_cache_audit_log()
-        assert audit_log == ()
+class TestCacheConfigContract:
+    """The public cache configuration should validate its security posture."""
 
-    def test_get_cache_audit_log_returns_write_log_entries_when_enabled(self) -> None:
-        """get_cache_audit_log() returns immutable WriteLogEntry data."""
-        bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
-        bundle.add_resource("msg = Hello")
+    def test_defaults_match_public_contract(self) -> None:
+        config = CacheConfig()
 
-        bundle.format_pattern("msg")
-        bundle.format_pattern("msg")
+        assert config.size == DEFAULT_CACHE_SIZE
+        assert config.write_once is False
+        assert config.enable_debug_log is False
+        assert config.max_debug_entries == 10_000
+        assert config.max_entry_payload_bytes == DEFAULT_MAX_ENTRY_PAYLOAD_BYTES
+        assert config.max_errors_per_entry == 50
+        assert config.integrity_event_sink is None
+        assert config.debug_fingerprint_key is None
 
-        audit_log = bundle.get_cache_audit_log()
-        assert audit_log is not None
-        assert isinstance(audit_log, tuple)
-        assert [entry.operation for entry in audit_log] == ["MISS", "PUT", "HIT"]
-        assert [entry.sequence for entry in audit_log] == [1, 2, 3]
-        assert [entry.cache_sequence for entry in audit_log] == [0, 1, 1]
-        assert all(isinstance(entry, WriteLogEntry) for entry in audit_log)
-
-    def test_audit_logging_records_operations(self) -> None:
-        """Audit logging records cache operations when enabled."""
-        bundle = FluentBundle("en", cache=CacheConfig(enable_audit=True))
-        bundle.add_resource("msg = Hello")
-
-        bundle.format_pattern("msg")  # MISS then PUT
-        bundle.format_pattern("msg")  # HIT
-
-        stats = bundle.get_cache_stats()
-        assert stats is not None
-        assert stats["audit_enabled"] is True
-        assert stats["audit_entries"] >= 2
-
-    def test_audit_logging_disabled_by_default(self) -> None:
-        """Audit logging is disabled by default."""
-        bundle = FluentBundle("en", cache=CacheConfig())
-        bundle.add_resource("msg = Hello")
-        bundle.format_pattern("msg")
-
-        stats = bundle.get_cache_stats()
-        assert stats is not None
-        assert stats["audit_enabled"] is False
-        assert stats["audit_entries"] == 0
-
-    @given(enable_audit=st.booleans(), repetitions=st.integers(min_value=1, max_value=5))
-    @settings(max_examples=20)
-    def test_property_get_cache_audit_log_matches_audit_configuration(
-        self, enable_audit: bool, repetitions: int
+    @pytest.mark.parametrize(
+        ("factory", "expected"),
+        [
+            (_invalid_write_once_config, "write_once must be bool"),
+            (_invalid_debug_log_config, "enable_debug_log must be bool"),
+            (_invalid_payload_budget_config, "max_entry_payload_bytes must be int"),
+            (
+                _invalid_fingerprint_key_type_config,
+                "debug_fingerprint_key must be bytes or None",
+            ),
+            (
+                _invalid_fingerprint_key_config,
+                "debug_fingerprint_key must contain at least 16 bytes",
+            ),
+        ],
+    )
+    def test_invalid_config_values_fail_closed(
+        self,
+        factory: Any,
+        expected: str,
     ) -> None:
-        """PROPERTY: get_cache_audit_log() follows the bundle audit configuration."""
-        bundle = FluentBundle("en", cache=CacheConfig(enable_audit=enable_audit))
+        with pytest.raises((TypeError, ValueError), match=expected):
+            factory()
+
+    def test_invalid_integrity_event_sink_is_rejected(self) -> None:
+        with pytest.raises(TypeError, match="integrity_event_sink must implement"):
+            _invalid_integrity_event_sink_config()
+
+
+class TestBundleCacheDebugLog:
+    """The bundle should expose the bounded recent-operation debug ring only."""
+
+    def test_debug_log_absent_when_cache_disabled(self) -> None:
+        bundle = FluentBundle("en")
+        assert bundle.get_cache_debug_log() is None
+
+    def test_debug_log_empty_when_disabled(self) -> None:
+        bundle = FluentBundle("en", cache=CacheConfig())
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
+
+        debug_log = bundle.get_cache_debug_log()
+        assert debug_log == ()
+
+    def test_debug_log_records_recent_operations_with_keyed_fingerprint(self) -> None:
+        bundle = FluentBundle(
+            "en",
+            cache=CacheConfig(
+                enable_debug_log=True,
+                debug_fingerprint_key=b"0123456789abcdef0123456789abcdef",
+            ),
+        )
         bundle.add_resource("msg = Hello")
 
-        for _ in range(repetitions):
+        bundle.format_pattern("msg")
+        bundle.format_pattern("msg")
+
+        debug_log = bundle.get_cache_debug_log()
+        assert debug_log is not None
+        assert [entry.operation for entry in debug_log] == ["MISS", "PUT", "HIT"]
+        assert all(isinstance(entry, CacheDebugLogEntry) for entry in debug_log)
+        assert all(entry.key_fingerprint for entry in debug_log)
+        assert all("msg" not in entry.key_fingerprint for entry in debug_log)
+
+
+class TestBundleCacheIntegrity:
+    """Cache integrity failures are independent from formatting strictness."""
+
+    def test_corrupted_cache_entry_raises_even_when_bundle_is_non_strict(self) -> None:
+        sink = MemoryIntegrityEventSink()
+        bundle = FluentBundle(
+            "en",
+            strict=False,
+            cache=CacheConfig(
+                enable_debug_log=True,
+                integrity_event_sink=sink,
+                debug_fingerprint_key=b"abcdef0123456789abcdef0123456789",
+            ),
+        )
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
+
+        cache = bundle._cache
+        assert cache is not None
+        key = next(iter(cache._cache))
+        entry = cache._cache[key]
+        cache._cache[key] = replace(entry, formatted="Corrupted")
+
+        with pytest.raises(CacheCorruptionError):
             bundle.format_pattern("msg")
 
-        audit_log = bundle.get_cache_audit_log()
-        assert audit_log is not None
+        events = sink.snapshot()
+        assert len(events) == 1
+        assert events[0].kind is CacheIntegrityEventKind.ENTRY_CORRUPTION
+        assert events[0].message_id == "msg"
+        assert events[0].locale_code == "en"
 
-        event(f"audit={'enabled' if enable_audit else 'disabled'}")
-        event(f"repetitions={repetitions}")
+    def test_cache_stats_report_integrity_event_and_generation_fields(self) -> None:
+        bundle = FluentBundle("en", cache=CacheConfig(enable_debug_log=True))
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
+        bundle.clear_cache()
 
-        if enable_audit:
-            assert len(audit_log) >= 2
-            assert all(isinstance(entry, WriteLogEntry) for entry in audit_log)
-        else:
-            assert audit_log == ()
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["max_entry_payload_bytes"] == DEFAULT_MAX_ENTRY_PAYLOAD_BYTES
+        assert stats["debug_log_enabled"] is True
+        assert stats["cache_generation"] >= 1
+        assert stats["debug_log_entries"] >= 0
 
 
-class TestCacheMaxEntryWeight:
-    """Test cache entry weight limiting."""
+class TestCustomFunctionCacheability:
+    """Custom functions must opt into cacheability explicitly."""
 
-    def test_large_results_not_cached_when_over_weight_limit(self) -> None:
-        """Results exceeding max_entry_weight are computed but not cached."""
-        cfg = CacheConfig(max_entry_weight=50)  # Very small limit
-        bundle = FluentBundle("en", cache=cfg)
+    def test_custom_function_defaults_to_non_cacheable(self) -> None:
+        call_count = 0
 
+        def tick(value: object) -> str:
+            nonlocal call_count
+            call_count += 1
+            return f"{value}:{call_count}"
+
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
+        bundle.add_function("TICK", tick)
+        bundle.add_resource("msg = { TICK($value) }")
+
+        first, _ = bundle.format_pattern("msg", {"value": "a"})
+        second, _ = bundle.format_pattern("msg", {"value": "a"})
+
+        assert first == "a:1"
+        assert second == "a:2"
+        assert call_count == 2
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["size"] == 0
+        assert stats["uncacheable_function_skips"] == 2
+
+    def test_custom_function_can_opt_into_caching(self) -> None:
+        call_count = 0
+
+        def pure_tick(value: object) -> str:
+            nonlocal call_count
+            call_count += 1
+            return f"{value}:{call_count}"
+
+        bundle = FluentBundle("en", cache=CacheConfig(), use_isolating=False)
+        bundle.add_function("PURE_TICK", pure_tick, cacheable=True)
+        bundle.add_resource("msg = { PURE_TICK($value) }")
+
+        first, _ = bundle.format_pattern("msg", {"value": "a"})
+        second, _ = bundle.format_pattern("msg", {"value": "a"})
+
+        assert first == "a:1"
+        assert second == "a:1"
+        assert call_count == 1
+        stats = bundle.get_cache_stats()
+        assert stats is not None
+        assert stats["hits"] == 1
+        assert stats["size"] == 1
+
+
+class TestPayloadBudget:
+    """The cache should describe and enforce a retained payload-byte budget."""
+
+    def test_large_results_are_computed_but_not_cached(self) -> None:
+        bundle = FluentBundle(
+            "en",
+            cache=CacheConfig(max_entry_payload_bytes=50),
+        )
         long_text = "x" * 100
         bundle.add_resource(f"msg = {long_text}")
 
         result, errors = bundle.format_pattern("msg")
+
         assert result == long_text
         assert errors == ()
-
         stats = bundle.get_cache_stats()
         assert stats is not None
         assert stats["oversize_skips"] == 1
         assert stats["size"] == 0
 
 
-class TestCacheMaxErrorsPerEntry:
-    """Test cache error count limiting."""
+class TestFormattingErrorPrivacy:
+    """Cache-retained formatting contexts should not keep raw fallback payloads."""
 
-    def test_entries_with_many_errors_not_cached(self) -> None:
-        """Entries with excessive errors are computed but not cached."""
-        cfg = CacheConfig(max_errors_per_entry=1)  # Very strict
-        bundle = FluentBundle("en", cache=cfg, strict=False)
+    def test_cached_formatting_errors_store_redacted_fallback_context(self) -> None:
+        bundle = FluentBundle("en", cache=CacheConfig(), strict=False)
+        bundle.add_resource("msg = { NUMBER($value) }")
 
-        bundle.add_resource("msg = { $a } { $b } { $c }")
+        first_result, first_errors = bundle.format_pattern("msg", {"value": "secret-123"})
+        cached_result, cached_errors = bundle.format_pattern("msg", {"value": "secret-123"})
 
-        _, errors = bundle.format_pattern("msg")
-        assert len(errors) >= 2
+        assert first_result == "secret-123"
+        assert cached_result == "secret-123"
+        assert len(first_errors) == 1
+        assert len(cached_errors) == 1
+        assert first_errors[0].fallback_value == "secret-123"
+        context = cached_errors[0].context
+        assert context is not None
+        assert context.fallback_value.startswith("fallback[bytes=")
+        assert "secret-123" not in context.fallback_value
 
-        stats = bundle.get_cache_stats()
-        assert stats is not None
-        assert stats["error_bloat_skips"] >= 1
+    def test_cached_formatting_error_redaction_is_idempotent(self) -> None:
+        bundle = FluentBundle("en", cache=CacheConfig(), strict=False)
+        bundle.add_resource("msg = { NUMBER($value) }")
+
+        _, cached_errors = bundle.format_pattern("msg", {"value": "secret-123"})
+        _, cached_errors = bundle.format_pattern("msg", {"value": "secret-123"})
+
+        assert len(cached_errors) == 1
+        assert cached_errors[0].sanitized_for_cache() is cached_errors[0]
 
 
-class TestForSystemLocaleWithCacheParameters:
-    """Test for_system_locale factory method with CacheConfig."""
+class TestCorrelationScope:
+    """Integrity events should inherit the current logical correlation ID."""
 
-    def test_for_system_locale_accepts_cache_config(self) -> None:
-        """for_system_locale accepts CacheConfig."""
-        cfg = CacheConfig(
-            size=500,
-            write_once=True,
-            enable_audit=True,
-            max_audit_entries=5000,
-            max_entry_weight=8000,
-            max_errors_per_entry=30,
+    def test_integrity_event_sink_receives_correlation_id(self) -> None:
+        sink = MemoryIntegrityEventSink()
+        bundle = FluentBundle(
+            "en",
+            strict=False,
+            cache=CacheConfig(integrity_event_sink=sink),
         )
-        with patch("ftllexengine.runtime.bundle_lifecycle.get_system_locale", return_value="en_US"):
-            bundle = FluentBundle.for_system_locale(cache=cfg, strict=True)
+        bundle.add_resource("msg = Hello")
+        bundle.format_pattern("msg")
 
-        assert bundle.cache_enabled is True
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.size == 500
-        assert bundle.cache_config.write_once is True
-        assert bundle.cache_config.enable_audit is True
-        assert bundle.cache_config.max_audit_entries == 5000
-        assert bundle.cache_config.max_entry_weight == 8000
-        assert bundle.cache_config.max_errors_per_entry == 30
-        assert bundle.strict is True
+        cache = bundle._cache
+        assert cache is not None
+        key = next(iter(cache._cache))
+        entry = cache._cache[key]
+        cache._cache[key] = replace(entry, formatted="Corrupted")
 
-    def test_for_system_locale_cache_parameters_default(self) -> None:
-        """for_system_locale uses default CacheConfig values."""
-        with patch("ftllexengine.runtime.bundle_lifecycle.get_system_locale", return_value="en_US"):
-            bundle = FluentBundle.for_system_locale(cache=CacheConfig())
+        with CacheIntegrityCorrelationScope("req-123"), pytest.raises(
+            CacheCorruptionError
+        ):
+            bundle.format_pattern("msg")
 
-        assert bundle.cache_enabled is True
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.size == DEFAULT_CACHE_SIZE
-        assert bundle.cache_config.write_once is False
-        assert bundle.cache_config.enable_audit is False
-        assert bundle.cache_config.max_audit_entries == 10000
-        assert bundle.cache_config.max_entry_weight == DEFAULT_MAX_ENTRY_WEIGHT
-        assert bundle.cache_config.max_errors_per_entry == 50
-
-
-class TestCacheParameterCombinations:
-    """Test various combinations of cache parameters."""
-
-    def test_financial_grade_configuration(self) -> None:
-        """Test typical financial application configuration."""
-        cfg = CacheConfig(
-            write_once=True,  # Prevent data races
-            enable_audit=True,  # Compliance logging
-        )
-        bundle = FluentBundle("en_US", cache=cfg, strict=True)
-
-        bundle.add_resource("amount = { NUMBER($value, minimumFractionDigits: 2) }")
-        result, errors = bundle.format_pattern("amount", {"value": Decimal("1234.56")})
-        assert errors == ()
-        assert "1,234.56" in result or "1234.56" in result
-
-        stats = bundle.get_cache_stats()
-        assert stats is not None
-        assert stats["write_once"] is True
-        assert stats["strict"] is True
-        assert stats["audit_enabled"] is True
-
-    def test_high_throughput_configuration(self) -> None:
-        """Test high-throughput server configuration (audit disabled for performance)."""
-        cfg = CacheConfig(
-            size=10000,  # Large cache
-            enable_audit=False,  # Disable for performance
-            max_entry_weight=50000,  # Allow larger entries
-        )
-        bundle = FluentBundle("en_US", use_isolating=False, cache=cfg)
-
-        bundle.add_resource("msg = Hello { $name }!")
-        result, _ = bundle.format_pattern("msg", {"name": "World"})
-        assert result == "Hello World!"
-
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.size == 10000
-        assert bundle.cache_config.enable_audit is False
-        assert bundle.cache_config.max_entry_weight == 50000
-
-
-class TestCacheStatsIncludeNewParameters:
-    """Test that get_cache_stats() includes new parameters."""
-
-    def test_cache_stats_include_all_parameters(self) -> None:
-        """get_cache_stats() returns all cache configuration parameters."""
-        cfg = CacheConfig(
-            size=500,
-            write_once=True,
-            enable_audit=True,
-            max_audit_entries=5000,
-            max_entry_weight=8000,
-            max_errors_per_entry=30,
-        )
-        bundle = FluentBundle("en", cache=cfg, strict=True)
-
-        stats = bundle.get_cache_stats()
-        assert stats is not None
-
-        assert "maxsize" in stats
-        assert "max_entry_weight" in stats
-        assert "max_errors_per_entry" in stats
-        assert "write_once" in stats
-        assert "strict" in stats
-        assert "audit_enabled" in stats
-        assert "audit_entries" in stats
-
-        assert stats["maxsize"] == 500
-        assert stats["max_entry_weight"] == 8000
-        assert stats["max_errors_per_entry"] == 30
-        assert stats["write_once"] is True
-        assert stats["strict"] is True
-        assert stats["audit_enabled"] is True
-
-
-@pytest.mark.fuzz
-class TestPropertyBasedCacheParameters:
-    """Property-based tests for cache parameters."""
-
-    @given(
-        size=st.integers(min_value=1, max_value=100000),
-        max_audit_entries=st.integers(min_value=1, max_value=100000),
-        max_entry_weight=st.integers(min_value=1, max_value=100000),
-        max_errors_per_entry=st.integers(min_value=1, max_value=1000),
-    )
-    @settings(max_examples=50)
-    def test_cache_parameters_roundtrip(
-        self,
-        size: int,
-        max_audit_entries: int,
-        max_entry_weight: int,
-        max_errors_per_entry: int,
-    ) -> None:
-        """Cache parameters are correctly stored and accessible via CacheConfig."""
-        cfg = CacheConfig(
-            size=size,
-            max_audit_entries=max_audit_entries,
-            max_entry_weight=max_entry_weight,
-            max_errors_per_entry=max_errors_per_entry,
-        )
-        bundle = FluentBundle("en", cache=cfg)
-
-        assert bundle.cache_config is not None
-        assert bundle.cache_config.size == size
-        assert bundle.cache_config.max_audit_entries == max_audit_entries
-        assert bundle.cache_config.max_entry_weight == max_entry_weight
-        assert bundle.cache_config.max_errors_per_entry == max_errors_per_entry
-        event(f"cache_size={size}")
-
-    @given(
-        write_once=st.booleans(),
-        enable_audit=st.booleans(),
-        strict=st.booleans(),
-    )
-    @settings(max_examples=20)
-    def test_boolean_parameters_roundtrip(
-        self, write_once: bool, enable_audit: bool, strict: bool
-    ) -> None:
-        """Boolean cache parameters are correctly stored and accessible."""
-        cfg = CacheConfig(write_once=write_once, enable_audit=enable_audit)
-        bundle = FluentBundle("en", cache=cfg, strict=strict)
-
-        cc = bundle.cache_config
-        assert cc is not None
-        assert cc.write_once == write_once
-        assert cc.enable_audit == enable_audit
-        assert bundle.strict == strict
-        wo = "write_once" if write_once else "normal"
-        event(f"mode={wo}")
+        events = sink.snapshot()
+        assert events[0].correlation_id == "req-123"

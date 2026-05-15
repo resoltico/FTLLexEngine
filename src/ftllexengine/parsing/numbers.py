@@ -36,6 +36,7 @@ from ftllexengine.diagnostics import (
     FrozenFluentError,
     ParseResult,
 )
+from ftllexengine.diagnostics._redaction import redacted_parse_failure
 from ftllexengine.diagnostics.templates import ErrorTemplate
 from ftllexengine.parsing.text_normalization import strip_bidi_format_chars
 
@@ -173,7 +174,7 @@ def _parse_decimal_localized(
 
 
 def parse_decimal(
-    value: str,
+    value: object,
     locale_code: str,
 ) -> ParseResult[Decimal]:
     """Parse locale-aware number string to Decimal (financial precision).
@@ -229,13 +230,14 @@ def parse_decimal(
     unknown_locale_error_class = get_unknown_locale_error_class()
     number_format_error_class = get_number_format_error_class()
     babel_parse_decimal = get_parse_decimal_func()
+    value_summary = redacted_parse_failure(value, parse_type="decimal")
 
     if not isinstance(value, str):
-        diagnostic = ErrorTemplate.parse_decimal_failed(  # type: ignore[unreachable]
-            str(value), locale_code, f"Expected string, got {type(value).__name__}"
+        diagnostic = ErrorTemplate.parse_decimal_failed(
+            value, locale_code, f"Expected string, got {type(value).__name__}"
         )
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="decimal",
         )
@@ -253,7 +255,7 @@ def parse_decimal(
     if not is_structurally_valid_locale_code(locale_code):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="decimal",
         )
@@ -267,7 +269,7 @@ def parse_decimal(
     except (unknown_locale_error_class, ValueError):
         diagnostic = ErrorTemplate.parse_locale_unknown(locale_code)
         context = FrozenErrorContext(
-            input_value=str(value),
+            input_value=value_summary,
             locale_code=locale_code,
             parse_type="decimal",
         )
@@ -288,7 +290,7 @@ def parse_decimal(
 
     diagnostic = ErrorTemplate.parse_decimal_failed(value, locale_code, str(failure_reason))
     context = FrozenErrorContext(
-        input_value=str(value),
+        input_value=value_summary,
         locale_code=locale_code,
         parse_type="decimal",
     )

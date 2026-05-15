@@ -19,6 +19,7 @@ class _FunctionRegistryState(Protocol):
     """Structural contract implemented by FunctionRegistry."""
 
     _functions: dict[str, FunctionSignature]
+    _generation: int
 
 
 class _FunctionRegistryIntrospectionMixin:
@@ -49,6 +50,16 @@ class _FunctionRegistryIntrospectionMixin:
         """Get the underlying callable for a registered function."""
         sig = self._functions.get(ftl_name)
         return sig.callable if sig else None
+
+    def is_cacheable(self: _FunctionRegistryState, ftl_name: str) -> bool:
+        """Return whether the registered function explicitly allows caching."""
+        sig = self._functions.get(ftl_name)
+        return sig.cacheable if sig else False
+
+    @property
+    def cache_generation(self: _FunctionRegistryState) -> int:
+        """Monotonic registry generation used in cache contracts."""
+        return self._generation
 
     def __iter__(self: _FunctionRegistryState) -> Iterator[str]:
         """Iterate over registered FTL function names."""

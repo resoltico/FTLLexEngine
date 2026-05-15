@@ -218,8 +218,9 @@ class Term:
         The type annotation (Pattern, not Pattern | None) enforces this
         at the type level; this validates at runtime for programmatic construction.
         """
-        if self.value is None:  # pragma: no branch - runtime guard for programmatic construction
-            msg = "Term must have a value pattern (cannot be None)"  # type: ignore[unreachable]
+        value_obj: object = self.value
+        if value_obj is None:  # pragma: no branch - runtime guard for programmatic construction
+            msg = "Term must have a value pattern (cannot be None)"
             raise ValueError(msg)
 
     @staticmethod

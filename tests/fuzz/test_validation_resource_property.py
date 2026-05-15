@@ -185,15 +185,18 @@ class TestValidateResourceProperties:
     @given(source=validation_resource_sources())
     @settings(deadline=None)
     def test_is_valid_iff_no_errors_or_annotations(self, source: str) -> None:
-        """Property: is_valid is True iff errors and annotations are both empty."""
+        """Property: is_valid is True iff no blocking diagnostics exist."""
         result = validate_resource(source)
         has_errors = len(result.errors) > 0
         has_annotations = len(result.annotations) > 0
+        has_critical_warnings = result.critical_warning_count > 0
         event(f"has_errors={has_errors}")
-        expected = not has_errors and not has_annotations
+        event(f"has_critical_warnings={has_critical_warnings}")
+        expected = not has_errors and not has_annotations and not has_critical_warnings
         assert result.is_valid == expected, (
             f"is_valid={result.is_valid} but errors={result.errors!r}, "
-            f"annotations={result.annotations!r}"
+            f"annotations={result.annotations!r}, "
+            f"critical_warnings={result.critical_warning_count}"
         )
 
     @given(source=validation_resource_sources())

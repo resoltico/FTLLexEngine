@@ -336,6 +336,14 @@ class TestGetSystemLocale:
                 result = get_system_locale()
                 assert result == "he_il"
 
+    def test_invalid_env_locale_is_skipped_instead_of_returned(self) -> None:
+        """Malformed environment values should not leak through the public API."""
+        with patch("locale.getlocale", return_value=(None, None)):
+            env = {"LC_ALL": "bad/locale", "LANG": "en_US"}
+            with patch.dict(os.environ, env, clear=True):
+                result = get_system_locale()
+                assert result == "en_us"
+
     def test_bcp47_normalized(self) -> None:
         """BCP-47 format in env var normalized to lowercase POSIX."""
         with patch("locale.getlocale", return_value=(None, None)):

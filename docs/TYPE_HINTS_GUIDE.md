@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: TYPE_HINTS
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [type hints, mypy, FluentValue, ParseResult, TypeIs, LocaleCode]
   questions: ["what types does the library expose?", "how do I type parse results?", "which helpers are type guards?"]

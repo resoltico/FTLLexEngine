@@ -13,7 +13,7 @@ class TestNaNDecimalNormalization:
 
     def test_decimal_nan_cache_key_consistency(self) -> None:
         """Decimal NaN produces consistent cache key across independent instances."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted="Decimal Result", errors=())
         entry = cache.get("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True)
         assert entry is not None
@@ -21,7 +21,7 @@ class TestNaNDecimalNormalization:
 
     def test_decimal_nan_does_not_pollute_cache(self) -> None:
         """Multiple puts with Decimal NaN update the same entry."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         for i in range(10):
             cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted=f"Value {i}", errors=())
         stats = cache.get_stats()
@@ -32,7 +32,7 @@ class TestNaNDecimalNormalization:
 
     def test_decimal_snan_normalized_same_as_qnan(self) -> None:
         """Signaling NaN and quiet NaN both normalize to the same canonical key."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted="QNaN", errors=())
         # sNaN should resolve to same cache key as qNaN
         entry = cache.get("msg", {"val": Decimal("sNaN")}, None, "en", use_isolating=True)
@@ -40,7 +40,7 @@ class TestNaNDecimalNormalization:
 
     def test_decimal_nan_different_from_regular_decimal(self) -> None:
         """Decimal NaN has different cache key from regular Decimal values."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         cache.put("msg", {"val": Decimal("NaN")}, None, "en", use_isolating=True, formatted="NaN Result", errors=())
         cache.put("msg", {"val": Decimal("1.0")}, None, "en", use_isolating=True, formatted="Regular Result", errors=())
 
@@ -59,7 +59,7 @@ class TestNaNInNestedStructures:
 
     def test_nan_in_list_normalized(self) -> None:
         """NaN values within lists are normalized for cache key consistency."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         items = [Decimal(1), Decimal("NaN"), Decimal(3)]
         cache.put("msg", {"items": items}, None, "en", use_isolating=True, formatted="List Result", errors=())
         entry = cache.get("msg", {"items": items}, None, "en", use_isolating=True)
@@ -68,7 +68,7 @@ class TestNaNInNestedStructures:
 
     def test_nan_in_dict_normalized(self) -> None:
         """NaN values within dicts are normalized for cache key consistency."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         args: dict[str, FluentValue] = {"data": {"a": Decimal(1), "b": Decimal("NaN")}}
         cache.put("msg", args, None, "en", use_isolating=True, formatted="Dict Result", errors=())
         data = {"a": Decimal(1), "b": Decimal("NaN")}
@@ -78,7 +78,7 @@ class TestNaNInNestedStructures:
 
     def test_deeply_nested_nan_normalized(self) -> None:
         """NaN values in deeply nested structures are normalized consistently."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         deep_args: dict[str, FluentValue] = {
             "outer": {
                 "inner": [
@@ -111,7 +111,7 @@ class TestNaNSecurityProperties:
         create 100 unique, unretrievable entries, evicting all legitimate entries.
         With normalization all NaN entries collapse to a single key.
         """
-        cache = IntegrityCache(strict=False, maxsize=10)
+        cache = IntegrityCache(maxsize=10)
         for i in range(5):
             cache.put(f"legit{i}", None, None, "en", use_isolating=True, formatted=f"Legit {i}", errors=())
         for i in range(100):
@@ -133,7 +133,7 @@ class TestNaNSecurityProperties:
         self, value: Decimal
     ) -> None:
         """PROPERTY: For any Decimal value, put followed by get returns the entry."""
-        cache = IntegrityCache(strict=False)
+        cache = IntegrityCache()
         args = {"val": value}
         cache.put("msg", args, None, "en", use_isolating=True, formatted=f"Value: {value}", errors=())
         entry = cache.get("msg", args, None, "en", use_isolating=True)

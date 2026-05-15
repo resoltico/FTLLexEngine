@@ -120,7 +120,7 @@ class TestParseDecimal:
 
     def test_parse_decimal_type_error_returns_error(self) -> None:
         """Non-string input returns error in tuple; function never raises."""
-        result, errors = parse_decimal(1234, "en_US")  # type: ignore[arg-type]
+        result, errors = parse_decimal(1234, "en_US")
         assert len(errors) > 0
         assert result is None
         assert errors[0].parse_type == "decimal"

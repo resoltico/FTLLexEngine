@@ -1,14 +1,77 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: INDEX
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
-  keywords: [api index, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection, detect_cycles, entry_dependency_set]
-  questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing, introspection, and analysis APIs?", "where are syntax, parsing, diagnostics, and dependency-graph references?"]
+  keywords: [api index, docs index, documentation map, routing, FluentBundle, FluentLocalization, parse_ftl, FunctionRegistry, FrozenFluentError, introspection, detect_cycles, entry_dependency_set]
+  questions: ["where is a symbol documented?", "which file documents the runtime APIs?", "which file documents locale parsing, introspection, and analysis APIs?", "where are syntax, parsing, diagnostics, and dependency-graph references?", "where is the complete index of Markdown docs under docs/?"]
 ---
 
-# FTLLexEngine API Reference Index
+# FTLLexEngine Documentation And API Index
+
+<!--
+Premise: Readers need one complete navigation page, not only a symbol router.
+Reason: This file now does two jobs clearly: it inventories every Markdown document in `docs/`
+and it routes public symbols to the reference file that defines them.
+-->
+
+## Documentation Map
+
+### Start Here
+
+| File | Purpose |
+|:-----|:--------|
+| [DOC_00_Index.md](DOC_00_Index.md) | This file: complete docs map plus API routing table |
+| [QUICK_REFERENCE.md](QUICK_REFERENCE.md) | Short recipes for common tasks |
+| [WORKFLOW_TOUR.md](WORKFLOW_TOUR.md) | End-to-end usage examples |
+| [TERMINOLOGY.md](TERMINOLOGY.md) | Definitions for project vocabulary |
+| [MIGRATION.md](MIGRATION.md) | Upgrade notes and breaking-change guidance |
+
+### Core Reference
+
+| File | Purpose |
+|:-----|:--------|
+| [DOC_01_Core.md](DOC_01_Core.md) | Core entry points such as `FluentBundle`, `FluentLocalization`, and resource loading |
+| [DOC_02_Types.md](DOC_02_Types.md) | Public semantic and support types |
+| [DOC_02_SyntaxTypes.md](DOC_02_SyntaxTypes.md) | Fluent AST node types |
+| [DOC_02_SyntaxExpressions.md](DOC_02_SyntaxExpressions.md) | Fluent AST expression nodes |
+| [DOC_03_Parsing.md](DOC_03_Parsing.md) | FTL parsing, serialization, and validation APIs |
+| [DOC_03_LocaleParsing.md](DOC_03_LocaleParsing.md) | Locale-aware parsing APIs for numbers, dates, and currency |
+
+### Runtime, Introspection, And Diagnostics
+
+| File | Purpose |
+|:-----|:--------|
+| [DOC_04_Runtime.md](DOC_04_Runtime.md) | Runtime formatting, cache, function, and bundle support APIs |
+| [DOC_04_RuntimeUtilities.md](DOC_04_RuntimeUtilities.md) | Locale utilities, constants, and runtime helpers |
+| [DOC_04_Introspection.md](DOC_04_Introspection.md) | Message, locale, currency, and territory introspection APIs |
+| [DOC_04_Analysis.md](DOC_04_Analysis.md) | Dependency-graph and cycle-analysis APIs |
+| [DOC_05_Diagnostics.md](DOC_05_Diagnostics.md) | Diagnostics, validation results, and formatter APIs |
+| [DOC_05_Errors.md](DOC_05_Errors.md) | Error and integrity exception types |
+
+### Guides
+
+| File | Purpose |
+|:-----|:--------|
+| [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md) | Registering and using custom Fluent functions |
+| [LOCALE_GUIDE.md](LOCALE_GUIDE.md) | Locale normalization, fallback, and orchestration behavior |
+| [PARSING_GUIDE.md](PARSING_GUIDE.md) | Practical locale-aware parsing examples |
+| [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md) | Type-checking expectations and examples |
+| [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md) | Resource and message-schema validation workflow |
+| [THREAD_SAFETY.md](THREAD_SAFETY.md) | Thread-safety guarantees and concurrency model |
+| [DATA_INTEGRITY_ARCHITECTURE.md](DATA_INTEGRITY_ARCHITECTURE.md) | Integrity model, cache evidence, and fail-closed boundaries |
+
+### Tooling And Operations
+
+| File | Purpose |
+|:-----|:--------|
+| [DEVELOPER_DEVCONTAINER.md](DEVELOPER_DEVCONTAINER.md) | Canonical contributor container workflow |
+| [DOC_06_Testing.md](DOC_06_Testing.md) | Verification commands, docs validation, and example execution |
+| [FUZZING_GUIDE.md](FUZZING_GUIDE.md) | Fuzzing overview and workflows |
+| [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md) | Atheris-specific fuzzing workflow |
+| [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md) | HypoFuzz-specific workflow |
+| [RELEASE_PROTOCOL.md](RELEASE_PROTOCOL.md) | Release, packaging, and publication procedure |
 
 ## Routing Table
 
@@ -25,6 +88,8 @@ route:
 | `ResourceLoadResult` | [DOC_01_Core.md](DOC_01_Core.md) | `ResourceLoadResult` |
 | `FallbackInfo` | [DOC_01_Core.md](DOC_01_Core.md) | `FallbackInfo` |
 | `LocalizationCacheStats` | [DOC_01_Core.md](DOC_01_Core.md) | `LocalizationCacheStats` |
+| `UNLIMITED` | [DOC_02_Types.md](DOC_02_Types.md) | `UNLIMITED` |
+| `UnlimitedLimit` | [DOC_02_Types.md](DOC_02_Types.md) | `UnlimitedLimit` |
 | `FluentNumber` | [DOC_02_Types.md](DOC_02_Types.md) | `FluentNumber` |
 | `FluentValue` | [DOC_02_Types.md](DOC_02_Types.md) | `FluentValue` |
 | `ParseResult` | [DOC_02_Types.md](DOC_02_Types.md) | `ParseResult` |
@@ -108,8 +173,9 @@ route:
 | `select_plural_category` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `select_plural_category` |
 | `make_fluent_number` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `make_fluent_number` |
 | `clear_module_caches` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `clear_module_caches` |
-| `CacheAuditLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheAuditLogEntry` |
-| `WriteLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `WriteLogEntry` |
+| `CacheDebugLogEntry` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheDebugLogEntry` |
+| `CacheIntegrityEvent` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheIntegrityEvent` |
+| `CacheIntegrityEventKind` | [DOC_04_Runtime.md](DOC_04_Runtime.md) | `CacheIntegrityEventKind` |
 | `detect_cycles` | [DOC_04_Analysis.md](DOC_04_Analysis.md) | `detect_cycles` |
 | `entry_dependency_set` | [DOC_04_Analysis.md](DOC_04_Analysis.md) | `entry_dependency_set` |
 | `make_cycle_key` | [DOC_04_Analysis.md](DOC_04_Analysis.md) | `make_cycle_key` |
@@ -175,22 +241,3 @@ route:
 | `scripts/fuzz_hypofuzz.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/fuzz_hypofuzz.sh` |
 | `scripts/fuzz_atheris.sh` | [DOC_06_Testing.md](DOC_06_Testing.md) | `scripts/fuzz_atheris.sh` |
 | `pytest.mark.fuzz` | [DOC_06_Testing.md](DOC_06_Testing.md) | `pytest.mark.fuzz` |
-
-## Guide Links
-
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
-- [CUSTOM_FUNCTIONS_GUIDE.md](CUSTOM_FUNCTIONS_GUIDE.md)
-- [DATA_INTEGRITY_ARCHITECTURE.md](DATA_INTEGRITY_ARCHITECTURE.md)
-- [DEVELOPER_DEVCONTAINER.md](DEVELOPER_DEVCONTAINER.md)
-- [FUZZING_GUIDE.md](FUZZING_GUIDE.md)
-- [FUZZING_GUIDE_ATHERIS.md](FUZZING_GUIDE_ATHERIS.md)
-- [FUZZING_GUIDE_HYPOFUZZ.md](FUZZING_GUIDE_HYPOFUZZ.md)
-- [LOCALE_GUIDE.md](LOCALE_GUIDE.md)
-- [MIGRATION.md](MIGRATION.md)
-- [PARSING_GUIDE.md](PARSING_GUIDE.md)
-- [RELEASE_PROTOCOL.md](RELEASE_PROTOCOL.md)
-- [TERMINOLOGY.md](TERMINOLOGY.md)
-- [THREAD_SAFETY.md](THREAD_SAFETY.md)
-- [TYPE_HINTS_GUIDE.md](TYPE_HINTS_GUIDE.md)
-- [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md)
-- [WORKFLOW_TOUR.md](WORKFLOW_TOUR.md)

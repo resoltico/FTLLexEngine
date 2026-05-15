@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, NoReturn
 
 from ftllexengine.constants import FALLBACK_INVALID, FALLBACK_MISSING_MESSAGE
+from ftllexengine.core.identifier_validation import is_valid_identifier
 from ftllexengine.diagnostics import (
     Diagnostic,
     DiagnosticCode,
@@ -16,6 +17,7 @@ from ftllexengine.diagnostics import (
     FrozenFluentError,
 )
 from ftllexengine.integrity import FormattingIntegrityError, IntegrityContext
+from ftllexengine.runtime.resolution_context import ResolutionContext
 from ftllexengine.runtime.resolver import FluentResolver
 
 if TYPE_CHECKING:
@@ -27,6 +29,50 @@ logger = logging.getLogger("ftllexengine.runtime.bundle")
 
 class _BundleFormattingMixin:
     """Formatting behavior for FluentBundle."""
+
+    @staticmethod
+    def _validate_nested_mapping_keys(
+        value: object,
+        *,
+        path: str,
+        seen: set[int],
+    ) -> str | None:
+        """Reject non-string nested mapping keys before cache shaping sees them."""
+        object_id = id(value)
+        if object_id in seen:
+            return None
+        seen.add(object_id)
+        try:
+            if isinstance(value, Mapping):
+                for nested_key, nested_value in value.items():
+                    if not isinstance(nested_key, str):
+                        return (
+                            f"Invalid nested mapping key at {path}: expected str, got "
+                            f"{type(nested_key).__name__}"
+                        )
+                    nested_error = _BundleFormattingMixin._validate_nested_mapping_keys(
+                        nested_value,
+                        path=f"{path}[{nested_key!r}]",
+                        seen=seen,
+                    )
+                    if nested_error is not None:
+                        return nested_error
+                return None
+
+            if isinstance(value, Sequence) and not isinstance(
+                value, (str, bytes, bytearray)
+            ):
+                for index, item in enumerate(value):
+                    nested_error = _BundleFormattingMixin._validate_nested_mapping_keys(
+                        item,
+                        path=f"{path}[{index}]",
+                        seen=seen,
+                    )
+                    if nested_error is not None:
+                        return nested_error
+            return None
+        finally:
+            seen.discard(object_id)
 
     def _invalid_request_result(
         self: BundleStateProtocol,
@@ -51,16 +97,34 @@ class _BundleFormattingMixin:
         attribute: str | None,
     ) -> tuple[str, tuple[FrozenFluentError, ...]] | None:
         """Validate top-level format_pattern inputs."""
-        if not message_id or not isinstance(message_id, str):
-            logger.warning("Invalid message ID: empty or non-string")
-            return self._invalid_request_result(
-                "<empty>",
-                FALLBACK_INVALID,
-                category=ErrorCategory.REFERENCE,
-                code=DiagnosticCode.MESSAGE_NOT_FOUND,
-                message="Invalid message ID: empty or non-string",
-            )
+        if invalid_result := _BundleFormattingMixin._validate_message_id(self, message_id):
+            return invalid_result
+        if invalid_result := _BundleFormattingMixin._validate_args(self, message_id, args):
+            return invalid_result
+        return _BundleFormattingMixin._validate_attribute(self, message_id, attribute)
 
+    def _validate_message_id(
+        self: BundleStateProtocol,
+        message_id: str,
+    ) -> tuple[str, tuple[FrozenFluentError, ...]] | None:
+        """Validate the message identifier before cache or resolver work."""
+        if message_id and isinstance(message_id, str):
+            return None
+        logger.warning("Invalid message ID: empty or non-string")
+        return self._invalid_request_result(
+            "<empty>",
+            FALLBACK_INVALID,
+            category=ErrorCategory.REFERENCE,
+            code=DiagnosticCode.MESSAGE_NOT_FOUND,
+            message="Invalid message ID: empty or non-string",
+        )
+
+    def _validate_args(
+        self: BundleStateProtocol,
+        message_id: str,
+        args: Mapping[str, FluentValue] | None,
+    ) -> tuple[str, tuple[FrozenFluentError, ...]] | None:
+        """Validate formatting arguments before key shaping or resolution."""
         raw_args: object = args
         if raw_args is not None and not isinstance(raw_args, Mapping):
             arg_type = type(raw_args).__name__
@@ -73,24 +137,80 @@ class _BundleFormattingMixin:
                 message=f"Invalid args type: expected Mapping or None, got {arg_type}",
             )
 
-        raw_attribute: object = attribute
-        if raw_attribute is not None and not isinstance(raw_attribute, str):
-            attribute_type = type(raw_attribute).__name__
-            logger.warning(
-                "Invalid attribute type: expected str or None, got %s",
-                attribute_type,
+        if raw_args is None:
+            return None
+
+        for arg_key, arg_value in raw_args.items():
+            invalid_result = _BundleFormattingMixin._validate_arg_key(self, message_id, arg_key)
+            if invalid_result is not None:
+                return invalid_result
+            nested_mapping_error = _BundleFormattingMixin._validate_nested_mapping_keys(
+                arg_value,
+                path=f"args[{arg_key!r}]",
+                seen=set(),
             )
+            if nested_mapping_error is not None:
+                logger.warning(nested_mapping_error)
+                return self._invalid_request_result(
+                    message_id,
+                    FALLBACK_INVALID,
+                    category=ErrorCategory.RESOLUTION,
+                    code=DiagnosticCode.INVALID_ARGUMENT,
+                    message=nested_mapping_error,
+                )
+        return None
+
+    def _validate_arg_key(
+        self: BundleStateProtocol,
+        message_id: str,
+        arg_key: object,
+    ) -> tuple[str, tuple[FrozenFluentError, ...]] | None:
+        """Validate one top-level formatting argument key."""
+        if not isinstance(arg_key, str):
+            key_type = type(arg_key).__name__
+            logger.warning("Invalid args key type: expected str, got %s", key_type)
             return self._invalid_request_result(
                 message_id,
                 FALLBACK_INVALID,
                 category=ErrorCategory.RESOLUTION,
                 code=DiagnosticCode.INVALID_ARGUMENT,
-                message=(
-                    f"Invalid attribute type: expected str or None, got {attribute_type}"
-                ),
+                message=f"Invalid args key type: expected str, got {key_type}",
             )
+        if is_valid_identifier(arg_key):
+            return None
+        logger.warning("Invalid args key name: %s", arg_key)
+        return self._invalid_request_result(
+            message_id,
+            FALLBACK_INVALID,
+            category=ErrorCategory.RESOLUTION,
+            code=DiagnosticCode.INVALID_ARGUMENT,
+            message=(
+                f"Invalid args key name: {arg_key!r}. "
+                "Keys must be valid Fluent identifiers."
+            ),
+        )
 
-        return None
+    def _validate_attribute(
+        self: BundleStateProtocol,
+        message_id: str,
+        attribute: str | None,
+    ) -> tuple[str, tuple[FrozenFluentError, ...]] | None:
+        """Validate the optional attribute selector."""
+        raw_attribute: object = attribute
+        if raw_attribute is None or isinstance(raw_attribute, str):
+            return None
+        attribute_type = type(raw_attribute).__name__
+        logger.warning(
+            "Invalid attribute type: expected str or None, got %s",
+            attribute_type,
+        )
+        return self._invalid_request_result(
+            message_id,
+            FALLBACK_INVALID,
+            category=ErrorCategory.RESOLUTION,
+            code=DiagnosticCode.INVALID_ARGUMENT,
+            message=f"Invalid attribute type: expected str or None, got {attribute_type}",
+        )
 
     def _lookup_cached_pattern(
         self: BundleStateProtocol,
@@ -108,6 +228,7 @@ class _BundleFormattingMixin:
             attribute,
             self._locale,
             use_isolating=self._use_isolating,
+            function_generation=self._function_registry.cache_generation,
         )
         if cached_entry is None:
             return None
@@ -156,6 +277,7 @@ class _BundleFormattingMixin:
             messages=self._messages,
             terms=self._terms,
             function_registry=self._function_registry,
+            reentry_gate=self._resolution_gate,
             use_isolating=self._use_isolating,
             max_nesting_depth=self._max_nesting_depth,
             max_expansion_size=self._max_expansion_size,
@@ -190,7 +312,17 @@ class _BundleFormattingMixin:
 
         message = self._messages[message_id]
         resolver = self._resolver
-        result, errors_tuple = resolver.resolve_message(message, args, attribute)
+        context = ResolutionContext(
+            max_depth=self._max_nesting_depth,
+            max_expression_depth=self._max_nesting_depth,
+            max_expansion_size=self._max_expansion_size,
+        )
+        result, errors_tuple = resolver.resolve_message(
+            message,
+            args,
+            attribute,
+            context=context,
+        )
 
         if errors_tuple:
             log_fn = logger.warning if self._strict else logger.debug
@@ -205,15 +337,26 @@ class _BundleFormattingMixin:
             logger.debug("Resolved message '%s' successfully", message_id)
 
         if self._cache is not None:
-            self._cache.put(
-                message_id,
-                args,
-                attribute,
-                self._locale,
-                use_isolating=self._use_isolating,
-                formatted=result,
-                errors=errors_tuple,
-            )
+            if context.cacheable_output:
+                self._cache.put(
+                    message_id,
+                    args,
+                    attribute,
+                    self._locale,
+                    use_isolating=self._use_isolating,
+                    function_generation=self._function_registry.cache_generation,
+                    formatted=result,
+                    errors=errors_tuple,
+                )
+            else:
+                self._cache.note_uncacheable_result(
+                    message_id,
+                    args,
+                    attribute,
+                    self._locale,
+                    use_isolating=self._use_isolating,
+                    function_generation=self._function_registry.cache_generation,
+                )
 
         if errors_tuple and self._strict:
             self._raise_strict_error(message_id, result, errors_tuple)

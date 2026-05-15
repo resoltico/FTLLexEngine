@@ -338,6 +338,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.diagnostics.errors import FrozenFluentError
     from ftllexengine.integrity import (
         CacheCorruptionError,
+        CacheKeySerializationError,
         FormattingIntegrityError,
         WriteConflictError,
     )
@@ -369,6 +370,7 @@ __all__ = [
     "Any",
     "CacheConfig",
     "CacheCorruptionError",
+    "CacheKeySerializationError",
     "ComplexArgs",
     "FluentBundle",
     "FormattingIntegrityError",

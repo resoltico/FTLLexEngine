@@ -13,7 +13,16 @@ set -o nounset
 set -o pipefail
 shopt -s inherit_errexit
 
-PY_VERSION="${PY_VERSION:-3.13}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "$PROJECT_ROOT/scripts/lib/python_support_contract.sh"
+
+# Premise: the native Atheris lane must follow the same minimum-version owner
+# as the rest of the repository gates.
+# Reason: keeping the interpreter default in one contract file prevents the
+# native-fuzz lane from silently diverging from the supported floor.
+PY_VERSION="${PY_VERSION:-$FTLLEXENGINE_PYTHON_MIN}"
 WORKERS=1
 TIME_LIMIT=""
 TARGET=""
@@ -27,8 +36,6 @@ VERBOSE=0
 DRY_RUN=0
 ORIGINAL_ARGS=("$@")
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 readonly FUZZ_LIB_DIR="$SCRIPT_DIR/lib/fuzz_atheris"
 
 require_fuzz_lib() {

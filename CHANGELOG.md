@@ -1,19 +1,41 @@
----
-afad: "4.0"
-version: "0.166.0"
-domain: CHANGELOG
-updated: "2026-05-01"
-route:
-  keywords: [changelog, release notes, version history, breaking changes, migration, fixed, what's new]
-  questions: ["what changed in version X?", "what are the breaking changes?", "what was fixed in the latest release?", "what is the release history?"]
----
-
 # Changelog
 
 Notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.167.0] - 2026-05-15
+
+### Changed
+
+- **The maintainer release runbook now distinguishes partial bootstrap payloads from final bootstrap commits.**
+  `docs/RELEASE_PROTOCOL.md` now gives two explicit Step 3 branch-cut flows: one for release
+  payloads that still need staged finalization work, and one for clean-clone pre-flight runs that
+  already proved a detached bootstrap commit containing the full final payload. That removes the
+  ambiguity around how to create `release/X.Y.Z` after bootstrap-path verification while keeping
+  the PR diff against `origin/main` as the authoritative scope checkpoint.
+- **Runtime boundaries, release contracts, and validation semantics now fail closed earlier and more explicitly.**
+  Streamed resource loading now enforces bounded input before allocation, filesystem loaders now
+  apply bounded no-follow reads, custom-function and parsing diagnostics redact payloads by
+  default, duplicate IDs and cross-resource shadows require explicit overwrite admission, the
+  async bundle owns its executor and bounded queue instead of delegating through ambient
+  `asyncio.to_thread()`, and the release/test workflows now derive Python support from one
+  canonical contract while verifying a dedicated Python 3.13 free-threaded lane and an immutable
+  annotated release tag.
+- **Runtime caching now uses one explicit integrity contract instead of a lenient audit-log grab bag.**
+  Cache corruption, key confusion, and write-once conflicts now fail fast regardless of bundle
+  formatting strictness; `CacheConfig.integrity_strict`, `enable_audit`, `max_audit_entries`, and
+  `max_entry_weight` are gone in favor of `enable_debug_log`, `max_debug_entries`,
+  `max_entry_payload_bytes`, keyed debug fingerprints, and structured integrity-event sinks.
+  Custom functions now default to `cacheable=False`, cache keys include the function-registry
+  generation, oversized retained payloads are measured by deterministic UTF-8 payload bytes, cache
+  snapshots sanitize retained fallback text, the runtime/localization facades now expose
+  `CacheDebugLogEntry` plus `CacheIntegrityEvent` as the public evidence surfaces, and the
+  fuzzing/docs/test inventories now use the renamed debug-log terminology consistently. The
+  runtime Atheris harness now treats injected cache corruption as the expected fail-closed
+  integrity outcome even when formatting mode is non-strict, so the canonical fuzz sweep asserts
+  the same cache contract as the shipped runtime.
 
 ## [0.166.0] - 2026-05-01
 
@@ -7088,7 +7110,8 @@ Both validators are re-exported from `ftllexengine.introspection` and the root
 [0.29.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.29.0
 [0.28.1]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.1
 [0.28.0]: https://github.com/resoltico/ftllexengine/releases/tag/v0.28.0
-[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.166.0...HEAD
+[Unreleased]: https://github.com/resoltico/FTLLexEngine/compare/v0.167.0...HEAD
+[0.167.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.166.0...v0.167.0
 [0.166.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.165.0...v0.166.0
 [0.165.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.164.0...v0.165.0
 [0.164.0]: https://github.com/resoltico/FTLLexEngine/compare/v0.163.0...v0.164.0

@@ -50,6 +50,7 @@ class FunctionMetadata:
         requires_locale: Whether function needs bundle locale injected
         expected_positional_args: Expected number of positional args from FTL (before locale)
         category: Function category for documentation
+        cacheable: Whether formatted outputs using this function may be cached
 
     Example:
         >>> NUMBER_META = FunctionMetadata(  # doctest: +SKIP
@@ -66,6 +67,7 @@ class FunctionMetadata:
     requires_locale: bool
     expected_positional_args: int = 1
     category: FunctionCategory = FunctionCategory.FORMATTING
+    cacheable: bool = True
 
 
 # Centralized metadata registry for built-in functions

@@ -2,7 +2,14 @@
 
 set -euo pipefail
 
-PY_VERSION="${PY_VERSION:-3.13}"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/python_support_contract.sh
+source "$ROOT_DIR/scripts/lib/python_support_contract.sh"
+
+# Premise: contributor shell gates default to the minimum supported Python.
+# Reason: the latest supported interpreter remains available via PY_VERSION=...
+# overrides, but the default path should always validate the support floor.
+PY_VERSION="${PY_VERSION:-$FTLLEXENGINE_PYTHON_MIN}"
 if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" ]]; then
     UV_ENV=".venv-devcontainer-${PY_VERSION}"
 else
@@ -13,7 +20,6 @@ if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" == "1" && -z "${UV_LINK_MODE:-}" ]]; then
 fi
 ATHERIS_TARGET_SMOKE_TIME="${ATHERIS_TARGET_SMOKE_TIME:-3}"
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 if [[ "${FTLLEXENGINE_DEVCONTAINER:-}" != "1" ]]; then

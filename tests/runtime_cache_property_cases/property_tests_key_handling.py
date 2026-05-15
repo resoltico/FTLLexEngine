@@ -25,7 +25,7 @@ class TestCacheKeyHandling:
         value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Same key components retrieve same cached value."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         formatted, errors = value
         # Put with specific key
@@ -55,7 +55,7 @@ class TestCacheKeyHandling:
         """PROPERTY: Different locales create different cache keys."""
         assume(locale1 != locale2)
 
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         formatted, errors = value
         # Put with locale1
@@ -86,7 +86,7 @@ class TestCacheKeyHandling:
         """PROPERTY: Different attributes create different cache keys."""
         assume(attr1 != attr2)
 
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         formatted, errors = value
         # Put with attr1
@@ -112,7 +112,7 @@ class TestCacheKeyHandling:
         value: tuple[str, tuple[()]],
     ) -> None:
         """PROPERTY: Equivalent args dicts produce same cache key."""
-        cache = IntegrityCache(maxsize=100, strict=False)
+        cache = IntegrityCache(maxsize=100 )
 
         formatted, errors = value
         # Put with args dict

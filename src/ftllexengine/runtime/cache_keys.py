@@ -1,8 +1,7 @@
-"""Hashable-key conversion helpers for IntegrityCache."""
+"""Hashable-key conversion helpers for ``IntegrityCache``."""
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -16,9 +15,30 @@ if TYPE_CHECKING:
 
     from ftllexengine.runtime.cache_types import HashableValue, _CacheKey
 
-__all__ = ["HASHABLE_NODE_BUDGET", "compute_key_hash", "make_hashable", "make_key"]
+__all__ = ["HASHABLE_NODE_BUDGET", "make_hashable", "make_key"]
 
 HASHABLE_NODE_BUDGET: int = 10_000
+
+
+def _validated_mapping_items(
+    value: Mapping[object, object],
+) -> tuple[tuple[str, object], ...]:
+    """Normalize mapping keys before any sorting or hashing happens.
+
+    Premise:
+        Cache-key shaping must not execute arbitrary key comparison behavior.
+
+    Reason:
+        Restricting keys to plain strings keeps the cache boundary a pure data
+        transformation instead of letting comparison methods participate.
+    """
+    items: list[tuple[str, object]] = []
+    for key, item in value.items():
+        if not isinstance(key, str):
+            msg = f"Mapping keys in cache arguments must be str, got {type(key).__name__}"
+            raise TypeError(msg)
+        items.append((key, item))
+    return tuple(sorted(items, key=lambda pair: pair[0]))
 
 
 def _hashable_decimal(value: Decimal) -> HashableValue:
@@ -39,7 +59,10 @@ def _hashable_mapping(
 ) -> HashableValue:
     return cast(
         "HashableValue",
-        (tag, tuple(sorted((key, recurse(item)) for key, item in value.items()))),
+        (
+            tag,
+            tuple((key, recurse(item)) for key, item in _validated_mapping_items(value)),
+        ),
     )
 
 
@@ -136,21 +159,15 @@ def make_hashable(value: object, depth: int = MAX_DEPTH) -> HashableValue:
             return known_value
         if isinstance(current, Mapping):
             return _hashable_mapping("__mapping__", current, recurse)
-        if isinstance(current, Sequence):
+        if isinstance(current, Sequence) and not isinstance(
+            current, (str, bytes, bytearray)
+        ):
             return _hashable_sequence("__seq__", current, recurse)
 
         msg = f"Unknown type in cache key: {type(current).__name__}"
         raise TypeError(msg)
 
     return go(value, depth)
-
-
-def compute_key_hash(key: _CacheKey) -> bytes:
-    """Compute the 8-byte BLAKE2b key binding used by cache entries."""
-    return hashlib.blake2b(
-        str(key).encode("utf-8", errors="surrogatepass"),
-        digest_size=8,
-    ).digest()
 
 
 def make_key(
@@ -160,6 +177,7 @@ def make_key(
     locale_code: str,
     *,
     use_isolating: bool,
+    function_generation: int = 0,
 ) -> _CacheKey | None:
     """Create an immutable cache key tuple from formatting arguments."""
     if args is None:
@@ -167,11 +185,11 @@ def make_key(
     else:
         try:
             items: list[tuple[str, HashableValue]] = []
-            for key, value in args.items():
+            for key, value in _validated_mapping_items(cast("Mapping[object, object]", args)):
                 items.append((key, make_hashable(value)))
-            args_tuple = tuple(sorted(items))
+            args_tuple = tuple(items)
             hash(args_tuple)
         except (TypeError, RecursionError):
             return None
 
-    return (message_id, args_tuple, attribute, locale_code, use_isolating)
+    return (message_id, args_tuple, attribute, locale_code, use_isolating, function_generation)

@@ -71,7 +71,7 @@ class LocalizationMetrics:
     validate_calls: int = 0
     message_variable_validation_checks: int = 0
     schema_validation_checks: int = 0
-    cache_audit_checks: int = 0
+    cache_debug_log_checks: int = 0
     locale_boundary_checks: int = 0
     loader_init_checks: int = 0
     loader_junk_checks: int = 0
@@ -103,7 +103,7 @@ _PATTERN_WEIGHTS: Sequence[tuple[str, int]] = (
     ("validate_message_schemas_api", 6),
     ("add_function_custom", 6),
     ("introspect_api", 7),
-    ("cache_audit_api", 6),
+    ("cache_debug_log_api", 6),
     ("locale_boundary_api", 5),
     ("on_fallback_callback", 6),
     ("loader_init_success", 5),
@@ -168,15 +168,18 @@ _NON_STRING_LOCALES: Sequence[object] = (
     ["en-US"],
     {"locale": "en-US"},
 )
-_VALID_AUDIT_OPERATIONS: frozenset[str] = frozenset(
+_VALID_DEBUG_OPERATIONS: frozenset[str] = frozenset(
     {
         "MISS",
         "PUT",
         "HIT",
         "EVICT",
         "CORRUPTION",
+        "KEY_CONFUSION",
         "WRITE_ONCE_IDEMPOTENT",
         "WRITE_ONCE_CONFLICT",
+        "ENTRY_VERIFICATION_FAILED",
+        "BYPASS_NONCACHEABLE_FUNCTION",
     }
 )
 _state = BaseFuzzerState(
@@ -209,7 +212,7 @@ def _build_stats_dict() -> dict[str, Any]:
     stats["validate_calls"] = _domain.validate_calls
     stats["message_variable_validation_checks"] = _domain.message_variable_validation_checks
     stats["schema_validation_checks"] = _domain.schema_validation_checks
-    stats["cache_audit_checks"] = _domain.cache_audit_checks
+    stats["cache_debug_log_checks"] = _domain.cache_debug_log_checks
     stats["locale_boundary_checks"] = _domain.locale_boundary_checks
     stats["loader_init_checks"] = _domain.loader_init_checks
     stats["loader_junk_checks"] = _domain.loader_junk_checks
@@ -251,7 +254,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
         SyntaxIntegrityError,
     )
     from ftllexengine.localization import (
-        CacheAuditLogEntry,
+        CacheDebugLogEntry,
         FluentLocalization,
         LocalizationBootConfig,
         LocalizationCacheStats,
@@ -260,7 +263,7 @@ with atheris.instrument_imports(include=["ftllexengine"]):
     from ftllexengine.runtime.cache_config import CacheConfig
     from ftllexengine.syntax import Message, Term
 
-
+# ruff: noqa: RUF022 - grouped re-exports mirror the shared fuzzer helper surface
 __all__ = [
     "GC_INTERVAL",
     "MAX_LOCALE_LENGTH_HARD_LIMIT",
@@ -272,9 +275,9 @@ __all__ = [
     "_PATTERN_WEIGHTS",
     "_SINGLE_LOCALES",
     "_STRUCTURALLY_INVALID_LOCALES",
-    "_VALID_AUDIT_OPERATIONS",
+    "_VALID_DEBUG_OPERATIONS",
     "Any",
-    "CacheAuditLogEntry",
+    "CacheDebugLogEntry",
     "CacheConfig",
     "DataIntegrityError",
     "FallbackInfo",

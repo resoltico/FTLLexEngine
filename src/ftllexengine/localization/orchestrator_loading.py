@@ -34,6 +34,10 @@ class _LocalizationLoadingMixin:
             locale,
             use_isolating=self._use_isolating,
             cache=self._cache_config,
+            max_source_size=self._max_source_size,
+            max_parse_errors=self._max_parse_errors,
+            max_stream_line_length=self._max_stream_line_length,
+            max_expansion_size=self._max_expansion_size,
             strict=self._strict,
         )
         for name, func in self._pending_functions.items():

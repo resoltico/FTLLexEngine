@@ -24,7 +24,8 @@ class TestSemanticValidation:
         result = bundle.validate_resource("""
 welcome = Hello, { missing-msg }!
 """)
-        assert result.is_valid  # No syntax errors
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "undefined message 'missing-msg'" in result.warnings[0].message
 
@@ -34,7 +35,8 @@ welcome = Hello, { missing-msg }!
         result = bundle.validate_resource("""
 welcome = Welcome to { -brand-name }!
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "undefined term '-brand-name'" in result.warnings[0].message
 
@@ -45,7 +47,8 @@ welcome = Welcome to { -brand-name }!
 msg-a = { msg-b }
 msg-b = { msg-a }
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "Circular message reference" in result.warnings[0].message
         assert "msg-a" in result.warnings[0].message
@@ -59,7 +62,8 @@ msg1 = { msg2 }
 msg2 = { msg3 }
 msg3 = { msg1 }
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "Circular message reference" in result.warnings[0].message
 
@@ -70,7 +74,8 @@ msg3 = { msg1 }
 -term1 = { -term2 }
 -term2 = { -term1 }
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "Circular term reference" in result.warnings[0].message
         assert "-term1" in result.warnings[0].message
@@ -85,7 +90,8 @@ msg3 = { msg1 }
 -c = { -d }
 -d = { -a }
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "Circular term reference" in result.warnings[0].message
 
@@ -113,8 +119,9 @@ msg5 = { -undefined-term }
 msg6 =
     .tooltip = Only has attribute
 """)
-        assert result.is_valid
+        assert not result.is_valid
         assert result.warning_count >= 3  # At least circular + 2 undefined
+        assert result.critical_warning_count >= 3
 
         # Check all issue types are detected
         warnings_text = " ".join(w.message for w in result.warnings)
@@ -129,7 +136,8 @@ msg6 =
 msg = First
 msg = Second
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "Duplicate message ID 'msg'" in result.warnings[0].message
 
@@ -152,7 +160,8 @@ invalid =
         result = bundle.validate_resource("""
 -brand = { company-name }
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         warning_msg = "Term '-brand' references undefined message 'company-name'"
         assert warning_msg in result.warnings[0].message
@@ -176,7 +185,8 @@ about = { welcome } Learn more.
 button = Click
     .tooltip = See { undefined-msg } for details
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "undefined message 'undefined-msg'" in result.warnings[0].message
 
@@ -190,7 +200,8 @@ class TestValidationEdgeCases:
         result = bundle.validate_resource("""
 recursive = This is { recursive }
 """)
-        assert result.is_valid
+        assert not result.is_valid
+        assert result.critical_warning_count == 1
         assert result.warning_count == 1
         assert "Circular" in result.warnings[0].message
 

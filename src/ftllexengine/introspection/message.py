@@ -18,7 +18,7 @@ from __future__ import annotations
 import threading
 import weakref
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, assert_never, overload
 
 from ftllexengine.constants import MAX_DEPTH
 from ftllexengine.enums import ReferenceKind, VariableContext
@@ -466,8 +466,27 @@ class IntrospectionVisitor(ASTVisitor[None]):
 # ==============================================================================
 
 
+# Premise: these overloads are static typing contracts, not executable runtime
+# paths. Excluding them keeps coverage focused on the concrete implementation
+# below, which is the code that actually runs and can regress.
+@overload  # pragma: no cover
 def introspect_message(
     message: Message | Term,
+    *,
+    use_cache: bool = True,
+) -> MessageIntrospection: ...
+
+
+@overload  # pragma: no cover
+def introspect_message(
+    message: object,
+    *,
+    use_cache: bool = True,
+) -> MessageIntrospection: ...
+
+
+def introspect_message(
+    message: object,
     *,
     use_cache: bool = True,
 ) -> MessageIntrospection:
@@ -498,7 +517,7 @@ def introspect_message(
     """
     # Validate input type at API boundary (runtime check for callers ignoring type hints)
     if not isinstance(message, (Message, Term)):
-        msg = f"Expected Message or Term, got {type(message).__name__}"  # type: ignore[unreachable]
+        msg = f"Expected Message or Term, got {type(message).__name__}"
         raise TypeError(msg)
 
     # Step 1: Check cache (lock briefly — O(1) dict lookup).

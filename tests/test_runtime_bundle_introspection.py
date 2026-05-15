@@ -365,11 +365,11 @@ class TestGetAllMessageVariablesEdgeCases:
         assert result["msg3"] == frozenset({"firstName", "lastName"})
 
     def test_message_overwriting_updates_result(self) -> None:
-        """Overwritten messages reflect latest definition."""
+        """Explicit overwrite updates introspection to the latest definition."""
         bundle = FluentBundle("en", use_isolating=False)
 
         bundle.add_resource("msg = Hello { $oldVar }")
-        bundle.add_resource("msg = Hello { $newVar }")  # Overwrites
+        bundle.add_resource("msg = Hello { $newVar }", allow_overwrite=True)
 
         result = bundle.get_all_message_variables()
 

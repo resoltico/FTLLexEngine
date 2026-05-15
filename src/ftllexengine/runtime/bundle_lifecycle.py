@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+import sys
+from typing import TYPE_CHECKING, Self
 
 from ftllexengine.constants import (
     DEFAULT_MAX_EXPANSION_SIZE,
     MAX_DEPTH,
     MAX_SOURCE_SIZE,
 )
+from ftllexengine.core._limits import resolve_limit_arg
 from ftllexengine.core.depth_guard import depth_clamp
 from ftllexengine.core.locale_utils import get_system_locale, require_locale_code
 from ftllexengine.syntax.parser import FluentParserV1
 
+from ._resolution_gate import ResolutionReentryGate
 from .cache import IntegrityCache
 from .function_bridge import FunctionRegistry
 from .functions import get_shared_registry
@@ -21,10 +24,10 @@ from .locale_context import LocaleContext
 from .rwlock import RWLock
 
 if TYPE_CHECKING:
+    from ftllexengine.core._limits import LimitArg
     from ftllexengine.core.semantic_types import LocaleCode
     from ftllexengine.syntax import Message, Term
 
-    from .bundle import FluentBundle
     from .bundle_protocols import BundleStateProtocol
     from .cache_config import CacheConfig
 
@@ -42,9 +45,11 @@ class _BundleLifecycleMixin:
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
-        max_source_size: int | None = None,
+        max_source_size: LimitArg = None,
         max_nesting_depth: int | None = None,
-        max_expansion_size: int | None = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
+        max_expansion_size: LimitArg = None,
         strict: bool = True,
     ) -> None:
         """Initialize bundle state for one locale."""
@@ -58,16 +63,25 @@ class _BundleLifecycleMixin:
         self._msg_deps: dict[str, frozenset[str]] = {}
         self._term_deps: dict[str, frozenset[str]] = {}
 
-        self._max_source_size = max_source_size if max_source_size is not None else MAX_SOURCE_SIZE
+        self._max_source_size = resolve_limit_arg(
+            max_source_size,
+            field_name="max_source_size",
+            default=MAX_SOURCE_SIZE,
+        )
         requested_depth = max_nesting_depth if max_nesting_depth is not None else MAX_DEPTH
         self._max_nesting_depth = depth_clamp(requested_depth)
-        self._max_expansion_size = (
-            max_expansion_size if max_expansion_size is not None else DEFAULT_MAX_EXPANSION_SIZE
+        self._max_expansion_size = resolve_limit_arg(
+            max_expansion_size,
+            field_name="max_expansion_size",
+            default=DEFAULT_MAX_EXPANSION_SIZE,
         )
         self._parser = FluentParserV1(
             max_source_size=self._max_source_size,
             max_nesting_depth=self._max_nesting_depth,
+            max_parse_errors=max_parse_errors,
+            max_stream_line_length=max_stream_line_length,
         )
+        self._resolution_gate = ResolutionReentryGate()
         self._rwlock = RWLock()
 
         provided_functions: object = functions
@@ -89,12 +103,13 @@ class _BundleLifecycleMixin:
         if cache is not None:
             self._cache = IntegrityCache(
                 maxsize=cache.size,
-                max_entry_weight=cache.max_entry_weight,
+                max_entry_payload_bytes=cache.max_entry_payload_bytes,
                 max_errors_per_entry=cache.max_errors_per_entry,
                 write_once=cache.write_once,
-                strict=cache.integrity_strict and strict,
-                enable_audit=cache.enable_audit,
-                max_audit_entries=cache.max_audit_entries,
+                enable_debug_log=cache.enable_debug_log,
+                max_debug_entries=cache.max_debug_entries,
+                integrity_event_sink=cache.integrity_event_sink,
+                debug_fingerprint_key=cache.debug_fingerprint_key,
             )
 
         self._resolver = self._create_resolver()
@@ -141,7 +156,7 @@ class _BundleLifecycleMixin:
     @property
     def max_source_size(self: BundleStateProtocol) -> int:
         """Maximum FTL source size in characters."""
-        return self._max_source_size
+        return self._max_source_size if self._max_source_size is not None else sys.maxsize
 
     @property
     def max_nesting_depth(self: BundleStateProtocol) -> int:
@@ -151,7 +166,7 @@ class _BundleLifecycleMixin:
     @property
     def max_expansion_size(self: BundleStateProtocol) -> int:
         """Maximum total characters produced during resolution."""
-        return self._max_expansion_size
+        return self._max_expansion_size if self._max_expansion_size is not None else sys.maxsize
 
     @property
     def function_registry(self: BundleStateProtocol) -> FunctionRegistry:
@@ -160,30 +175,31 @@ class _BundleLifecycleMixin:
 
     @classmethod
     def for_system_locale(
-        cls,
+        cls: type[Self],
         *,
         use_isolating: bool = True,
         cache: CacheConfig | None = None,
         functions: FunctionRegistry | None = None,
-        max_source_size: int | None = None,
+        max_source_size: LimitArg = None,
         max_nesting_depth: int | None = None,
-        max_expansion_size: int | None = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
+        max_expansion_size: LimitArg = None,
         strict: bool = True,
-    ) -> FluentBundle:
+    ) -> Self:
         """Factory method to create a FluentBundle using the system locale."""
         system_locale = get_system_locale(raise_on_failure=True)
-        return cast(
-            "FluentBundle",
-            cls(
-                system_locale,
-                use_isolating=use_isolating,
-                cache=cache,
-                functions=functions,
-                max_source_size=max_source_size,
-                max_nesting_depth=max_nesting_depth,
-                max_expansion_size=max_expansion_size,
-                strict=strict,
-            ),
+        return cls(
+            system_locale,
+            use_isolating=use_isolating,
+            cache=cache,
+            functions=functions,
+            max_source_size=max_source_size,
+            max_nesting_depth=max_nesting_depth,
+            max_parse_errors=max_parse_errors,
+            max_stream_line_length=max_stream_line_length,
+            max_expansion_size=max_expansion_size,
+            strict=strict,
         )
 
     def __repr__(self: BundleStateProtocol) -> str:

@@ -6,6 +6,7 @@ from inspect import Parameter, signature
 from typing import TYPE_CHECKING
 
 from ftllexengine.diagnostics import ErrorCategory, ErrorTemplate, FrozenFluentError
+from ftllexengine.diagnostics._redaction import redacted_custom_function_failure
 
 from .function_decorator import _FTL_REQUIRES_LOCALE_ATTR
 from .value_types import FunctionSignature
@@ -29,6 +30,7 @@ def build_function_signature(
     *,
     ftl_name: str | None = None,
     param_map: dict[str, str] | None = None,
+    cacheable: bool,
 ) -> FunctionSignature:
     """Build immutable registration metadata for one callable."""
     if ftl_name is None:
@@ -87,6 +89,7 @@ def build_function_signature(
         ftl_name=ftl_name,
         param_mapping=immutable_mapping,
         callable=func,
+        cacheable=cacheable,
     )
 
 
@@ -106,5 +109,5 @@ def call_registered_function(
     try:
         return func_sig.callable(*positional, **python_kwargs)
     except (TypeError, ValueError) as e:
-        diag = ErrorTemplate.function_failed(ftl_name, str(e))
+        diag = ErrorTemplate.function_failed(ftl_name, redacted_custom_function_failure(e))
         raise FrozenFluentError(str(diag), ErrorCategory.RESOLUTION, diagnostic=diag) from e

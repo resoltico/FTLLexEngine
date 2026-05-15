@@ -18,6 +18,7 @@ class TestFunctionSignature:
             ftl_name="TEST",
             param_mapping=(("minimumValue", "minimum_value"),),
             callable=str,
+            cacheable=False,
         )
 
         assert sig.python_name == "test_func"
@@ -31,6 +32,7 @@ class TestFunctionSignature:
             ftl_name="TEST",
             param_mapping=(),
             callable=lambda: "test",
+            cacheable=False,
         )
 
         with pytest.raises(AttributeError):

@@ -9,7 +9,7 @@ Properties tested:
 - Format idempotence: Multiple format() calls produce same output
 - Sanitization bounds: Sanitized content length is bounded
 - Count properties: error_count and warning_count match tuple lengths
-- Validity invariant: is_valid == (no errors and no annotations)
+- Validity invariant: is_valid fails closed on errors, annotations, and critical warnings
 
 Python 3.13+.
 """
@@ -231,9 +231,11 @@ class TestValidationResultProperties:
     def test_property_is_valid_iff_no_errors_or_annotations(
         self, result: ValidationResult
     ) -> None:
-        """PROPERTY: is_valid == (no errors AND no annotations)."""
+        """PROPERTY: is_valid fails closed on errors, annotations, and critical warnings."""
         expected_valid = (
-            len(result.errors) == 0 and len(result.annotations) == 0
+            len(result.errors) == 0
+            and len(result.annotations) == 0
+            and all(w.severity != WarningSeverity.CRITICAL for w in result.warnings)
         )
         assert result.is_valid == expected_valid
         event(f"is_valid={result.is_valid}")
@@ -242,9 +244,13 @@ class TestValidationResultProperties:
     def test_property_warnings_do_not_affect_validity(
         self, result: ValidationResult
     ) -> None:
-        """PROPERTY: Warnings alone do not make result invalid."""
+        """PROPERTY: Non-critical warnings alone do not make result invalid."""
         if len(result.errors) == 0 and len(result.annotations) == 0:
-            assert result.is_valid, "Result with only warnings should be valid"
+            expected_valid = all(
+                warning.severity != WarningSeverity.CRITICAL
+                for warning in result.warnings
+            )
+            assert result.is_valid == expected_valid
         has_warnings = len(result.warnings) > 0
         event(f"has_warnings={has_warnings}")
 

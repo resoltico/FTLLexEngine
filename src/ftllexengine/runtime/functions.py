@@ -458,13 +458,13 @@ def create_default_registry() -> FunctionRegistry:
     registry = FunctionRegistry()
 
     # Register NUMBER function with camelCase parameter mapping
-    registry.register(number_format, ftl_name="NUMBER")
+    registry.register(number_format, ftl_name="NUMBER", cacheable=True)
 
     # Register DATETIME function with camelCase parameter mapping
-    registry.register(datetime_format, ftl_name="DATETIME")
+    registry.register(datetime_format, ftl_name="DATETIME", cacheable=True)
 
     # Register CURRENCY function with camelCase parameter mapping
-    registry.register(currency_format, ftl_name="CURRENCY")
+    registry.register(currency_format, ftl_name="CURRENCY", cacheable=True)
 
     return registry
 

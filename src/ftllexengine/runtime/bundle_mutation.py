@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from ftllexengine.syntax import Resource
 from ftllexengine.validation import validate_resource as _validate_resource_impl
 
 if TYPE_CHECKING:
@@ -13,10 +12,10 @@ if TYPE_CHECKING:
 
     from ftllexengine.core.value_types import FluentValue
     from ftllexengine.diagnostics import ValidationResult
-    from ftllexengine.syntax import Entry, Junk
+    from ftllexengine.syntax import Junk
 
     from .bundle_protocols import BundleStateProtocol
-    from .cache import CacheAuditLogEntry, CacheStats
+    from .cache import CacheDebugLogEntry, CacheStats
 
 logger = logging.getLogger("ftllexengine.runtime.bundle")
 
@@ -30,8 +29,13 @@ class _BundleMutationMixin:
         /,
         *,
         source_path: str | None = None,
+        allow_overwrite: bool = False,
     ) -> tuple[Junk, ...]:
-        """Add FTL resource to bundle."""
+        """Add FTL resource to bundle.
+
+        ``allow_overwrite`` exists because replacing canonical message or term IDs
+        is a state mutation decision, not an incidental consequence of load order.
+        """
         raw_source: object = source
         if not isinstance(raw_source, str):
             msg = (
@@ -42,7 +46,11 @@ class _BundleMutationMixin:
 
         resource = self._parser.parse(raw_source)
         with self._rwlock.write():
-            return self._register_resource(resource, source_path)
+            return self._register_resource(
+                resource,
+                source_path,
+                allow_overwrite=allow_overwrite,
+            )
 
     def add_resource_stream(
         self: BundleStateProtocol,
@@ -50,13 +58,30 @@ class _BundleMutationMixin:
         /,
         *,
         source_path: str | None = None,
+        allow_overwrite: bool = False,
     ) -> tuple[Junk, ...]:
-        """Add FTL resource to bundle from a line-oriented source stream."""
-        collected: list[Entry] = list(self._parser.parse_stream(lines))
-        resource = Resource(entries=tuple(collected))
+        """Add FTL resource to bundle from a line-oriented source stream.
 
+        Premise:
+            Streaming should avoid a second full-entry materialization pass.
+
+        Reason:
+            The parser already yields incremental entries; collecting them into a
+            list before registration doubles memory pressure for no integrity gain.
+        """
         with self._rwlock.write():
-            return self._register_resource(resource, source_path)
+            from ftllexengine.runtime.bundle_registration import (  # noqa: PLC0415 - local import breaks an optional cycle on the streaming path
+                _PendingRegistration,
+            )
+
+            pending = _PendingRegistration()
+            for entry in self._parser.parse_stream(lines):
+                self._collect_pending_entry(pending, entry)
+            return self._register_pending_entries(
+                pending,
+                source_path,
+                allow_overwrite=allow_overwrite,
+            )
 
     def validate_resource(self: BundleStateProtocol, source: str) -> ValidationResult:
         """Validate FTL resource without adding to bundle."""
@@ -83,15 +108,27 @@ class _BundleMutationMixin:
         self: BundleStateProtocol,
         name: str,
         func: Callable[..., FluentValue],
+        *,
+        cacheable: bool = False,
     ) -> None:
-        """Add custom function to bundle."""
+        """Add a custom function to the bundle.
+
+        Premise:
+            Arbitrary callables may depend on time, I/O, or ambient process
+            state that the cache key cannot represent.
+
+        Reason:
+            Custom functions therefore default to ``cacheable=False``. Callers
+            must opt into caching explicitly when the function is pure with
+            respect to the formatting inputs.
+        """
         with self._rwlock.write():
             if not self._owns_registry:
                 self._function_registry = self._function_registry.copy()
                 self._owns_registry = True
                 logger.debug("Registry copied on first add_function")
 
-            self._function_registry.register(func, ftl_name=name)
+            self._function_registry.register(func, ftl_name=name, cacheable=cacheable)
             logger.debug("Added custom function: %s", name)
             self._resolver = self._create_resolver()
 
@@ -112,10 +149,10 @@ class _BundleMutationMixin:
             return self._cache.get_stats()
         return None
 
-    def get_cache_audit_log(
+    def get_cache_debug_log(
         self: BundleStateProtocol,
-    ) -> tuple[CacheAuditLogEntry, ...] | None:
-        """Get immutable cache audit log entries."""
+    ) -> tuple[CacheDebugLogEntry, ...] | None:
+        """Get immutable cache debug-log entries."""
         if self._cache is not None:
-            return self._cache.get_audit_log()
+            return self._cache.get_debug_log()
         return None

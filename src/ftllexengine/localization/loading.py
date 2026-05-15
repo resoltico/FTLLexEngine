@@ -16,10 +16,15 @@ Python 3.13+. Zero external dependencies.
 
 from __future__ import annotations
 
+import codecs
+import os
+import stat as stat_module
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from ftllexengine.constants import MAX_SOURCE_SIZE
+from ftllexengine.core._limits import LimitArg, resolve_limit_arg
 from ftllexengine.core.locale_utils import require_locale_code
 from ftllexengine.enums import LoadStatus
 
@@ -122,11 +127,17 @@ class PathResourceLoader:
         base_path: Path template with {locale} placeholder
         root_dir: Fixed root directory for path traversal validation.
                   Defaults to parent of base_path if not specified.
+        max_source_bytes: Maximum bytes read from disk before aborting.
+        max_source_chars: Maximum decoded characters produced before aborting.
     """
 
     base_path: str
     root_dir: str | None = None
+    max_source_bytes: LimitArg = None
+    max_source_chars: LimitArg = None
     _resolved_root: Path = field(init=False, repr=False)
+    _effective_max_source_bytes: int | None = field(init=False, repr=False)
+    _effective_max_source_chars: int | None = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Cache resolved root directory and validate template at initialization.
@@ -154,6 +165,24 @@ class PathResourceLoader:
             static_prefix = template_parts[0].rstrip("/\\")
             resolved = Path(static_prefix).resolve() if static_prefix else Path.cwd().resolve()
         object.__setattr__(self, "_resolved_root", resolved)
+        object.__setattr__(
+            self,
+            "_effective_max_source_bytes",
+            resolve_limit_arg(
+                self.max_source_bytes,
+                field_name="max_source_bytes",
+                default=MAX_SOURCE_SIZE,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "_effective_max_source_chars",
+            resolve_limit_arg(
+                self.max_source_chars,
+                field_name="max_source_chars",
+                default=MAX_SOURCE_SIZE,
+            ),
+        )
 
     @staticmethod
     def _validate_locale(locale: LocaleCode) -> LocaleCode:
@@ -258,19 +287,161 @@ class PathResourceLoader:
         self._validate_resource_id(resource_id)
 
         # Use replace() instead of format() to avoid KeyError if template
-        # contains other braces like "{version}" for future extensibility
+        # contains other braces like "{version}" for future extensibility.
         locale_path = self.base_path.replace("{locale}", normalized_locale)
-        base_dir = Path(locale_path).resolve()
-        full_path = (base_dir / resource_id).resolve()
+        lexical_base_dir = Path(locale_path).resolve(strict=False)
+        lexical_full_path = (lexical_base_dir / resource_id).resolve(strict=False)
 
-        if not self._is_safe_path(self._resolved_root, full_path):
+        try:
+            lexical_base_dir.relative_to(self._resolved_root)
+            lexical_full_path.relative_to(self._resolved_root)
+        except ValueError as error:
             msg = (
-                f"Path traversal detected: resolved path escapes root directory. "
+                "Path traversal detected: lexical path escapes root directory. "
                 f"locale='{locale}', resource_id='{resource_id}'"
             )
+            raise ValueError(msg) from error
+
+        file_fd = self._open_secure_file_fd(lexical_full_path)
+        try:
+            return self._read_text_bounded(file_fd)
+        finally:
+            os.close(file_fd)
+
+    def _open_secure_file_fd(self, full_path: Path) -> int:
+        """Open a resource file without trusting symlinks or TOCTOU windows."""
+        relative_parts = full_path.relative_to(self._resolved_root).parts
+        if len(relative_parts) == 0:
+            msg = f"Resource path {full_path!s} does not identify a file"
             raise ValueError(msg)
 
-        return full_path.read_text(encoding="utf-8")
+        if os.open in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW"):
+            return self._open_secure_file_fd_posix(relative_parts)
+        return self._open_secure_file_fd_fallback(full_path)
+
+    def _open_secure_file_fd_posix(self, relative_parts: tuple[str, ...]) -> int:
+        """Open one resource via root-relative file descriptors on POSIX.
+
+        Premise:
+            Validation and open must happen in the same ownership domain.
+
+        Reason:
+            Walking the path one component at a time with ``dir_fd`` and
+            ``O_NOFOLLOW`` closes the race between "path looked safe" and
+            "path was opened".
+        """
+        root_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        root_fd = os.open(self._resolved_root, root_flags)
+        current_fd = root_fd
+        file_fd: int | None = None
+        try:
+            for part in relative_parts[:-1]:
+                next_fd = os.open(
+                    part,
+                    root_flags | nofollow,
+                    dir_fd=current_fd,
+                )
+                if current_fd != root_fd:
+                    os.close(current_fd)
+                current_fd = next_fd
+
+            file_fd = os.open(
+                relative_parts[-1],
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow,
+                dir_fd=current_fd,
+            )
+            file_stat = os.fstat(file_fd)
+            self._require_regular_file(file_stat.st_mode, relative_parts[-1])
+            return file_fd
+        except Exception:
+            if file_fd is not None:
+                os.close(file_fd)
+            raise
+        finally:
+            if current_fd != root_fd:
+                os.close(current_fd)
+            os.close(root_fd)
+
+    @staticmethod
+    def _open_secure_file_fd_fallback(full_path: Path) -> int:
+        """Fallback open path when POSIX dir-fd walking is unavailable."""
+        pre_stat = os.lstat(full_path)
+        if stat_module.S_ISLNK(pre_stat.st_mode):
+            msg = f"Symlink resources are not allowed: {full_path!s}"
+            raise OSError(msg)
+        file_fd = os.open(full_path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0))
+        post_stat = os.fstat(file_fd)
+        if not stat_module.S_ISREG(post_stat.st_mode):
+            os.close(file_fd)
+            msg = f"Resource path must point to a regular file: {full_path!s}"
+            raise OSError(msg)
+        if (
+            hasattr(pre_stat, "st_dev")
+            and hasattr(pre_stat, "st_ino")
+            and (pre_stat.st_dev, pre_stat.st_ino) != (post_stat.st_dev, post_stat.st_ino)
+        ):
+            os.close(file_fd)
+            msg = f"Resource path changed while opening: {full_path!s}"
+            raise OSError(msg)
+        return file_fd
+
+    @staticmethod
+    def _require_regular_file(mode: int, display_path: str) -> None:
+        """Reject non-regular filesystem objects at the ownership seam."""
+        if stat_module.S_ISREG(mode):
+            return
+        msg = f"Resource path must point to a regular file: {display_path!r}"
+        raise OSError(msg)
+
+    def _read_text_bounded(self, file_fd: int) -> str:
+        """Read UTF-8 text with byte and decoded-character budgets."""
+        decoder = codecs.getincrementaldecoder("utf-8")("strict")
+        byte_total = 0
+        char_total = 0
+        parts: list[str] = []
+
+        while True:
+            chunk = os.read(file_fd, 65_536)
+            if not chunk:
+                break
+            byte_total += len(chunk)
+            if (
+                self._effective_max_source_bytes is not None
+                and byte_total > self._effective_max_source_bytes
+            ):
+                msg = (
+                    f"Resource byte length ({byte_total:,}) exceeds maximum "
+                    f"({self._effective_max_source_bytes:,})."
+                )
+                raise ValueError(msg)
+
+            decoded = decoder.decode(chunk, final=False)
+            char_total += len(decoded)
+            if (
+                self._effective_max_source_chars is not None
+                and char_total > self._effective_max_source_chars
+            ):
+                msg = (
+                    f"Resource text length ({char_total:,} characters) exceeds maximum "
+                    f"({self._effective_max_source_chars:,})."
+                )
+                raise ValueError(msg)
+            parts.append(decoded)
+
+        tail = decoder.decode(b"", final=True)
+        char_total += len(tail)
+        if (
+            self._effective_max_source_chars is not None
+            and char_total > self._effective_max_source_chars
+        ):
+            msg = (
+                f"Resource text length ({char_total:,} characters) exceeds maximum "
+                f"({self._effective_max_source_chars:,})."
+            )
+            raise ValueError(msg)
+        parts.append(tail)
+        return "".join(parts)
 
 
 @dataclass(frozen=True, slots=True)

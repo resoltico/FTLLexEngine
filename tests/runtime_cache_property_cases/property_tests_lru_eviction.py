@@ -16,7 +16,7 @@ class TestLRUEviction:
     @settings(max_examples=50)
     def test_lru_evicts_least_recently_used(self, maxsize: int) -> None:
         """PROPERTY: LRU eviction removes oldest entry."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Fill cache to capacity
         for i in range(maxsize):
@@ -50,7 +50,7 @@ class TestLRUEviction:
         access_pattern: list[int],
     ) -> None:
         """PROPERTY: LRU eviction respects access patterns."""
-        cache = IntegrityCache(maxsize=maxsize, strict=False)
+        cache = IntegrityCache(maxsize=maxsize )
 
         # Fill cache
         for i in range(maxsize):

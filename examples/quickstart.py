@@ -386,8 +386,8 @@ print("=" * 50)
 
 # Financial applications can use cache security features:
 # - write_once: Prevents cache overwrites (data race prevention)
-# - integrity_strict: Raise on cache corruption/write conflicts
-# - enable_audit: Maintains audit trail of cache operations
+# - integrity events: Corruption and key-contract failures always raise
+# - enable_debug_log: Keeps a bounded recent-operation ring for local inspection
 # - strict (bundle): Raises exceptions on formatting errors
 
 financial_bundle = FluentBundle(
@@ -395,9 +395,8 @@ financial_bundle = FluentBundle(
     use_isolating=False,
     cache=CacheConfig(
         write_once=True,            # Prevent data races
-        integrity_strict=True,      # Raise on corruption (default)
-        enable_audit=True,          # Compliance audit trail
-        max_entry_weight=5000,      # Memory protection
+        enable_debug_log=True,      # Local recent-operation debug ring
+        max_entry_payload_bytes=5000,  # Retained payload budget
         max_errors_per_entry=10,    # Error bloat protection
     ),
     strict=True,                    # Fail-fast on ANY formatting error
@@ -424,25 +423,24 @@ print("\nCache security settings:")
 cfg = financial_bundle.cache_config
 if cfg is not None:
     print(f"  write_once: {cfg.write_once}")
-    print(f"  integrity_strict: {cfg.integrity_strict}")
-    print(f"  audit_enabled: {cfg.enable_audit}")
-    print(f"  max_entry_weight: {cfg.max_entry_weight}")
+    print(f"  debug_log_enabled: {cfg.enable_debug_log}")
+    print(f"  max_entry_payload_bytes: {cfg.max_entry_payload_bytes}")
     print(f"  max_errors_per_entry: {cfg.max_errors_per_entry}")
 
-# Get cache stats and audit trail
+# Get cache stats and recent debug ring
 stats = financial_bundle.get_cache_stats()
 if stats:
-    print(f"  audit_entries: {stats.get('audit_entries', 0)}")
+    print(f"  debug_log_entries: {stats.get('debug_log_entries', 0)}")
     print(f"  cache_hits: {stats.get('hits', 0)}")
     print(f"  cache_misses: {stats.get('misses', 0)}")
 
-audit_log = financial_bundle.get_cache_audit_log()
-if audit_log is not None:
-    print(f"  audit_log_entries: {len(audit_log)}")
-    if audit_log:
-        latest_entry = audit_log[-1]
-        print(f"  latest_audit_operation: {latest_entry.operation}")
-        print(f"  latest_audit_sequence: {latest_entry.sequence}")
+debug_log = financial_bundle.get_cache_debug_log()
+if debug_log is not None:
+    print(f"  debug_log_entries: {len(debug_log)}")
+    if debug_log:
+        latest_entry = debug_log[-1]
+        print(f"  latest_debug_operation: {latest_entry.operation}")
+        print(f"  latest_debug_sequence: {latest_entry.debug_sequence}")
         print(f"  latest_cache_sequence: {latest_entry.cache_sequence}")
 
 print("\n" + "=" * 50)

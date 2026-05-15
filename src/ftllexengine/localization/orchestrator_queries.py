@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from ftllexengine.localization.cache_stats import LocalizationCacheStats
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -10,11 +13,104 @@ if TYPE_CHECKING:
     from ftllexengine.core.semantic_types import FTLSource, LocaleCode, MessageId
     from ftllexengine.diagnostics import ValidationResult
     from ftllexengine.introspection import MessageIntrospection
-    from ftllexengine.localization.orchestrator import LocalizationCacheStats
     from ftllexengine.localization.orchestrator_protocols import LocalizationStateProtocol
     from ftllexengine.runtime.bundle import FluentBundle
-    from ftllexengine.runtime.cache import CacheAuditLogEntry
+    from ftllexengine.runtime.cache import CacheDebugLogEntry, CacheStats
     from ftllexengine.syntax import Message, Term
+
+
+@dataclass(slots=True)
+class _LocalizationCacheAccumulator:
+    """Aggregate cache stats across initialized locale bundles.
+
+    Premise:
+        Multi-locale cache reporting is one public contract even though each
+        locale bundle owns its own cache.
+
+    Reason:
+        Keeping the accumulation state in one focused helper avoids a long
+        monolithic query method and makes the aggregation rules explicit.
+    """
+
+    total_size: int = 0
+    total_maxsize: int = 0
+    total_hits: int = 0
+    total_misses: int = 0
+    total_unhashable: int = 0
+    total_oversize: int = 0
+    total_error_bloat: int = 0
+    total_combined_payload: int = 0
+    total_corruption: int = 0
+    total_integrity_events: int = 0
+    total_idempotent: int = 0
+    total_write_once_conflicts: int = 0
+    total_uncacheable_function_skips: int = 0
+    total_sequence: int = 0
+    total_debug_log_entries: int = 0
+    max_cache_generation: int = 0
+    first_write_once: bool = False
+    first_debug_log_enabled: bool = False
+    first_max_entry_payload_bytes: int = 0
+    first_max_errors: int = 0
+    saw_stats: bool = False
+
+    def include(self, stats: CacheStats) -> None:
+        """Merge one bundle cache snapshot into the aggregate."""
+        self.total_size += stats.size
+        self.total_maxsize += stats.maxsize
+        self.total_hits += stats.hits
+        self.total_misses += stats.misses
+        self.total_unhashable += stats.unhashable_skips
+        self.total_oversize += stats.oversize_skips
+        self.total_error_bloat += stats.error_bloat_skips
+        self.total_combined_payload += stats.combined_payload_skips
+        self.total_corruption += stats.corruption_detected
+        self.total_integrity_events += stats.integrity_events_emitted
+        self.total_idempotent += stats.idempotent_writes
+        self.total_write_once_conflicts += stats.write_once_conflicts
+        self.total_uncacheable_function_skips += stats.uncacheable_function_skips
+        self.total_sequence += stats.sequence
+        self.total_debug_log_entries += stats.debug_log_entries
+        self.max_cache_generation = max(self.max_cache_generation, stats.cache_generation)
+        if not self.saw_stats:
+            self.first_write_once = stats.write_once
+            self.first_debug_log_enabled = stats.debug_log_enabled
+            self.first_max_entry_payload_bytes = stats.max_entry_payload_bytes
+            self.first_max_errors = stats.max_errors_per_entry
+            self.saw_stats = True
+
+    def build(self, *, bundle_count: int) -> LocalizationCacheStats:
+        """Materialize the public aggregate cache snapshot."""
+        total_requests = self.total_hits + self.total_misses
+        hit_rate = (
+            self.total_hits / total_requests * 100
+            if total_requests > 0
+            else 0.0
+        )
+        return LocalizationCacheStats(
+            size=self.total_size,
+            maxsize=self.total_maxsize,
+            max_entry_payload_bytes=self.first_max_entry_payload_bytes,
+            max_errors_per_entry=self.first_max_errors,
+            hits=self.total_hits,
+            misses=self.total_misses,
+            hit_rate=round(hit_rate, 2),
+            unhashable_skips=self.total_unhashable,
+            oversize_skips=self.total_oversize,
+            error_bloat_skips=self.total_error_bloat,
+            combined_payload_skips=self.total_combined_payload,
+            corruption_detected=self.total_corruption,
+            integrity_events_emitted=self.total_integrity_events,
+            idempotent_writes=self.total_idempotent,
+            write_once_conflicts=self.total_write_once_conflicts,
+            uncacheable_function_skips=self.total_uncacheable_function_skips,
+            sequence=self.total_sequence,
+            cache_generation=self.max_cache_generation,
+            write_once=self.first_write_once,
+            debug_log_enabled=self.first_debug_log_enabled,
+            debug_log_entries=self.total_debug_log_entries,
+            bundle_count=bundle_count,
+        )
 
 
 class _LocalizationQueryMixin:
@@ -140,100 +236,35 @@ class _LocalizationQueryMixin:
             return None
 
         with self._lock.read():
-            total_size = 0
-            total_maxsize = 0
-            total_hits = 0
-            total_misses = 0
-            total_unhashable = 0
-            total_oversize = 0
-            total_error_bloat = 0
-            total_combined_weight = 0
-            total_corruption = 0
-            total_idempotent = 0
-            total_write_once_conflicts = 0
-            total_sequence = 0
-            total_audit_entries = 0
-            first_write_once = False
-            first_strict = False
-            first_audit_enabled = False
-            first_max_entry_weight = 0
-            first_max_errors = 0
-            is_first = True
+            accumulator = _LocalizationCacheAccumulator()
 
             for bundle in self._bundles.values():
                 stats = bundle.get_cache_stats()
                 if stats is None:
                     continue
+                accumulator.include(stats)
 
-                total_size += stats["size"]
-                total_maxsize += stats["maxsize"]
-                total_hits += stats["hits"]
-                total_misses += stats["misses"]
-                total_unhashable += stats["unhashable_skips"]
-                total_oversize += stats["oversize_skips"]
-                total_error_bloat += stats["error_bloat_skips"]
-                total_combined_weight += stats["combined_weight_skips"]
-                total_corruption += stats["corruption_detected"]
-                total_idempotent += stats["idempotent_writes"]
-                total_write_once_conflicts += stats["write_once_conflicts"]
-                total_sequence += stats["sequence"]
-                total_audit_entries += stats["audit_entries"]
-                if is_first:
-                    first_write_once = stats["write_once"]
-                    first_strict = stats["strict"]
-                    first_audit_enabled = stats["audit_enabled"]
-                    first_max_entry_weight = stats["max_entry_weight"]
-                    first_max_errors = stats["max_errors_per_entry"]
-                    is_first = False
+            return accumulator.build(bundle_count=len(self._bundles))
 
-            total_requests = total_hits + total_misses
-            hit_rate = (total_hits / total_requests * 100) if total_requests > 0 else 0.0
-
-            return cast(
-                "LocalizationCacheStats",
-                {
-                "size": total_size,
-                "maxsize": total_maxsize,
-                "max_entry_weight": first_max_entry_weight,
-                "max_errors_per_entry": first_max_errors,
-                "hits": total_hits,
-                "misses": total_misses,
-                "hit_rate": round(hit_rate, 2),
-                "unhashable_skips": total_unhashable,
-                "oversize_skips": total_oversize,
-                "error_bloat_skips": total_error_bloat,
-                "combined_weight_skips": total_combined_weight,
-                "corruption_detected": total_corruption,
-                "idempotent_writes": total_idempotent,
-                "write_once_conflicts": total_write_once_conflicts,
-                "sequence": total_sequence,
-                "write_once": first_write_once,
-                "strict": first_strict,
-                "audit_enabled": first_audit_enabled,
-                "audit_entries": total_audit_entries,
-                "bundle_count": len(self._bundles),
-                },
-            )
-
-    def get_cache_audit_log(
+    def get_cache_debug_log(
         self: LocalizationStateProtocol,
-    ) -> dict[LocaleCode, tuple[CacheAuditLogEntry, ...]] | None:
-        """Return per-locale audit logs for initialized bundles."""
+    ) -> dict[LocaleCode, tuple[CacheDebugLogEntry, ...]] | None:
+        """Return per-locale debug logs for initialized bundles."""
         if self._cache_config is None:
             return None
 
         with self._lock.read():
-            audit_logs: dict[LocaleCode, tuple[CacheAuditLogEntry, ...]] = {}
+            debug_logs: dict[LocaleCode, tuple[CacheDebugLogEntry, ...]] = {}
             for locale in self._locales:
                 bundle = self._bundles.get(locale)
                 if bundle is None:
                     continue
 
-                audit_log = bundle.get_cache_audit_log()
-                if audit_log is not None:
-                    audit_logs[locale] = audit_log
+                debug_log = bundle.get_cache_debug_log()
+                if debug_log is not None:
+                    debug_logs[locale] = debug_log
 
-            return audit_logs
+            return debug_logs
 
     def get_bundles(self: LocalizationStateProtocol) -> Iterator[FluentBundle]:
         """Yield bundles in fallback order, creating them lazily as needed."""

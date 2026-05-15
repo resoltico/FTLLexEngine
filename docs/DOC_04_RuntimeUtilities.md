@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: RUNTIME_UTILITIES
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [normalize_locale, get_system_locale, require_locale_code, __version__, require_date, require_datetime, require_fluent_number]
   questions: ["where are root-level runtime utility exports documented?", "what package metadata constants are public?", "which boundary validators and locale helpers are exported from the root package?"]
@@ -11,7 +11,7 @@ route:
 # Runtime Utilities Reference
 
 This reference covers root-level runtime-adjacent utilities, package metadata constants, locale helpers, and boundary validators.
-Formatting functions, registries, cache configuration, and audit entry types live in [DOC_04_Runtime.md](DOC_04_Runtime.md). Dependency-graph helpers live in [DOC_04_Analysis.md](DOC_04_Analysis.md).
+Formatting functions, registries, cache configuration, cache debug-log and integrity-event types live in [DOC_04_Runtime.md](DOC_04_Runtime.md). Dependency-graph helpers live in [DOC_04_Analysis.md](DOC_04_Analysis.md).
 
 ## `normalize_locale`
 

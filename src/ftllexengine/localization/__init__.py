@@ -2,7 +2,8 @@
 
 Provides the full localization stack: type aliases, resource loading
 infrastructure, the multi-locale orchestrator, and the boot configuration
-API for strict, audited localization initialization.
+API for strict localization initialization with explicit cache-evidence
+boundaries.
 
 Submodules:
     types        - PEP 695 type aliases (MessageId, LocaleCode, ResourceId, FTLSource)
@@ -12,7 +13,8 @@ Submodules:
     boot         - LocalizationBootConfig (one-call boot-validated assembly)
 
 Babel Optionality:
-    loading, types, CacheAuditLogEntry: Zero external dependencies; always importable.
+    loading, types, CacheDebugLogEntry, and CacheIntegrityEvent:
+    Zero external dependencies; always importable.
     orchestrator and boot require Babel (via FluentBundle).
     On parser-only installs the Babel-dependent names are absent from normal
     feature probing; direct access raises a missing-symbol error with runtime
@@ -39,17 +41,17 @@ from ftllexengine.localization.loading import (
     ResourceLoader,
     ResourceLoadResult,
 )
-from ftllexengine.runtime.cache import CacheAuditLogEntry
+from ftllexengine.runtime.cache import CacheDebugLogEntry, CacheIntegrityEvent
 
 if TYPE_CHECKING:
     from ftllexengine.localization.boot import (
         LocalizationBootConfig as LocalizationBootConfig,
     )
-    from ftllexengine.localization.orchestrator import (
-        FluentLocalization as FluentLocalization,
+    from ftllexengine.localization.cache_stats import (
+        LocalizationCacheStats as LocalizationCacheStats,
     )
     from ftllexengine.localization.orchestrator import (
-        LocalizationCacheStats as LocalizationCacheStats,
+        FluentLocalization as FluentLocalization,
     )
 
 _BABEL_AVAILABLE = is_babel_available()
@@ -69,7 +71,8 @@ def __getattr__(name: str) -> object:
                 optional_attrs=_BABEL_OPTIONAL_ATTRS,
                 parser_only_hint=(
                     "Parser-only usage still supports ResourceLoader, PathResourceLoader, "
-                    "FallbackInfo, ResourceLoadResult, LoadSummary, and CacheAuditLogEntry."
+                    "FallbackInfo, ResourceLoadResult, LoadSummary, CacheDebugLogEntry, "
+                    "and CacheIntegrityEvent."
                 ),
             )
         globals()[name] = value
@@ -83,7 +86,8 @@ def __getattr__(name: str) -> object:
 
 # ruff: noqa: RUF022 - grouped localization exports mirror the reader-facing facade
 __all__: list[str] = [
-    "CacheAuditLogEntry",
+    "CacheDebugLogEntry",
+    "CacheIntegrityEvent",
     "FallbackInfo",
     "FTLSource",
     "LoadStatus",

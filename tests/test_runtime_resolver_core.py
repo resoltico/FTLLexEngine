@@ -596,12 +596,7 @@ class TestResolverExpressionEdgeCases:
         context = ResolutionContext()
 
         with pytest.raises(FrozenFluentError, match="Unknown expression type") as exc_info:
-            resolver._resolve_expression(
-                unknown,  # type: ignore[arg-type]
-                {},
-                errors,
-                context,
-            )
+            resolver._resolve_expression(unknown, {}, errors, context)
         assert exc_info.value.category == ErrorCategory.RESOLUTION
 
     def test_resolve_bool_true_as_string(self) -> None:

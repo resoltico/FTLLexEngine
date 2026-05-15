@@ -30,6 +30,10 @@ class LocalizationStateProtocol(Protocol):
     _load_results: list[ResourceLoadResult]
     _locales: tuple[LocaleCode, ...]
     _lock: RWLock
+    _max_expansion_size: int | None
+    _max_parse_errors: int | None
+    _max_source_size: int | None
+    _max_stream_line_length: int | None
     _on_fallback: Callable[[FallbackInfo], None] | None
     _pending_functions: dict[str, Callable[..., FluentValue]]
     _primary_locale: LocaleCode

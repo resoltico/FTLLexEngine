@@ -12,6 +12,7 @@ Public API:
     parse_stream_ftl - Parse FTL source from a line iterator, yields entries incrementally
     serialize_ftl - Serialize AST to FTL source (no external dependencies)
     validate_resource - Validate FTL resource for semantic errors (no external dependencies)
+    UNLIMITED - Explicit opt-out sentinel for security/resource limits
     FluentNumber - Immutable formatted-number wrapper preserving numeric identity
     FluentValue - Type alias for values accepted by formatting functions
     make_fluent_number - Construct FluentNumber from int/Decimal with inferred precision
@@ -119,6 +120,7 @@ from ._optional_exports import (
 )
 from .analysis import detect_cycles
 from .cache_management import clear_module_caches
+from .core._limits import UNLIMITED, UnlimitedLimit
 from .core.babel_compat import get_cldr_version, is_babel_available
 from .core.locale_utils import get_system_locale, normalize_locale, require_locale_code
 from .core.semantic_types import FTLSource, LocaleCode, MessageId, ResourceId
@@ -256,6 +258,8 @@ __all__: list[str] = [
     "FrozenErrorContext",
     "FrozenFluentError",
     "ParseTypeLiteral",
+    "UNLIMITED",
+    "UnlimitedLimit",
     # Data integrity exceptions
     "CacheCorruptionError",
     "DataIntegrityError",

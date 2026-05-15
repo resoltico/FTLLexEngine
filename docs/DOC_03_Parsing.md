@@ -1,8 +1,8 @@
 ---
 afad: "4.0"
-version: "0.166.0"
+version: "0.167.0"
 domain: PARSING
-updated: "2026-05-01"
+updated: "2026-05-15"
 route:
   keywords: [parse_ftl, serialize_ftl, validate_resource, FluentParserV1, Cursor, ASTVisitor, ASTTransformer, ParseError]
   questions: ["how do I parse FTL?", "what does validate_resource return?", "what syntax traversal helpers are public?", "where is the syntax parser API documented?"]
@@ -124,9 +124,10 @@ class FluentParserV1:
     def __init__(
         self,
         *,
-        max_source_size: int | None = None,
+        max_source_size: LimitArg = None,
         max_nesting_depth: int | None = None,
-        max_parse_errors: int | None = None,
+        max_parse_errors: LimitArg = None,
+        max_stream_line_length: LimitArg = None,
     ) -> None:
 ```
 
@@ -136,6 +137,10 @@ class FluentParserV1:
 | `max_source_size` | N | Input length bound |
 | `max_nesting_depth` | N | Nesting safety bound |
 | `max_parse_errors` | N | Recovery error bound |
+| `max_stream_line_length` | N | Per-line stream bound enforced before buffering |
+
+Security-limit note:
+`LimitArg` fields fail closed on zero and negative integers. Use public `ftllexengine.UNLIMITED` only for an intentional opt-out.
 
 ### Constraints
 - Return: Parser instance

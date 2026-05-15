@@ -27,6 +27,7 @@ from datetime import datetime as _datetime
 from .value_types import FluentNumber
 
 __all__ = [
+    "require_bool",
     "require_date",
     "require_datetime",
     "require_fluent_number",
@@ -85,6 +86,34 @@ def require_positive_int(value: object, field_name: str) -> int:
     if value <= 0:
         msg = f"{field_name} must be positive"
         raise ValueError(msg)
+    return value
+
+
+def require_bool(value: object, field_name: str) -> bool:
+    """Validate that a boundary value is a real boolean.
+
+    Premise:
+        Security and integrity toggles own operational posture, not just UI
+        preferences.
+
+    Reason:
+        Accepting truthy strings, integers, or custom objects at configuration
+        boundaries silently changes fail-closed behavior. Booleans therefore
+        need the same strict gate as numeric limits.
+
+    Args:
+        value: Raw boundary value to validate.
+        field_name: Human-readable field label used in error messages.
+
+    Returns:
+        The validated boolean.
+
+    Raises:
+        TypeError: If value is not exactly ``bool``.
+    """
+    if not isinstance(value, bool):
+        msg = f"{field_name} must be bool, got {type(value).__name__}"
+        raise TypeError(msg)
     return value
 
 
@@ -215,4 +244,3 @@ def require_fluent_number(value: object, field_name: str) -> FluentNumber:
         msg = f"{field_name} must be FluentNumber, got {type(value).__name__}"
         raise TypeError(msg)
     return value
-

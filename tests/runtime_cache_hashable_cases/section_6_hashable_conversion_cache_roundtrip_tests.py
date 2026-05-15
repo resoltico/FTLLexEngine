@@ -18,7 +18,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_get_with_list_value_now_cacheable(self) -> None:
         """get() with list args succeeds: lists are converted to type-tagged tuples."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args = {"key": [1, 2, 3]}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
@@ -29,7 +29,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_get_with_dict_value_now_cacheable(self) -> None:
         """get() with nested dict args succeeds: dicts are converted to sorted tuples."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args = {"key": {"nested": "value"}}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
@@ -40,7 +40,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_get_with_set_value_now_cacheable(self) -> None:
         """get() with set args succeeds: sets are converted to type-tagged frozensets."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args: dict[str, object] = {"key": {1, 2, 3}}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
@@ -51,14 +51,14 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_put_with_list_value_now_caches(self) -> None:
         """put() with list args stores entry: lists are converted at key build time."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         cache.put("msg-id", {"items": [1, 2, 3]}, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
 
     def test_put_with_dict_value_now_caches(self) -> None:
         """put() with nested dict args stores entry: dicts are converted at key build."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         cache.put("msg-id", {"config": {"option": "value"}}, None, "en-US", use_isolating=True, formatted="fmt", errors=())
         assert len(cache) == 1
         assert cache.unhashable_skips == 0
@@ -81,7 +81,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_get_with_tuple_value_cacheable(self) -> None:
         """get() caches tuple-valued args correctly via type-tagged conversion."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args = {"coords": (10, 20, 30)}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
@@ -92,7 +92,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_get_with_tuple_containing_list_cacheable(self) -> None:
         """get() caches tuple-with-nested-list args: nested list is converted."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args: dict[str, object] = {"data": (1, [2, 3], 4)}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
@@ -106,7 +106,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
         self, tuple_value: tuple[int, int, int]
     ) -> None:
         """PROPERTY: Tuple-valued args cache and retrieve correctly."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args = {"tuple_arg": tuple_value}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
@@ -118,7 +118,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     @given(st.lists(st.integers(), min_size=1, max_size=10))
     def test_get_with_various_lists_cacheable(self, list_value: list[int]) -> None:
         """PROPERTY: List-valued args cache and retrieve correctly."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args = {"list_arg": list_value}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)
@@ -134,7 +134,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
     )
     def test_put_with_various_dicts_cacheable(self, dict_value: dict[str, int]) -> None:
         """PROPERTY: Dict-valued args cache correctly."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args = {"dict_arg": dict_value}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())
         assert len(cache) == 1
@@ -143,7 +143,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_mixed_hashable_and_convertible_args(self) -> None:
         """Cache handles mixed hashable/convertible args in the same call."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args: dict[str, object] = {
             "str_arg": "value",
             "int_arg": 42,
@@ -157,7 +157,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_empty_list_cacheable(self) -> None:
         """Empty lists are converted and cached correctly."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args: dict[str, list[object]] = {"empty_list": []}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]
@@ -167,7 +167,7 @@ class TestCacheHashableConversion:  # pylint: disable=too-many-public-methods
 
     def test_empty_dict_cacheable(self) -> None:
         """Empty dicts are converted and cached correctly."""
-        cache = IntegrityCache(strict=False, maxsize=100)
+        cache = IntegrityCache(maxsize=100)
         args: dict[str, dict[object, object]] = {"empty_dict": {}}
         cache.put("msg-id", args, None, "en-US", use_isolating=True, formatted="formatted", errors=())  # type: ignore[arg-type]
         cached = cache.get("msg-id", args, None, "en-US", use_isolating=True)  # type: ignore[arg-type]

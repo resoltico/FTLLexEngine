@@ -61,7 +61,7 @@ async def example_stream_loading() -> None:
     bundle = AsyncFluentBundle("en_US", use_isolating=False)
     junk = await bundle.add_resource_stream(["hello = Hello!\n", "status = Ready\n"])
     assert junk == ()
-    assert bundle.has_message("hello")
+    assert await bundle.has_message("hello")
 
     status, errors = await bundle.format_pattern("status")
     assert errors == ()

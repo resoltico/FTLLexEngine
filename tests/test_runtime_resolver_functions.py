@@ -149,8 +149,9 @@ class TestCustomFunctionExceptionWithLocaleInjection:
         assert "{!FAIL_WITH_LOCALE}" in result
         assert len(errors) == 1
         assert errors[0].category == ErrorCategory.RESOLUTION
-        assert "Uncaught exception" in str(errors[0])
+        assert "Function 'FAIL_WITH_LOCALE' failed" in str(errors[0])
         assert "RuntimeError" in str(errors[0])
+        assert "Intentional failure for test in en" not in str(errors[0])
 
     def test_custom_function_key_error_with_locale_injection(self) -> None:
         """Custom function with locale injection raises KeyError."""
@@ -186,6 +187,7 @@ class TestCustomFunctionExceptionWithLocaleInjection:
         result, errors = resolver.resolve_message(message, {})
         assert "{!LOOKUP}" in result
         assert len(errors) == 1
+        assert "Function 'LOOKUP' failed" in str(errors[0])
         assert "KeyError" in str(errors[0])
 
     def test_custom_function_zero_division_with_locale_injection(self) -> None:
@@ -222,6 +224,7 @@ class TestCustomFunctionExceptionWithLocaleInjection:
         result, errors = resolver.resolve_message(message, {"num": 10})
         assert "{!DIVIDE}" in result
         assert len(errors) == 1
+        assert "Function 'DIVIDE' failed" in str(errors[0])
         assert "ZeroDivisionError" in str(errors[0])
 
 
@@ -276,8 +279,9 @@ class TestCustomFunctionExceptionWithoutLocaleInjection:
         assert "{!CUSTOM_FAIL}" in result
         assert len(errors) == 1
         assert errors[0].category == ErrorCategory.RESOLUTION
-        assert "Uncaught exception" in str(errors[0])
+        assert "Function 'CUSTOM_FAIL' failed" in str(errors[0])
         assert "RuntimeError" in str(errors[0])
+        assert "Custom error for data" not in str(errors[0])
 
     def test_custom_function_index_error_without_locale_injection(self) -> None:
         """Custom function without locale injection raises IndexError."""
@@ -311,6 +315,7 @@ class TestCustomFunctionExceptionWithoutLocaleInjection:
         result, errors = resolver.resolve_message(message, {})
         assert "{!GETINDEX}" in result
         assert len(errors) == 1
+        assert "Function 'GETINDEX' failed" in str(errors[0])
         assert "IndexError" in str(errors[0])
 
     def test_custom_function_attribute_error_without_locale_injection(self) -> None:
@@ -344,6 +349,7 @@ class TestCustomFunctionExceptionWithoutLocaleInjection:
         result, errors = resolver.resolve_message(message, {})
         assert "{!GETATTR}" in result
         assert len(errors) == 1
+        assert "Function 'GETATTR' failed" in str(errors[0])
         assert "AttributeError" in str(errors[0])
 
 
@@ -396,6 +402,8 @@ class TestFunctionExceptionHypothesis:
         assert isinstance(result, str)
         assert len(errors) >= 1
         assert "{!FAIL}" in result
+        assert "Function 'FAIL' failed" in str(errors[0])
+        assert "RuntimeError" in str(errors[0])
 
     @given(
         locale=st.sampled_from(["en", "de", "fr", "ja", "es"]),
@@ -436,3 +444,5 @@ class TestFunctionExceptionHypothesis:
         assert isinstance(result, str)
         assert len(errors) >= 1
         assert "{!CUSTOM}" in result
+        assert "Function 'CUSTOM' failed" in str(errors[0])
+        assert "KeyError" in str(errors[0])

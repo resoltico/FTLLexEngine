@@ -348,15 +348,19 @@ class TestValidateResourceProperties:
 
     @given(source=validation_resource_sources())
     def test_property_validate_resource_result_consistency(self, source: str) -> None:
-        """PROPERTY: ValidationResult.is_valid is consistent with errors and annotations."""
+        """PROPERTY: ValidationResult.is_valid fails closed on critical warnings too."""
         from ftllexengine.validation import (
             validate_resource,
         )
 
         result = validate_resource(source)
-        has_errors = len(result.errors) > 0 or len(result.annotations) > 0
-        event(f"outcome_has_errors={has_errors}")
-        assert result.is_valid == (not has_errors)
+        has_blockers = (
+            len(result.errors) > 0
+            or len(result.annotations) > 0
+            or result.critical_warning_count > 0
+        )
+        event(f"outcome_has_blockers={has_blockers}")
+        assert result.is_valid == (not has_blockers)
 
     @given(source=validation_resource_sources())
     def test_property_error_count_accurate(self, source: str) -> None:
@@ -417,10 +421,14 @@ class TestSemanticValidatorProperties:
     def test_property_valid_result_has_no_errors_or_annotations(
         self, resource: Resource
     ) -> None:
-        """PROPERTY: is_valid iff no errors and no annotations."""
+        """PROPERTY: is_valid iff no errors, annotations, or critical warnings."""
         validator = SemanticValidator()
         result = validator.validate(resource)
-        expected = (len(result.errors) == 0 and len(result.annotations) == 0)
+        expected = (
+            len(result.errors) == 0
+            and len(result.annotations) == 0
+            and result.critical_warning_count == 0
+        )
         event(f"outcome_valid={result.is_valid}")
         assert result.is_valid == expected
 

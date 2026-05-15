@@ -21,15 +21,15 @@ class TestIntegrityCacheInitValidation:
         with pytest.raises(ValueError, match="maxsize must be positive"):
             IntegrityCache(maxsize=-1)
 
-    def test_max_entry_weight_zero_rejected(self) -> None:
-        """IntegrityCache rejects max_entry_weight=0."""
-        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
-            IntegrityCache(max_entry_weight=0)
+    def test_max_entry_payload_bytes_zero_rejected(self) -> None:
+        """IntegrityCache rejects max_entry_payload_bytes=0."""
+        with pytest.raises(ValueError, match="max_entry_payload_bytes must be positive"):
+            IntegrityCache(max_entry_payload_bytes=0)
 
-    def test_max_entry_weight_negative_rejected(self) -> None:
-        """IntegrityCache rejects negative max_entry_weight."""
-        with pytest.raises(ValueError, match="max_entry_weight must be positive"):
-            IntegrityCache(max_entry_weight=-1)
+    def test_max_entry_payload_bytes_negative_rejected(self) -> None:
+        """IntegrityCache rejects negative max_entry_payload_bytes."""
+        with pytest.raises(ValueError, match="max_entry_payload_bytes must be positive"):
+            IntegrityCache(max_entry_payload_bytes=-1)
 
     def test_max_errors_per_entry_zero_rejected(self) -> None:
         """IntegrityCache rejects max_errors_per_entry=0."""
