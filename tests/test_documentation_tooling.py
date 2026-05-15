@@ -562,6 +562,17 @@ def test_release_protocol_requires_annotated_tags_and_documents_prepublication_r
     assert "the same intended release commit you already verified in Step 5" not in text
 
 
+def test_release_protocol_keeps_public_verification_workspace_until_after_floor_check() -> None:
+    """The release verifier must not delete its temp workspace before the negative floor check runs."""
+    text = (REPO_ROOT / "docs" / "RELEASE_PROTOCOL.md").read_text(encoding="utf-8")
+
+    py313_install = text.index('uv venv --python 3.13 --seed "$TMP_DIR/py313"')
+    py312_install = text.index('uv venv --python 3.12 --seed "$TMP_DIR/py312"')
+    cleanup = text.index('rm -rf "$TMP_DIR"')
+
+    assert py313_install < py312_install < cleanup
+
+
 def test_atheris_inventory_readme_matches_target_manifest() -> None:
     """The published Atheris inventory should stay aligned with the live target registry."""
     readme = (REPO_ROOT / "fuzz_atheris" / "README.md").read_text(encoding="utf-8")
